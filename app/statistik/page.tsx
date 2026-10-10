@@ -4,6 +4,8 @@ import { loadTracker } from "@/lib/data";
 import { getBiggestEvents, getBoardTotalsOverTime, getDailyEventSum, getHistoryAll } from "@/lib/store";
 import { boardValue, dateTime, duration, headUrl, num } from "@/lib/format";
 import { Sparkline, type SparkPoint } from "@/components/Sparkline";
+import { GraphBuilder } from "@/components/GraphBuilder";
+import { parseGraphQuery } from "@/lib/graphQuery";
 
 // Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
 export const instant = false;
@@ -99,7 +101,8 @@ function Record({
   );
 }
 
-export default async function Page() {
+export default async function Page(props: PageProps<"/statistik">) {
+  const sp = await props.searchParams;
   const { state, now } = await loadTracker();
   const [hist, totals, deathsPerDay, bigDiamonds, bigDistance, bigBlocks, bigMobs] = await Promise.all([
     getHistoryAll(),
@@ -130,6 +133,9 @@ export default async function Page() {
   const dayPoints: SparkPoint[] = deathsPerDay.map((d) => ({ at: `${d.day}T12:00:00+02:00`, v: d.value }));
 
   const since = h.length ? h[0].at : state.startedAt;
+  const playerOptions = players
+    .map((p) => ({ id: p.id, name: p.name }))
+    .sort((a, b) => a.name.localeCompare(b.name, "de"));
   const who = (p: { id: string; name: string } | null) => (p ? { id: p.id, name: p.name } : null);
 
   return (
@@ -142,6 +148,18 @@ export default async function Page() {
             Verläufe über die gesamte Laufzeit seit {dateTime(since)} und die Rekorde dazu. Mit der Maus über eine Kurve fahren zeigt Zeitpunkt
             und Wert.
           </p>
+        </div>
+      </section>
+
+      <section className="block" data-tone="paper" aria-labelledby="graph-h">
+        <div className="wrap">
+          <div className="section-head">
+            <h2 className="t-2" id="graph-h">
+              Eigener Graph
+            </h2>
+            <p className="muted">Kennzahl, Spieler, Zeitraum und Raster frei wählen. Die Adresse im Browser enthält die Auswahl und lässt sich teilen.</p>
+          </div>
+          <GraphBuilder players={playerOptions} initial={parseGraphQuery(sp)} />
         </div>
       </section>
 

@@ -7,7 +7,7 @@ import { ago, boardValue, dateTime, duration, headUrl, num, skinUrl } from "@/li
 import { EventFeed } from "@/components/EventFeed";
 import { BOARD_ICON, Icon } from "@/components/Icons";
 import { FigValue } from "@/components/FigValue";
-import { PlayerCharts } from "@/components/PlayerCharts";
+import { StatSpark } from "@/components/StatSpark";
 import { getAllSessions, getPlayerHistory } from "@/lib/store";
 import { companionsOf, overlapsFor } from "@/lib/overlap";
 import { TwitchEmbed } from "@/components/TwitchEmbed";
@@ -150,7 +150,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
               // Spielzeit gibt es von der API nur für die Top 10 – sonst die vom Tracker gemessene Online-Zeit zeigen
               const fromTracker = k === "playtimeSeconds" && v === undefined && trackedSeconds > 0;
               return (
-                <div key={k} className="box st-fig" data-tone={TONE[k]}>
+                <div key={k} className="box st-fig st-fig--spark" data-tone={TONE[k]}>
                   <dt className="pstat">
                     <span className="pstat__label">
                       <IconCmp width={18} height={18} aria-hidden="true" />
@@ -173,6 +173,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                     )}
                   </dt>
                   <FigValue>{v !== undefined ? boardValue(k, v) : fromTracker ? duration(trackedSeconds) : "–"}</FigValue>
+                  <StatSpark points={history} k={k} label={LABEL[k]} />
                 </div>
               );
             })}
@@ -180,8 +181,8 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
             Tode, Diamanten, Blöcke, Mobs und Strecke kommen aus der Einzelstatistik der API (inklusive Rang unter allen
             Teilnehmenden). Die Spielzeit liefert die API nur für die Top 10. Steht „Tracker“ dabei, ist es die seit Tracker-Start gemessene Online-Zeit.
+            Die Kurven zeigen den Verlauf seit Tracker-Start ({num(history.length)} Messpunkte). Mit der Maus über die Kurve fahren zeigt Zeitpunkt und Wert.
           </p>
-          <PlayerCharts points={history} name={p.name} />
         </div>
       </section>
 
@@ -218,6 +219,14 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                   <dt>Ereignisse</dt>
                   <dd className="num">{num(mine.length)}</dd>
                 </dl>
+                {history.some((h) => h.viewers !== null) && (
+                  <div style={{ marginTop: 12 }}>
+                    <p className="eyebrow" style={{ marginBottom: 6 }}>
+                      Zuschauer
+                    </p>
+                    <StatSpark points={history} k="viewers" label="Zuschauer" height={48} />
+                  </div>
+                )}
               </div>
               <section className="box st-board" data-tone="sky" aria-labelledby="b-with">
                 <header className="st-board__head">

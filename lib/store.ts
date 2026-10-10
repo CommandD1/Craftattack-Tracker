@@ -613,3 +613,135 @@ export async function getBiggestEvents(type: TrackerEvent["type"], limit = 1): P
     return rows.map(rowToEvent);
   });
 }
+
+/* ---------- Eigener Graph: beliebige Zeitreihen ---------- */
+
+export const SERIES_METRICS = [
+  "onlineCount",
+  "liveCount",
+  "viewers",
+  "playtimeSeconds",
+  "deaths",
+  "diamonds",
+  "blocksBroken",
+  "mobsKilled",
+  "distance",
+  "online",
+] as const;
+export type SeriesMetric = (typeof SERIES_METRICS)[number];
+
+export interface SeriesLine {
+  id: string;
+  name: string;
+  points: { at: string; v: number }[];
+}
+
+export interface SeriesQuery {
+  metric: SeriesMetric;
+  /** Leer = Server bzw. alle Spieler zusammen */
+  players: string[];
+  from: number | null;
+  to: number | null;
+  /** null = automatisch */
+  bucketMinutes: number | null;
+  /** "wert": Stand zum Zeitpunkt, "zuwachs": Differenz zum vorherigen Bündel */
+  mode: "wert" | "zuwachs";
+}
+
+const HISTORY_COL: Partial<Record<SeriesMetric, string>> = {
+  onlineCount: "online_count",
+  liveCount: "live_count",
+  viewers: "viewers",
+  playtimeSeconds: "playtime_seconds",
+  deaths: "deaths",
+  online: "online_count",
+};
+const PLAYER_COL: Partial<Record<SeriesMetric, string>> = {
+  viewers: "viewers",
+  playtimeSeconds: "playtime_seconds",
+  deaths: "deaths",
+  diamonds: "diamonds",
+  blocksBroken: "blocks_broken",
+  mobsKilled: "mobs_killed",
+  distance: "distance",
+  online: "(CASE WHEN online THEN 1 ELSE 0 END)",
+};
+
+function toDelta(points: { at: string; v: number }[]) {
+  const out: { at: string; v: number }[] = [];
+  for (let i = 1; i < points.length; i++) out.push({ at: points[i].at, v: Math.max(0, points[i].v - points[i - 1].v) });
+  return out;
+}
+
+/** Zeitreihe(n) für den Graph-Baukasten auf der Statistik-Seite. */
+export async function getSeries(q: SeriesQuery): Promise<{ series: SeriesLine[]; bucketMinutes: number }> {
+  await ensureLoaded();
+  const db = await getDb();
+  const players = g().state?.players ?? {};
+  const perPlayer = q.players.length > 0 && PLAYER_COL[q.metric] !== undefined;
+  const table = perPlayer || HISTORY_COL[q.metric] === undefined ? "player_history" : "history";
+
+  const firstRow = (await db.query<{ at: Date | null }>(`SELECT min(at) AS at FROM ${table}`)).rows[0];
+  const firstAt = firstRow?.at ? new Date(firstRow.at) : null;
+  const from = new Date(q.from ?? firstAt?.getTime() ?? Date.now());
+  const to = new Date(q.to ?? Date.now());
+  const minutes = q.bucketMinutes ?? bucketMinutes(from, 600, table === "history" ? 1 : 5);
+  const bucket = `to_timestamp(floor(extract(epoch FROM at) / ($1 * 60)) * ($1 * 60))`;
+  const finish = (series: SeriesLine[]) => ({
+    series: q.mode === "zuwachs" ? series.map((s) => ({ ...s, points: toDelta(s.points) })) : series,
+    bucketMinutes: minutes,
+  });
+
+  // Server-Verlauf (eine Linie)
+  if (table === "history") {
+    const col = HISTORY_COL[q.metric]!;
+    const rows = (
+      await db.query<{ at: Date; v: number | string }>(
+        `SELECT ${bucket} AS at, max(${col}) AS v FROM history WHERE at >= $2 AND at <= $3 GROUP BY 1 ORDER BY 1`,
+        [minutes, from, to],
+      )
+    ).rows;
+    return finish([{ id: "server", name: "Server", points: rows.map((r) => ({ at: iso(r.at)!, v: Number(r.v) })) }]);
+  }
+
+  const col = PLAYER_COL[q.metric]!;
+
+  // Einzelne Spieler (eine Linie je Spieler)
+  if (perPlayer) {
+    const ph = q.players.map((_, i) => `$${i + 4}`).join(", ");
+    const rows = (
+      await db.query<{ player: string; at: Date; v: number | string | null }>(
+        `SELECT player, ${bucket} AS at, max(${col}) AS v FROM player_history
+          WHERE at >= $2 AND at <= $3 AND player IN (${ph}) GROUP BY 1, 2 ORDER BY 1, 2`,
+        [minutes, from, to, ...q.players],
+      )
+    ).rows;
+    const byPlayer = new Map<string, SeriesLine>();
+    for (const id of q.players) byPlayer.set(id, { id, name: players[id]?.name ?? id, points: [] });
+    for (const r of rows) {
+      if (r.v === null) continue;
+      byPlayer.get(r.player)?.points.push({ at: iso(r.at)!, v: Number(r.v) });
+    }
+    return finish([...byPlayer.values()]);
+  }
+
+  // Alle Spieler zusammen: letzter Stand je Spieler wird fortgeschrieben und summiert
+  const rows = (
+    await db.query<{ player: string; at: Date; v: number | string | null }>(
+      `SELECT player, ${bucket} AS at, max(${col}) AS v FROM player_history
+        WHERE at >= $2 AND at <= $3 AND ${col} IS NOT NULL GROUP BY 1, 2 ORDER BY 2, 1`,
+      [minutes, from, to],
+    )
+  ).rows;
+  const last = new Map<string, number>();
+  const points: { at: string; v: number }[] = [];
+  let i = 0;
+  while (i < rows.length) {
+    const t = rows[i].at.getTime();
+    for (; i < rows.length && rows[i].at.getTime() === t; i++) last.set(rows[i].player, Number(rows[i].v));
+    let sum = 0;
+    for (const v of last.values()) sum += v;
+    points.push({ at: new Date(t).toISOString(), v: sum });
+  }
+  return finish([{ id: "alle", name: "Alle Spieler", points }]);
+}
