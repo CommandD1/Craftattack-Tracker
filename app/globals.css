@@ -434,8 +434,8 @@ a.box,
   text-transform: uppercase;
   letter-spacing: 0.03em;
   white-space: nowrap;
-  padding: 10px 12px;
-  font-size: 1.125rem;
+  padding: 8px 10px;
+  font-size: 0.9375rem;
   font-weight: 600;
   text-decoration: none;
   display: block;
@@ -474,8 +474,8 @@ a.box,
     display: none;
   }
   .nav a {
-    padding: 8px 10px;
-    font-size: 1.0625rem;
+    padding: 7px 9px;
+    font-size: 0.875rem;
   }
 }
 .site-foot {
