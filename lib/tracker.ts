@@ -13,7 +13,10 @@ import {
 } from "./types";
 
 export const STATS_URL = process.env.CA_STATS_URL ?? "https://craftattack.one/api/stats";
-/** Pro-Spieler-Endpunkt: liefert alle Zähler (außer Spielzeit) und den Rang – auch außerhalb der Top 10 */
+/**
+ * Pro-Spieler-Endpunkt: liefert alle Zähler (außer Spielzeit) und den Rang – auch außerhalb der Top 10.
+ * Erwartet den Twitch-Login (nicht die Spieler-ID), siehe `extLogins`.
+ */
 export const EXT_URL = process.env.CA_EXT_URL ?? "https://craftattack.one/api/ext";
 export const POLL_INTERVAL_MS = Number(process.env.CA_POLL_INTERVAL_MS ?? 30_000);
 /** Wie viele ext-Anfragen gleichzeitig laufen */
@@ -71,9 +74,9 @@ export async function fetchStats(): Promise<ApiStats> {
 
 export type ExtPlayer = NonNullable<ApiExtPlayer["player"]>;
 
-/** Holt die Einzelstatistik eines Spielers; `null`, wenn die API ihn nicht kennt. */
-export async function fetchExtPlayer(id: string): Promise<ExtPlayer | null> {
-  const res = await fetch(`${EXT_URL}/${encodeURIComponent(id)}`, {
+/** Holt die Einzelstatistik eines Spielers per Twitch-Login; `null`, wenn die API ihn nicht kennt. */
+export async function fetchExtPlayer(login: string): Promise<ExtPlayer | null> {
+  const res = await fetch(`${EXT_URL}/${encodeURIComponent(login)}`, {
     headers: { accept: "application/json", "user-agent": "actracker/1.0" },
     cache: "no-store",
     signal: AbortSignal.timeout(15_000),
@@ -83,16 +86,19 @@ export async function fetchExtPlayer(id: string): Promise<ExtPlayer | null> {
   return data.player ?? null;
 }
 
-/** Fragt alle IDs parallel (begrenzt) ab. Fehlgeschlagene Spieler fehlen einfach im Ergebnis. */
-export async function fetchExtAll(ids: Iterable<string>): Promise<{ players: Map<string, ExtPlayer>; failed: number }> {
-  const queue = [...new Set(ids)];
+/**
+ * Fragt alle Logins parallel (begrenzt) ab. Ergebnis ist nach Spieler-ID (aus der Antwort) abgelegt.
+ * Fehlgeschlagene Spieler fehlen einfach im Ergebnis.
+ */
+export async function fetchExtAll(logins: Iterable<string>): Promise<{ players: Map<string, ExtPlayer>; failed: number }> {
+  const queue = [...new Set(logins)];
   const players = new Map<string, ExtPlayer>();
   let failed = 0;
   const worker = async () => {
-    for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
+    for (let login = queue.shift(); login !== undefined; login = queue.shift()) {
       try {
-        const p = await fetchExtPlayer(id);
-        if (p) players.set(id, p);
+        const p = await fetchExtPlayer(login);
+        if (p) players.set(p.id, p);
       } catch {
         failed += 1;
       }
@@ -109,6 +115,19 @@ export function knownPlayerIds(state: TrackerState, stats: ApiStats): Set<string
   for (const l of stats.live ?? []) ids.add(l.id);
   for (const key of BOARD_KEYS) for (const e of stats.boards?.[key] ?? []) ids.add(e.id);
   return ids;
+}
+
+/**
+ * Twitch-Logins für die ext-Abfrage: gespeicherter Login des Spielers, sonst der Login aus dem aktuellen
+ * Live-Status, sonst die Spieler-ID (stimmt bei den meisten Spielern mit dem Login überein).
+ */
+export function extLogins(state: TrackerState, stats: ApiStats, ids: Iterable<string>): Set<string> {
+  const liveLogin = new Map<string, string>();
+  for (const l of stats.live ?? []) liveLogin.set(l.id, l.login);
+  for (const p of stats.online) if (p.live?.login) liveLogin.set(p.id, p.live.login);
+  const logins = new Set<string>();
+  for (const id of ids) logins.add(state.players[id]?.twitchLogin ?? liveLogin.get(id) ?? id);
+  return logins;
 }
 
 const newPlayers = new Set<string>();
@@ -136,6 +155,7 @@ function ensurePlayer(
       peakViewers: 0,
       longestSession: 0,
       ranks: {},
+      twitchLogin: null,
     };
     state.players[p.id] = ps;
     newPlayers.add(p.id);
@@ -244,6 +264,7 @@ export function diffSnapshot(
       });
     }
     ps.live = { login: l.login, title: l.title, viewers: l.viewers };
+    if (l.login) ps.twitchLogin = l.login;
   }
   for (const ps of Object.values(state.players)) {
     if (ps.live && !liveNow.has(ps.id)) {
@@ -265,7 +286,7 @@ export function diffSnapshot(
     }
   }
 
-  // --- Einzelstatistiken (/api/ext/<id>): Name und Ränge für alle abgefragten Spieler übernehmen
+  // --- Einzelstatistiken (/api/ext/<login>): Name und Ränge für alle abgefragten Spieler übernehmen
   for (const [id, x] of ext) {
     const ps = ensurePlayer(state, { id, name: x.name, uuid: state.players[id]?.uuid ?? "" }, now);
     ps.ranks = { ...x.ranks };
@@ -406,7 +427,7 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
     try {
       const stats = await fetchStats();
       // Einzelstatistiken für alle bekannten Spieler – Fehler hier sind nicht fatal, dann gibt es eben nur die Top 10
-      const ext = await fetchExtAll(knownPlayerIds(state, stats));
+      const ext = await fetchExtAll(extLogins(state, stats, knownPlayerIds(state, stats)));
       if (ext.failed > 0) console.warn(`[tracker] ${ext.failed} ext-Anfragen fehlgeschlagen`);
       const first = state.latest === null;
       const events = diffSnapshot(state, stats, now, ext.players);

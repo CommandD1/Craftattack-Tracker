@@ -63,6 +63,7 @@ interface PlayerRow {
   live: PlayerState["live"];
   stats: PlayerState["stats"];
   ranks: PlayerState["ranks"] | null;
+  twitch_login: string | null;
   first_seen: Date;
   last_seen: Date;
   session_start: Date | null;
@@ -104,6 +105,7 @@ function rowToPlayer(r: PlayerRow): PlayerState {
     live: r.live,
     stats: r.stats ?? {},
     ranks: r.ranks ?? {},
+    twitchLogin: r.twitch_login ?? null,
     firstSeen: iso(r.first_seen)!,
     lastSeen: iso(r.last_seen)!,
     sessionStart: iso(r.session_start),
@@ -191,6 +193,7 @@ export async function getState(): Promise<TrackerState> {
   for (const p of Object.values(state.players)) {
     p.longestSession ??= 0;
     p.ranks ??= {};
+    p.twitchLogin ??= p.live?.login ?? null;
   }
   return state;
 }
@@ -238,14 +241,15 @@ export async function saveState(state: TrackerState) {
   for (const p of Object.values(state.players)) {
     await db.query(
       `INSERT INTO players (id, name, uuid, online, live, stats, first_seen, last_seen, session_start,
-                            tracked_seconds, sessions, live_since, peak_viewers, longest_session, ranks)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                            tracked_seconds, sessions, live_since, peak_viewers, longest_session, ranks, twitch_login)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name, uuid = EXCLUDED.uuid, online = EXCLUDED.online, live = EXCLUDED.live,
          stats = EXCLUDED.stats, first_seen = EXCLUDED.first_seen, last_seen = EXCLUDED.last_seen,
          session_start = EXCLUDED.session_start, tracked_seconds = EXCLUDED.tracked_seconds,
          sessions = EXCLUDED.sessions, live_since = EXCLUDED.live_since, peak_viewers = EXCLUDED.peak_viewers,
-         longest_session = EXCLUDED.longest_session, ranks = EXCLUDED.ranks`,
+         longest_session = EXCLUDED.longest_session, ranks = EXCLUDED.ranks,
+         twitch_login = EXCLUDED.twitch_login`,
       [
         p.id,
         p.name,
@@ -262,6 +266,7 @@ export async function saveState(state: TrackerState) {
         p.peakViewers,
         p.longestSession,
         JSON.stringify(p.ranks ?? {}),
+        p.twitchLogin ?? null,
       ],
     );
   }

@@ -81,7 +81,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const sess = sessions(mine, p.online, p.sessionStart, now);
   const recent = [...mine].reverse().slice(0, 150);
   const deaths = mine.filter((e) => e.type === "death").reduce((s, e) => s + (e.delta ?? 0), 0);
-  // Rang: bevorzugt aus /api/ext/<id> (für alle Spieler), sonst Position in der Top 10 der Haupt-API
+  // Rang: bevorzugt aus /api/ext/<login> (für alle Spieler), sonst Position in der Top 10 der Haupt-API
   const ranks = Object.fromEntries(
     BOARD_KEYS.map((k) => {
       const ext = k !== "playtimeSeconds" ? p.ranks?.[k] : undefined;

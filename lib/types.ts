@@ -35,17 +35,17 @@ export interface BoardEntry {
   value: number;
 }
 
-/** Rang eines Spielers in einer Liste laut /api/ext/<id> */
+/** Rang eines Spielers in einer Liste laut /api/ext/<login> */
 export interface PlayerRank {
   rank: number;
   of: number;
 }
 
-/** Zähler-Keys, die /api/ext/<id> liefert (keine Spielzeit) */
+/** Zähler-Keys, die /api/ext/<login> liefert (keine Spielzeit) */
 export type ExtKey = Exclude<BoardKey, "playtimeSeconds">;
 export const EXT_KEYS: ExtKey[] = ["diamonds", "deaths", "blocksBroken", "mobsKilled", "distance"];
 
-/** Antwort von https://craftattack.one/api/ext/<id> */
+/** Antwort von https://craftattack.one/api/ext/<twitch-login> */
 export interface ApiExtPlayer {
   updatedAt: string;
   serverOnline: boolean;
@@ -111,10 +111,16 @@ export interface PlayerState {
   uuid: string;
   online: boolean;
   live: LiveInfo | null;
-  /** Letzter bekannter Stand aus den Boards bzw. /api/ext/<id> */
+  /** Letzter bekannter Stand aus den Boards bzw. /api/ext/<login> */
   stats: Partial<Record<BoardKey, number>>;
-  /** Ränge laut /api/ext/<id> (leer, solange der Spieler dort noch nie abgefragt wurde) */
+  /** Ränge laut /api/ext/<login> (leer, solange der Spieler dort noch nie abgefragt wurde) */
   ranks: Partial<Record<ExtKey, PlayerRank>>;
+  /**
+   * Twitch-Login des Spielers. /api/ext erwartet den Login, nicht die Spieler-ID – die beiden weichen
+   * bei einigen Spielern ab (z. B. rohaze → xrohat). Wird gemerkt, sobald der Spieler einmal live war,
+   * damit der Endpoint auch funktioniert, wenn er gerade nicht streamt.
+   */
+  twitchLogin: string | null;
   firstSeen: string;
   lastSeen: string;
   /** Beginn der aktuellen Online-Session */
