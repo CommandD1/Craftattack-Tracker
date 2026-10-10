@@ -133,7 +133,7 @@ async function Dashboard() {
                       href={`/spieler/${encodeURIComponent(p.id)}`}
                       title={p.live?.title}
                     >
-                      <img className="head" src={headUrl(p.uuid, 32)} alt="" width={32} height={32} loading="lazy" />
+                      <img className="head" src={headUrl(p.uuid, 32, p.id)} alt="" width={32} height={32} loading="lazy" />
                       <span>{p.name}</span>
                       {p.live && (
                         <span className="st-livetag">
@@ -267,7 +267,7 @@ async function Dashboard() {
                         <li key={e.id}>
                           <Link className="st-board__row" href={`/spieler/${encodeURIComponent(e.id)}`}>
                             <span className="st-board__rank num">{i + 1}</span>
-                            <img className="head" src={headUrl(e.uuid, 28)} alt="" width={28} height={28} loading="lazy" />
+                            <img className="head" src={headUrl(e.uuid, 28, e.id)} alt="" width={28} height={28} loading="lazy" />
                             <span className="st-board__name">{e.name}</span>
                             <span className="st-board__val num">{boardValue(key, e.value)}</span>
                           </Link>
@@ -298,7 +298,7 @@ async function Dashboard() {
                     <li key={p.id}>
                       <Link className="st-board__row" href={`/spieler/${encodeURIComponent(p.id)}`}>
                         <span className="st-board__rank num">{i + 1}</span>
-                        <img className="head" src={headUrl(p.uuid, 28)} alt="" width={28} height={28} loading="lazy" />
+                        <img className="head" src={headUrl(p.uuid, 28, p.id)} alt="" width={28} height={28} loading="lazy" />
                         <span className="st-board__name">{p.name}</span>
                         <span className="st-board__val num">{duration(p.seconds)}</span>
                       </Link>

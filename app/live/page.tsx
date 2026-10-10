@@ -85,7 +85,7 @@ async function Live() {
                     target="_blank"
                     rel="noopener"
                   >
-                    <img className="head" src={headUrl(p.uuid, 56)} alt="" width={56} height={56} loading="lazy" />
+                    <img className="head" src={headUrl(p.uuid, 56, p.id)} alt="" width={56} height={56} loading="lazy" />
                     <div style={{ minWidth: 0 }}>
                       <p className="stream__name">
                         {p.name}{" "}

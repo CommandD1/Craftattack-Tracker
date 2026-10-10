@@ -55,7 +55,6 @@ export function boardValue(key: string, v: number) {
   }
 }
 
-export const headUrl = (uuid: string | undefined, size = 32) =>
-  uuid
-    ? `https://mc-heads.net/avatar/${uuid}/${size}`
-    : `https://mc-heads.net/avatar/MHF_Steve/${size}`;
+/** Kopf-Bild über unseren Proxy: kuratierter Kopf von craftattack.one, sonst Mojang-Skin per UUID. */
+export const headUrl = (uuid: string | undefined, size = 32, id?: string) =>
+  `/api/head/${encodeURIComponent(id ?? "_")}?u=${encodeURIComponent(uuid ?? "")}&s=${size}`;

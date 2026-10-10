@@ -95,7 +95,7 @@ export default async function Page(props: PageProps<"/bestenlisten">) {
                   <li key={e.id}>
                     <Link className="st-board__row st-board__row--full" href={`/spieler/${encodeURIComponent(e.id)}`}>
                       <span className="st-board__rank num">{i + 1}</span>
-                      <img className="head" src={headUrl(e.uuid, 28)} alt="" width={28} height={28} loading="lazy" />
+                      <img className="head" src={headUrl(e.uuid, 28, e.id)} alt="" width={28} height={28} loading="lazy" />
                       <span className="st-board__name">
                         {e.name}
                         {e.online && <span className="dot" style={{ display: "inline-block", marginLeft: 8, verticalAlign: "middle" }} title="online" />}

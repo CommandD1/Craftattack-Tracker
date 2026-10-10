@@ -18,12 +18,12 @@ export function EventRow({ e, showPlayer = true }: { e: TrackerEvent; showPlayer
   const sub = meta.sub?.(e);
   const whereLabel = e.where === "twitch" ? "Twitch" : e.where === "server" ? "Server" : "Tracker";
   const text = meta.text(e);
-  const showHead = e.player && e.uuid;
+  const showHead = Boolean(e.player);
   return (
     <li className="ev">
       <span className="ev__icon" data-tone={meta.tone} title={meta.label}>
         {showHead && e.type !== "death" ? (
-          <img src={headUrl(e.uuid, 44)} alt="" width={44} height={44} loading="lazy" decoding="async" />
+          <img src={headUrl(e.uuid, 44, e.player)} alt="" width={44} height={44} loading="lazy" decoding="async" />
         ) : (
           <IconCmp aria-hidden="true" />
         )}

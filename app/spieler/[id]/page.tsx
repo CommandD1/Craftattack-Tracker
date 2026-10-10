@@ -92,7 +92,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
             / Profil
           </p>
           <div className="player-head" style={{ marginTop: 16 }}>
-            <img className="head" src={headUrl(p.uuid, 112)} alt={`Kopf von ${p.name}`} width={112} height={112} />
+            <img className="head" src={headUrl(p.uuid, 112, p.id)} alt={`Kopf von ${p.name}`} width={112} height={112} />
             <div>
               <h1 className="t-1">{p.name}</h1>
               <div className="player-head__tags">
