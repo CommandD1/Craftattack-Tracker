@@ -1,0 +1,154 @@
+import type { EventType, TrackerEvent } from "./types";
+import { duration, num, distance } from "./format";
+
+export interface EventMeta {
+  label: string;
+  tone: string;
+  /** Verb/Satz hinter dem Spielernamen */
+  text: (e: TrackerEvent) => string;
+  sub?: (e: TrackerEvent) => string | null;
+}
+
+export const EVENT_META: Record<EventType, EventMeta> = {
+  join: { label: "Join", tone: "grass", text: () => "ist auf den Server gekommen" },
+  leave: {
+    label: "Leave",
+    tone: "paper",
+    text: () => "hat den Server verlassen",
+    sub: (e) => {
+      const s = Number(e.meta?.sessionSeconds ?? 0);
+      return s > 0 ? `Session: ${duration(s)}` : null;
+    },
+  },
+  death: {
+    label: "Tod",
+    tone: "redstone",
+    text: (e) =>
+      e.meta?.unknown
+        ? `${e.delta === 1 ? "Jemand ist" : `${num(e.delta ?? 0)} Spieler sind`} gestorben`
+        : e.delta && e.delta > 1
+          ? `ist ${num(e.delta)}× gestorben`
+          : "ist gestorben",
+    sub: (e) =>
+      e.meta?.unknown
+        ? "Außerhalb der Top 10 – wer genau, verrät die API nicht."
+        : e.value !== undefined
+          ? `Insgesamt ${num(e.value)} Tode`
+          : null,
+  },
+  diamonds: {
+    label: "Diamanten",
+    tone: "diamond",
+    text: (e) => `hat ${num(e.delta ?? 0)} Diamant${e.delta === 1 ? "en" : "en"} gefunden`,
+    sub: (e) => (e.value !== undefined ? `Jetzt ${num(e.value)} insgesamt` : null),
+  },
+  blocksBroken: {
+    label: "Blöcke",
+    tone: "gold",
+    text: (e) => `hat ${num(e.delta ?? 0)} Blöcke abgebaut`,
+    sub: (e) => (e.value !== undefined ? `Jetzt ${num(e.value)} insgesamt` : null),
+  },
+  mobsKilled: {
+    label: "Mobs",
+    tone: "grass",
+    text: (e) => `hat ${num(e.delta ?? 0)} Mobs erledigt`,
+    sub: (e) => (e.value !== undefined ? `Jetzt ${num(e.value)} insgesamt` : null),
+  },
+  distance: {
+    label: "Strecke",
+    tone: "pink",
+    text: (e) => `ist ${distance(e.delta ?? 0)} gelaufen`,
+    sub: (e) => (e.value !== undefined ? `Jetzt ${distance(e.value)} insgesamt` : null),
+  },
+  stream_start: {
+    label: "Stream an",
+    tone: "twitch",
+    text: () => "ist live gegangen",
+    sub: (e) => (e.meta?.title ? String(e.meta.title) : null),
+  },
+  stream_end: {
+    label: "Stream aus",
+    tone: "ender",
+    text: () => "hat den Stream beendet",
+    sub: (e) => {
+      const s = Number(e.meta?.streamSeconds ?? 0);
+      const peak = Number(e.meta?.peakViewers ?? 0);
+      const parts = [];
+      if (s > 0) parts.push(`Dauer: ${duration(s)}`);
+      if (peak > 0) parts.push(`Peak: ${num(peak)} Zuschauer`);
+      return parts.length ? parts.join(" · ") : null;
+    },
+  },
+  stream_title: {
+    label: "Titel",
+    tone: "amethyst",
+    text: () => "hat den Streamtitel geändert",
+    sub: (e) => (e.meta?.title ? String(e.meta.title) : null),
+  },
+  server_online: { label: "Server", tone: "grass", text: () => "Der Server ist wieder online" },
+  server_offline: { label: "Server", tone: "redstone", text: () => "Der Server ist offline gegangen" },
+  first_join: {
+    label: "Neu",
+    tone: "lava",
+    text: () => "ist zum ersten Mal auf dem Server aufgetaucht",
+    sub: () => "Zumindest seit der Tracker läuft.",
+  },
+  rank: {
+    label: "Rang",
+    tone: "gold",
+    text: (e) =>
+      e.value === 1
+        ? `hat die Führung bei „${e.meta?.label}“ übernommen`
+        : `ist bei „${e.meta?.label}“ auf Platz ${e.value} geklettert`,
+    sub: (e) => (e.meta?.before ? `Vorher Platz ${e.meta.before}` : "Neu in den Top 3"),
+  },
+  milestone: {
+    label: "Meilenstein",
+    tone: "amethyst",
+    text: (e) => {
+      const v = e.value ?? 0;
+      switch (String(e.meta?.board ?? "")) {
+        case "playtimeSeconds":
+          return `hat ${Math.round(v / 3600)} Stunden Spielzeit voll`;
+        case "deaths":
+          return `ist zum ${num(v)}. Mal gestorben`;
+        case "diamonds":
+          return `hat ${num(v)} Diamanten zusammen`;
+        case "blocksBroken":
+          return `hat ${num(v)} Blöcke abgebaut`;
+        case "mobsKilled":
+          return `hat ${num(v)} Mobs erledigt`;
+        case "distance":
+          return `ist ${distance(v)} gelaufen`;
+        default:
+          return `hat ${num(v)} erreicht`;
+      }
+    },
+  },
+  record: {
+    label: "Rekord",
+    tone: "redstone",
+    text: (e) => `Neuer Rekord: ${num(e.value ?? 0)} ${e.meta?.label ?? ""}`,
+    sub: (e) => (e.delta ? `+${num(e.delta)} gegenüber dem alten Rekord` : null),
+  },
+  tracker_start: {
+    label: "Tracker",
+    tone: "sky",
+    text: () => "Der Tracker hat angefangen aufzuzeichnen",
+    sub: (e) =>
+      e.meta ? `${num(Number(e.meta.online ?? 0))} online · ${num(Number(e.meta.live ?? 0))} live` : null,
+  },
+};
+
+export const EVENT_GROUPS: { key: string; label: string; types: EventType[] }[] = [
+  { key: "server", label: "Server", types: ["join", "leave", "server_online", "server_offline"] },
+  { key: "death", label: "Tode", types: ["death"] },
+  { key: "loot", label: "Loot & Arbeit", types: ["diamonds", "blocksBroken", "mobsKilled", "distance"] },
+  { key: "twitch", label: "Twitch", types: ["stream_start", "stream_end", "stream_title"] },
+  { key: "highlights", label: "Highlights", types: ["first_join", "rank", "milestone", "record"] },
+];
+
+export function typesForGroup(key: string | undefined): EventType[] | null {
+  if (!key) return null;
+  return EVENT_GROUPS.find((g) => g.key === key)?.types ?? null;
+}

@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CraftAttack 14 Tracker
 
-## Getting Started
+Live unter **https://craftattack.hiorcraft.dev**
 
-First, run the development server:
+> **Hinweis:** Dieses Repo ist der Quellcode des Trackers, der auf craftattack.hiorcraft.dev läuft.
+> Es ist nicht als Self-Hosting-Paket gedacht und es gibt dafür keinen Support. Nutz einfach die Live-Seite.
+> Für neue Features, Bugfixes oder Ideen sind Pull Requests und Issues aber sehr willkommen.
+
+## Mitmachen
+
+1. Repo forken und klonen, `npm install`
+2. `npm run dev` startet die App lokal auf http://localhost:3000. Ohne `DATABASE_URL` nutzt sie eine eingebettete Datenbank (PGlite) unter `data/`, du brauchst also kein PostgreSQL.
+3. Änderung machen, `npm run lint` und `npx tsc --noEmit` müssen sauber sein.
+4. Pull Request gegen `main` mit kurzer Beschreibung, was und warum.
+
+Ideen, die noch offen sind: Twitch-API-Anbindung (Clips, Kategorie), Discord-Benachrichtigungen bei Highlights, Tages- und Wochenstatistiken, Vergleich zweier Spieler.
+
+Inoffizieller Tracker für CraftAttack 14. Fragt alle 30 Sekunden `https://craftattack.one/api/stats` ab,
+vergleicht den Stand mit dem vorherigen und schreibt jede Änderung als Ereignis mit Zeitstempel auf.
+
+## Starten
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev      # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Der Poller startet automatisch mit dem Server (`instrumentation.ts`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Datenbank (PostgreSQL)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `DATABASE_URL` gesetzt (siehe `.env.example`) → echtes PostgreSQL über `pg`. Tabellen werden beim Start angelegt.
+- Nicht gesetzt → eingebettetes PostgreSQL (PGlite) unter `data/pglite`, ohne Installation.
 
-## Learn More
+Tabellen: `tracker_meta` (Status, Rekorde, letzter API-Snapshot), `players`, `events` (Chronik), `history` (Zeitreihe gesamt), `player_history` (Zeitreihe pro Spieler).
 
-To learn more about Next.js, take a look at the following resources:
+Alle Seiten werden komplett serverseitig gerendert (SSR, `instant = false`), kein Lade-Skeleton.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Was erfasst wird
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Ereignis | Quelle | Wo |
+| --- | --- | --- |
+| Join / Leave (inkl. Session-Dauer) | `online[]` | Server |
+| Tod, Diamanten, Blöcke, Mobs, Strecke | Anstieg in den Top-10-Boards | Server |
+| Tode außerhalb der Top 10 | `totals.deaths` | Server (ohne Spieler) |
+| Stream an / aus / Titel geändert, Peak-Zuschauer | `live[]` | Twitch |
+| Server online / offline | `serverOnline` | Server |
+| Erster Auftritt eines Spielers (seit Tracker-Start) | `online[]` | Server |
+| Rang-Aufstieg in die Top 3 einer Bestenliste | Boards | Server |
+| Meilensteine (z. B. 24 h Spielzeit, 1.000 Diamanten, 10. Tod) | Boards | Server |
+| Rekorde: meiste gleichzeitig online / live / Zuschauer | Snapshot | Server |
+| Pro Spieler: Zeitreihe aller Werte, längste Session, Online-Zeit | abgeleitet | – |
 
-## Deploy on Vercel
+Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder auf Twitch.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Seiten
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `/` Übersicht im Look der offiziellen Stats-Seite plus Ereignis-Feed und Verlaufskurven
+- `/ereignisse` komplette Chronik mit Filtern (Kategorie, Ort, Spieler) und Seiten
+- `/spieler` und `/spieler/<id>` alle erfassten Spieler mit Verlauf, Sessions, Graphen und bei Live-Streamern Twitch-Player plus Chat
+- `/events` offizielle Termine von craftattack.one (stündlich abgeglichen)
+- `/live` Twitch-Übersicht, Zuschauerkurve und Stream-Chronik
+- `/api/tracker?limit=200&player=<id>&type=<typ>` JSON-Export, `/api/tracker/poll` löst eine Abfrage manuell aus
+
+## Konfiguration
+
+- `DATABASE_URL` PostgreSQL-Verbindung, z. B. `postgres://user:pass@localhost:5432/actracker`
+- `CA_STATS_URL` andere API-Adresse
+- `CA_POLL_INTERVAL_MS` Abfrageintervall (Standard 30000)

@@ -1,0 +1,45 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+const LINKS = [
+  { href: "/", label: "Übersicht" },
+  { href: "/ereignisse", label: "Ereignisse" },
+  { href: "/spieler", label: "Spieler" },
+  { href: "/live", label: "Live" },
+  { href: "/events", label: "Events" },
+] as const;
+
+function List({ path }: { path: string | null }) {
+  return (
+    <ul className="nav">
+      {LINKS.map((l) => {
+        const active = path !== null && (l.href === "/" ? path === "/" : path.startsWith(l.href));
+        return (
+          <li key={l.href}>
+            <Link href={l.href} aria-current={active ? "page" : undefined}>
+              {l.label}
+            </Link>
+          </li>
+        );
+      })}
+      <li>
+        <a className="nav__ext" href="https://craftattack.one/stats/" target="_blank" rel="noopener">
+          Original
+        </a>
+      </li>
+    </ul>
+  );
+}
+
+/** `static` rendert die Liste ohne aktiven Zustand (Suspense-Fallback fürs Prerendering). */
+export function NavLinks({ static: isStatic = false }: { static?: boolean }) {
+  if (isStatic) return <List path={null} />;
+  return <ActiveList />;
+}
+
+function ActiveList() {
+  const path = usePathname();
+  return <List path={path} />;
+}
