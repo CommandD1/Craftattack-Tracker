@@ -2,7 +2,9 @@ import "server-only";
 import { appendEvents, getState, recordPlayerPoints, saveState } from "./store";
 import {
   BOARD_KEYS,
+  type ApiExtPlayer,
   type ApiStats,
+  type BoardEntry,
   type BoardKey,
   type EventType,
   type PlayerState,
@@ -11,7 +13,11 @@ import {
 } from "./types";
 
 export const STATS_URL = process.env.CA_STATS_URL ?? "https://craftattack.one/api/stats";
+/** Pro-Spieler-Endpunkt: liefert alle Zähler (außer Spielzeit) und den Rang – auch außerhalb der Top 10 */
+export const EXT_URL = process.env.CA_EXT_URL ?? "https://craftattack.one/api/ext";
 export const POLL_INTERVAL_MS = Number(process.env.CA_POLL_INTERVAL_MS ?? 30_000);
+/** Wie viele ext-Anfragen gleichzeitig laufen */
+const EXT_CONCURRENCY = Number(process.env.CA_EXT_CONCURRENCY ?? 8);
 
 /** Board-Keys, deren Anstieg als Ereignis protokolliert wird */
 const COUNTER_EVENTS: Partial<Record<BoardKey, EventType>> = {
@@ -63,6 +69,48 @@ export async function fetchStats(): Promise<ApiStats> {
   return (await res.json()) as ApiStats;
 }
 
+export type ExtPlayer = NonNullable<ApiExtPlayer["player"]>;
+
+/** Holt die Einzelstatistik eines Spielers; `null`, wenn die API ihn nicht kennt. */
+export async function fetchExtPlayer(id: string): Promise<ExtPlayer | null> {
+  const res = await fetch(`${EXT_URL}/${encodeURIComponent(id)}`, {
+    headers: { accept: "application/json", "user-agent": "actracker/1.0" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = (await res.json()) as ApiExtPlayer;
+  return data.player ?? null;
+}
+
+/** Fragt alle IDs parallel (begrenzt) ab. Fehlgeschlagene Spieler fehlen einfach im Ergebnis. */
+export async function fetchExtAll(ids: Iterable<string>): Promise<{ players: Map<string, ExtPlayer>; failed: number }> {
+  const queue = [...new Set(ids)];
+  const players = new Map<string, ExtPlayer>();
+  let failed = 0;
+  const worker = async () => {
+    for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
+      try {
+        const p = await fetchExtPlayer(id);
+        if (p) players.set(id, p);
+      } catch {
+        failed += 1;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, EXT_CONCURRENCY) }, worker));
+  return { players, failed };
+}
+
+/** Alle Spieler-IDs, die der Tracker kennt oder die im aktuellen Snapshot vorkommen. */
+export function knownPlayerIds(state: TrackerState, stats: ApiStats): Set<string> {
+  const ids = new Set(Object.keys(state.players));
+  for (const p of stats.online) ids.add(p.id);
+  for (const l of stats.live ?? []) ids.add(l.id);
+  for (const key of BOARD_KEYS) for (const e of stats.boards?.[key] ?? []) ids.add(e.id);
+  return ids;
+}
+
 const newPlayers = new Set<string>();
 
 function ensurePlayer(
@@ -87,6 +135,7 @@ function ensurePlayer(
       liveSince: null,
       peakViewers: 0,
       longestSession: 0,
+      ranks: {},
     };
     state.players[p.id] = ps;
     newPlayers.add(p.id);
@@ -97,7 +146,12 @@ function ensurePlayer(
 }
 
 /** Vergleicht neuen Snapshot mit dem gespeicherten Zustand und erzeugt Ereignisse. */
-export function diffSnapshot(state: TrackerState, stats: ApiStats, nowDate = new Date()): TrackerEvent[] {
+export function diffSnapshot(
+  state: TrackerState,
+  stats: ApiStats,
+  nowDate = new Date(),
+  ext: Map<string, ExtPlayer> = new Map(),
+): TrackerEvent[] {
   const now = nowDate.toISOString();
   const events: TrackerEvent[] = [];
   const push = (e: Omit<TrackerEvent, "id" | "at">) => events.push({ id: eventId(now), at: now, ...e });
@@ -211,6 +265,12 @@ export function diffSnapshot(state: TrackerState, stats: ApiStats, nowDate = new
     }
   }
 
+  // --- Einzelstatistiken (/api/ext/<id>): Name und Ränge für alle abgefragten Spieler übernehmen
+  for (const [id, x] of ext) {
+    const ps = ensurePlayer(state, { id, name: x.name, uuid: state.players[id]?.uuid ?? "" }, now);
+    ps.ranks = { ...x.ranks };
+  }
+
   // --- Boards: Zähler-Deltas
   for (const key of BOARD_KEYS) {
     const list = stats.boards?.[key] ?? [];
@@ -219,12 +279,25 @@ export function diffSnapshot(state: TrackerState, stats: ApiStats, nowDate = new
     // (bzw. bei 0, wenn die Liste noch nicht voll war). So wird z. B. der erste Tod eines Spielers
     // ihm zugeordnet statt als "unbekannt" zu landen.
     const floor = prevList.length >= 10 ? prevList[prevList.length - 1].value : 0;
-    for (const entry of list) {
+    // Alle Spieler außerhalb der Top 10 kommen über die Einzelstatistik dazu (außer Spielzeit, die gibt es dort nicht).
+    const inList = new Set(list.map((e) => e.id));
+    const extEntries: (BoardEntry & { fromExt: true })[] = [];
+    if (key !== "playtimeSeconds") {
+      for (const [id, x] of ext) {
+        if (inList.has(id)) continue;
+        const value = x[key];
+        if (typeof value !== "number") continue;
+        extEntries.push({ id, name: x.name, uuid: state.players[id]?.uuid ?? "", value, fromExt: true });
+      }
+    }
+    for (const entry of [...list, ...extEntries] as (BoardEntry & { fromExt?: true })[]) {
       const ps = ensurePlayer(state, entry, now);
       const known = ps.stats[key];
       ps.stats[key] = entry.value;
       const type = COUNTER_EVENTS[key];
       if (!type || first) continue;
+      // Erster ext-Wert eines Spielers: nur merken, kein Ereignis (wir wissen nicht, wann das passiert ist)
+      if (entry.fromExt && known === undefined) continue;
       const prev = known ?? floor;
       const delta = entry.value - prev;
       if (delta <= 0) continue;
@@ -272,7 +345,8 @@ export function diffSnapshot(state: TrackerState, stats: ApiStats, nowDate = new
     }
   }
 
-  // --- Totals: Tode, die keinem Spieler zugeordnet werden konnten (Board zeigt nur Top 10)
+  // --- Totals: Tode, die keinem Spieler zugeordnet werden konnten
+  // (z. B. Spieler, die der Tracker noch nie gesehen hat, oder wenn die ext-Abfrage fehlgeschlagen ist)
   if (!first && state.latest) {
     const prevDeaths = state.latest.totals?.deaths ?? 0;
     const explained = events.filter((e) => e.type === "death").reduce((s, e) => s + (e.delta ?? 0), 0);
@@ -331,8 +405,11 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
     state.polls += 1;
     try {
       const stats = await fetchStats();
+      // Einzelstatistiken für alle bekannten Spieler – Fehler hier sind nicht fatal, dann gibt es eben nur die Top 10
+      const ext = await fetchExtAll(knownPlayerIds(state, stats));
+      if (ext.failed > 0) console.warn(`[tracker] ${ext.failed} ext-Anfragen fehlgeschlagen`);
       const first = state.latest === null;
-      const events = diffSnapshot(state, stats, now);
+      const events = diffSnapshot(state, stats, now, ext.players);
       if (first) {
         events.unshift({
           id: eventId(now.toISOString()),

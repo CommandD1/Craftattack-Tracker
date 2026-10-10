@@ -15,7 +15,8 @@ Live unter **https://craftattack.hiorcraft.dev**
 
 Ideen, die noch offen sind: Twitch-API-Anbindung (Clips, Kategorie), Discord-Benachrichtigungen bei Highlights, Tages- und Wochenstatistiken, Vergleich zweier Spieler.
 
-Inoffizieller Tracker für CraftAttack 14. Fragt alle 30 Sekunden `https://craftattack.one/api/stats` ab,
+Inoffizieller Tracker für CraftAttack 14. Fragt alle 30 Sekunden `https://craftattack.one/api/stats` ab und dazu
+für jeden bekannten Spieler `https://craftattack.one/api/ext/<id>` (alle Zähler plus Rang, auch außerhalb der Top 10),
 vergleicht den Stand mit dem vorherigen und schreibt jede Änderung als Ereignis mit Zeitstempel auf.
 
 ## Starten
@@ -41,8 +42,8 @@ Alle Seiten werden komplett serverseitig gerendert (SSR, `instant = false`), kei
 | Ereignis | Quelle | Wo |
 | --- | --- | --- |
 | Join / Leave (inkl. Session-Dauer) | `online[]` | Server |
-| Tod, Diamanten, Blöcke, Mobs, Strecke | Anstieg in den Top-10-Boards | Server |
-| Tode außerhalb der Top 10 | `totals.deaths` | Server (ohne Spieler) |
+| Tod, Diamanten, Blöcke, Mobs, Strecke | Anstieg in `/api/ext/<id>` bzw. den Top-10-Boards | Server |
+| Tode, die keinem bekannten Spieler zuzuordnen sind | `totals.deaths` | Server (ohne Spieler) |
 | Stream an / aus / Titel geändert, Peak-Zuschauer | `live[]` | Twitch |
 | Server online / offline | `serverOnline` | Server |
 | Erster Auftritt eines Spielers (seit Tracker-Start) | `online[]` | Server |
@@ -66,5 +67,7 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 
 - `DATABASE_URL` PostgreSQL-Verbindung, z. B. `postgres://user:pass@localhost:5432/actracker`
 - `CA_STATS_URL` andere API-Adresse
+- `CA_EXT_URL` Basis-Adresse der Einzelstatistik (Standard `https://craftattack.one/api/ext`)
+- `CA_EXT_CONCURRENCY` gleichzeitige ext-Anfragen pro Poll (Standard 8)
 - `CA_POLL_INTERVAL_MS` Abfrageintervall (Standard 30000)
 - `NEXT_PUBLIC_TWITCH_URL`, `NEXT_PUBLIC_DISCORD_URL`, `NEXT_PUBLIC_GITHUB_URL` optionale Footer-Links (werden beim Build eingebettet)

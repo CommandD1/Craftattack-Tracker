@@ -77,9 +77,15 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const sess = sessions(mine, p.online, p.sessionStart, now);
   const recent = [...mine].reverse().slice(0, 150);
   const deaths = mine.filter((e) => e.type === "death").reduce((s, e) => s + (e.delta ?? 0), 0);
+  // Rang: bevorzugt aus /api/ext/<id> (für alle Spieler), sonst Position in der Top 10 der Haupt-API
   const ranks = Object.fromEntries(
-    BOARD_KEYS.map((k) => [k, (state.latest?.boards?.[k] ?? []).findIndex((e) => e.id === id) + 1]),
-  ) as Record<BoardKey, number>;
+    BOARD_KEYS.map((k) => {
+      const ext = k !== "playtimeSeconds" ? p.ranks?.[k] : undefined;
+      if (ext) return [k, { rank: ext.rank, of: ext.of }];
+      const pos = (state.latest?.boards?.[k] ?? []).findIndex((e) => e.id === id) + 1;
+      return [k, pos > 0 ? { rank: pos, of: null } : null];
+    }),
+  ) as Record<BoardKey, { rank: number; of: number | null } | null>;
 
   return (
     <>
@@ -142,7 +148,17 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                   <dt>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                       <IconCmp width={18} height={18} aria-hidden="true" /> {LABEL[k]}
-                      {ranks[k] > 0 && <span className="tag" data-tone="ink" style={{ margin: 0, fontSize: ".75rem" }}>#{ranks[k]}</span>}
+                      {ranks[k] && (
+                        <span
+                          className="tag"
+                          data-tone="ink"
+                          style={{ margin: 0, fontSize: ".75rem" }}
+                          title={ranks[k].of ? `Platz ${ranks[k].rank} von ${ranks[k].of}` : `Platz ${ranks[k].rank} in der Top 10`}
+                        >
+                          #{ranks[k].rank}
+                          {ranks[k].of ? <span className="muted">/{ranks[k].of}</span> : null}
+                        </span>
+                      )}
                     </span>
                   </dt>
                   <FigValue>{v !== undefined ? boardValue(k, v) : "–"}</FigValue>
@@ -151,7 +167,8 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
             })}
           </dl>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
-            Die API liefert nur die Top 10 jeder Liste. Steht hier „–“, ist {p.name} dort (noch) nicht drin.
+            Tode, Diamanten, Blöcke, Mobs und Strecke kommen aus der Einzelstatistik der API (inklusive Rang unter allen
+            Teilnehmenden). Die Spielzeit liefert die API nur für die Top 10 – steht dort „–“, ist {p.name} (noch) nicht drin.
           </p>
           <PlayerCharts points={history} name={p.name} />
         </div>

@@ -35,6 +35,28 @@ export interface BoardEntry {
   value: number;
 }
 
+/** Rang eines Spielers in einer Liste laut /api/ext/<id> */
+export interface PlayerRank {
+  rank: number;
+  of: number;
+}
+
+/** Zähler-Keys, die /api/ext/<id> liefert (keine Spielzeit) */
+export type ExtKey = Exclude<BoardKey, "playtimeSeconds">;
+export const EXT_KEYS: ExtKey[] = ["diamonds", "deaths", "blocksBroken", "mobsKilled", "distance"];
+
+/** Antwort von https://craftattack.one/api/ext/<id> */
+export interface ApiExtPlayer {
+  updatedAt: string;
+  serverOnline: boolean;
+  participant: { id: string; name: string } | null;
+  player:
+    | ({ id: string; name: string; online: boolean } & Record<ExtKey, number> & {
+        ranks: Partial<Record<ExtKey, PlayerRank>>;
+      })
+    | null;
+}
+
 export interface ApiStats {
   updatedAt: string;
   serverOnline: boolean;
@@ -89,8 +111,10 @@ export interface PlayerState {
   uuid: string;
   online: boolean;
   live: LiveInfo | null;
-  /** Letzter bekannter Stand aus den Boards */
+  /** Letzter bekannter Stand aus den Boards bzw. /api/ext/<id> */
   stats: Partial<Record<BoardKey, number>>;
+  /** Ränge laut /api/ext/<id> (leer, solange der Spieler dort noch nie abgefragt wurde) */
+  ranks: Partial<Record<ExtKey, PlayerRank>>;
   firstSeen: string;
   lastSeen: string;
   /** Beginn der aktuellen Online-Session */
