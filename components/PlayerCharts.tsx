@@ -20,8 +20,22 @@ const SERIES: { key: Key; label: string; tone: string; format: (v: number) => st
 const tf = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 const df = new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 
+/** Vom Tracker gemessene Online-Zeit als Verlauf: Zeit zwischen zwei Messpunkten zählt, wenn der Spieler beim ersten online war. */
+function trackedSeries(points: PlayerPoint[]) {
+  const out: { at: string; v: number }[] = [];
+  let acc = 0;
+  for (let i = 0; i < points.length; i++) {
+    if (i > 0 && points[i - 1].online) acc += (Date.parse(points[i].at) - Date.parse(points[i - 1].at)) / 1000;
+    out.push({ at: points[i].at, v: Math.round(acc) });
+  }
+  return out;
+}
+
 function Chart({ points, k, label, tone, format }: { points: PlayerPoint[]; k: Key; label: string; tone: string; format: (v: number) => string }) {
-  const data = points.filter((p) => p[k] !== null).map((p) => ({ at: p.at, v: p[k] as number }));
+  let data = points.filter((p) => p[k] !== null).map((p) => ({ at: p.at, v: p[k] as number }));
+  // Spielzeit gibt es von der API nur für die Top 10 – sonst die Tracker-Online-Zeit zeigen
+  const fromTracker = k === "playtimeSeconds" && data.length < 2 && points.length >= 2;
+  if (fromTracker) data = trackedSeries(points);
   const current = data.length ? format(data[data.length - 1].v) : "–";
   let body: React.ReactNode;
   if (data.length < 2) {
@@ -44,7 +58,10 @@ function Chart({ points, k, label, tone, format }: { points: PlayerPoint[]; k: K
   return (
     <div className="box chart" data-tone={tone}>
       <div className="chart__head">
-        <span className="eyebrow">{label}</span>
+        <span className="eyebrow">
+          {label}
+          {fromTracker && <span className="muted"> · Tracker</span>}
+        </span>
         <span className="num chart__val">{current}</span>
       </div>
       {body}
