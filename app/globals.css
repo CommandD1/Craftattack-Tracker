@@ -1367,3 +1367,9 @@ a.st-chip-in[data-live="true"] {
 .spark__tip-time {
   opacity: 0.8;
 }
+
+.session-with {
+  display: block;
+  font-weight: 500;
+  font-size: 0.875rem;
+}

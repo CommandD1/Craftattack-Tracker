@@ -427,3 +427,53 @@ export async function getFullBoard(key: string): Promise<FullBoardEntry[]> {
     })
     .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, "de"));
 }
+
+/* ---------- Sessions aller Spieler (aus Join/Leave-Ereignissen) ---------- */
+
+export interface StoredSession {
+  player: string;
+  start: string;
+  end: string | null;
+}
+
+/**
+ * Baut aus allen Join/Leave-Ereignissen in der DB die Sessions aller Spieler.
+ * Laufende Sessions (Spieler gerade online) haben `end = null`.
+ */
+export async function getAllSessions(): Promise<StoredSession[]> {
+  await ensureLoaded();
+  const db = await getDb();
+  const rows = (
+    await db.query<{ player: string; at: Date; type: string; meta: TrackerEvent["meta"] | null }>(
+      `SELECT player, at, type, meta FROM events
+        WHERE type IN ('join', 'first_join', 'leave') AND player IS NOT NULL
+        ORDER BY at ASC, id ASC`,
+    )
+  ).rows;
+  const open = new Map<string, string>();
+  const out: StoredSession[] = [];
+  for (const r of rows) {
+    const at = iso(r.at)!;
+    if (r.type === "leave") {
+      const secs = Number(r.meta?.sessionSeconds ?? 0);
+      const start = open.get(r.player) ?? new Date(Date.parse(at) - secs * 1000).toISOString();
+      out.push({ player: r.player, start, end: at });
+      open.delete(r.player);
+    } else {
+      open.set(r.player, at);
+    }
+  }
+  const players = g().state?.players ?? {};
+  for (const [player, start] of open) {
+    const p = players[player];
+    // Nur wirklich noch laufende Sessions bleiben offen; sonst Ende unbekannt → beim letzten Gesehen-Zeitpunkt
+    out.push({ player, start, end: p?.online ? null : (p?.lastSeen ?? start) });
+  }
+  // Spieler, die beim Tracker-Start schon online waren (kein Join-Ereignis), über sessionStart ergänzen
+  for (const p of Object.values(players)) {
+    if (p.online && p.sessionStart && !out.some((s) => s.player === p.id && s.end === null)) {
+      out.push({ player: p.id, start: p.sessionStart, end: null });
+    }
+  }
+  return out;
+}

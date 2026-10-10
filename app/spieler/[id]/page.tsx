@@ -8,7 +8,8 @@ import { EventFeed } from "@/components/EventFeed";
 import { BOARD_ICON, Icon } from "@/components/Icons";
 import { FigValue } from "@/components/FigValue";
 import { PlayerCharts } from "@/components/PlayerCharts";
-import { getPlayerHistory } from "@/lib/store";
+import { getAllSessions, getPlayerHistory } from "@/lib/store";
+import { companionsOf, overlapsFor } from "@/lib/overlap";
 import { TwitchEmbed } from "@/components/TwitchEmbed";
 
 // Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
@@ -71,7 +72,9 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const { state, events, now } = await loadTracker();
   const p = state.players[id];
   if (!p) notFound();
-  const history = await getPlayerHistory(id);
+  const [history, allSessions] = await Promise.all([getPlayerHistory(id), getAllSessions()]);
+  const overlaps = overlapsFor(id, allSessions, now);
+  const nameOf = (pid: string) => state.players[pid]?.name ?? pid;
 
   const mine = events.filter((e) => e.player === id);
   const sess = sessions(mine, p.online, p.sessionStart, now);
@@ -210,21 +213,66 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
               </div>
               <div className="box" data-tone="white">
                 <p className="eyebrow" style={{ marginBottom: 10 }}>
+                  Gleichzeitig online mit
+                </p>
+                {overlaps.length === 0 ? (
+                  <p className="muted">Noch keine Überschneidung mit anderen Spielern gesehen.</p>
+                ) : (
+                  <ul className="sessions">
+                    {overlaps.slice(0, 10).map((o) => (
+                      <li key={o.player}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                          <img className="head" src={headUrl(state.players[o.player]?.uuid, 24, o.player)} alt="" width={24} height={24} loading="lazy" />
+                          <Link href={`/spieler/${encodeURIComponent(o.player)}`} style={{ textDecoration: "none" }}>
+                            {nameOf(o.player)}
+                          </Link>
+                          {o.now && (
+                            <span className="tag" data-tone="grass" style={{ margin: 0, fontSize: ".75rem" }}>
+                              <span className="dot" /> jetzt
+                            </span>
+                          )}
+                        </span>
+                        <span className="num" title={`in ${num(o.sessions)} Sessions`}>
+                          {duration(o.seconds)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="muted" style={{ marginTop: 10, fontSize: ".875rem" }}>
+                  Gemeinsame Online-Zeit seit Tracker-Start, aus den Join/Leave-Ereignissen berechnet.
+                </p>
+              </div>
+              <div className="box" data-tone="white">
+                <p className="eyebrow" style={{ marginBottom: 10 }}>
                   Sessions
                 </p>
                 {sess.length === 0 ? (
                   <p className="muted">Noch keine komplette Session gesehen.</p>
                 ) : (
                   <ul className="sessions">
-                    {sess.slice(0, 12).map((s) => (
-                      <li key={s.start}>
-                        <span>
-                          {dateTime(s.start)}
-                          {s.end ? ` – ${dateTime(s.end).split(", ").pop()}` : " – jetzt"}
-                        </span>
-                        <span className="num">{duration(s.seconds)}</span>
-                      </li>
-                    ))}
+                    {sess.slice(0, 12).map((s) => {
+                      const with_ = companionsOf(id, s.start, s.end, allSessions, now);
+                      const shown = with_.slice(0, 4);
+                      return (
+                        <li key={s.start}>
+                          <span>
+                            {dateTime(s.start)}
+                            {s.end ? ` – ${dateTime(s.end).split(", ").pop()}` : " – jetzt"}
+                            {with_.length > 0 && (
+                              <span
+                                className="muted session-with"
+                                title={with_.map((w) => `${nameOf(w.player)} (${duration(w.seconds)})`).join(", ")}
+                              >
+                                mit {shown.map((w) => nameOf(w.player)).join(", ")}
+                                {with_.length > shown.length ? ` +${with_.length - shown.length}` : ""}
+                              </span>
+                            )}
+                          </span>
+                          <span className="num">{duration(s.seconds)}</span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>

@@ -22,6 +22,7 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
   let players = Object.values(state.players);
   if (filter === "online") players = players.filter((p) => p.online);
   if (filter === "live") players = players.filter((p) => p.live);
+  if (filter === "nurserver") players = players.filter((p) => p.online && !p.live);
   players.sort((a, b) => {
     if (a.online !== b.online) return a.online ? -1 : 1;
     const av = a.live?.viewers ?? -1;
@@ -34,6 +35,7 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
     alle: Object.keys(state.players).length,
     online: Object.values(state.players).filter((p) => p.online).length,
     live: Object.values(state.players).filter((p) => p.live).length,
+    nurserver: Object.values(state.players).filter((p) => p.online && !p.live).length,
   };
 
   return (
@@ -53,10 +55,10 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
         <div className="wrap">
           <div className="section-head">
             <ul className="filters" aria-label="Filter">
-              {(["alle", "online", "live"] as const).map((f) => (
+              {(["alle", "online", "live", "nurserver"] as const).map((f) => (
                 <li key={f}>
                   <Link className="tag" aria-current={filter === f ? "true" : undefined} href={f === "alle" ? "/spieler" : `/spieler?filter=${f}`}>
-                    {f === "alle" ? "Alle" : f === "online" ? "Online" : "Live"} <span className="num">({counts[f]})</span>
+                    {f === "alle" ? "Alle" : f === "online" ? "Online" : f === "live" ? "Live" : "Online, nicht live"} <span className="num">({counts[f]})</span>
                   </Link>
                 </li>
               ))}
