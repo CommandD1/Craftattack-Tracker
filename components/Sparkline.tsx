@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { boardValue, num } from "@/lib/format";
 
 export interface SparkPoint {
   at: string;
@@ -25,17 +26,22 @@ export function Sparkline({
   points,
   width = 300,
   height = 64,
-  format = (v: number) => String(Math.round(v)),
+  format,
+  kind = "num",
   step = false,
   label,
 }: {
   points: SparkPoint[];
   width?: number;
   height?: number;
+  /** Nur aus Client-Komponenten nutzbar (Funktionen sind nicht serialisierbar) */
   format?: (v: number) => string;
+  /** Für Server-Komponenten: Formatierung per Schlüssel */
+  kind?: "num" | "playtimeSeconds" | "distance";
   step?: boolean;
   label?: string;
 }) {
+  const fmt = format ?? (kind === "num" ? num : (v: number) => boardValue(kind, v));
   const ref = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
 
@@ -113,7 +119,7 @@ export function Sparkline({
           style={{ left: `${tipLeft * 100}%`, transform: `translateX(${tipLeft > 0.7 ? "-100%" : tipLeft < 0.3 ? "0" : "-50%"})` }}
           role="status"
         >
-          <span className="num spark__tip-val">{format(hp.v)}</span>
+          <span className="num spark__tip-val">{fmt(hp.v)}</span>
           <span className="spark__tip-time">{sameDay ? `${tf.format(new Date(hp.at))} Uhr` : df.format(new Date(hp.at))}</span>
         </div>
       )}

@@ -182,7 +182,11 @@ export async function ensureLoaded() {
 
 export async function getState(): Promise<TrackerState> {
   await ensureLoaded();
-  return g().state!;
+  const state = g().state!;
+  // Felder, die nach einem Update neu dazugekommen sind, bei altem In-Memory-Zustand nachziehen
+  state.records ??= { peakOnline: null, peakViewers: null, peakLive: null };
+  for (const p of Object.values(state.players)) p.longestSession ??= 0;
+  return state;
 }
 
 export async function getEvents(): Promise<TrackerEvent[]> {
