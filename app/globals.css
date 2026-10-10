@@ -1480,3 +1480,124 @@ a.st-chip-in[data-live="true"] {
 .pstat__meta .tag .muted {
   opacity: 0.7;
 }
+
+/* ---------- Ereignis-Feed: Typ, Badge, Farbleiste ---------- */
+.ev {
+  grid-template-columns: 44px minmax(0, 1fr) auto auto;
+  border-left: 8px solid var(--bg, var(--gold));
+}
+.ev__type {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg, var(--gold)) !important;
+  color: var(--fg, var(--ink));
+  box-shadow: 0 0 0 2px var(--ink);
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 2px 6px;
+  margin-right: 8px;
+  vertical-align: middle;
+  text-decoration: none;
+}
+.ev__type svg {
+  width: 12px;
+  height: 12px;
+}
+.ev__player {
+  font-weight: 700;
+}
+.ev__badge {
+  background: var(--bg, var(--gold));
+  color: var(--fg, var(--ink));
+  box-shadow: 0 0 0 3px var(--ink);
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+@media (width <= 560px) {
+  .ev {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+  }
+  .ev__badge {
+    font-size: 0.875rem;
+    padding: 3px 8px;
+  }
+  .ev__time {
+    grid-column: 2 / -1;
+  }
+}
+
+/* ---------- Ereignisse: Filter & Zusammenfassung ---------- */
+.ev-filters {
+  display: grid;
+  gap: 10px 24px;
+  margin-bottom: 20px;
+}
+.ev-filters .filters {
+  margin: 0;
+}
+.ev-filters__row {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: start;
+}
+.ev-filters__row > .eyebrow {
+  padding-top: 6px;
+}
+@media (width <= 560px) {
+  .ev-filters__row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+.ev-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.ev-form select {
+  font: inherit;
+  font-weight: 600;
+  padding: 6px 10px;
+  background: var(--white);
+  color: var(--ink);
+  border: 0;
+  box-shadow: 0 0 0 3px var(--ink);
+  max-width: 100%;
+}
+.ev-summary {
+  --min: 120px;
+  --gap: 10px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+.ev-summary a {
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  text-decoration: none;
+  background: var(--bg, var(--white));
+  color: var(--fg, var(--ink));
+  box-shadow: var(--outline);
+  margin: var(--px);
+}
+.ev-summary a[aria-current="true"] {
+  box-shadow: var(--outline), var(--drop);
+}
+.ev-summary .num {
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.ev-summary .eyebrow {
+  font-size: 0.6875rem;
+}

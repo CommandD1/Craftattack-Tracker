@@ -140,15 +140,79 @@ export const EVENT_META: Record<EventType, EventMeta> = {
   },
 };
 
-export const EVENT_GROUPS: { key: string; label: string; types: EventType[] }[] = [
-  { key: "server", label: "Server", types: ["join", "leave", "server_online", "server_offline"] },
-  { key: "death", label: "Tode", types: ["death"] },
-  { key: "loot", label: "Loot & Arbeit", types: ["diamonds", "blocksBroken", "mobsKilled", "distance"] },
-  { key: "twitch", label: "Twitch", types: ["stream_start", "stream_end", "stream_title"] },
-  { key: "highlights", label: "Highlights", types: ["first_join", "rank", "milestone", "record"] },
+export const EVENT_GROUPS: { key: string; label: string; tone: string; types: EventType[] }[] = [
+  { key: "server", label: "Server", tone: "grass", types: ["join", "leave", "server_online", "server_offline", "tracker_start"] },
+  { key: "death", label: "Tode", tone: "redstone", types: ["death"] },
+  { key: "loot", label: "Loot & Arbeit", tone: "gold", types: ["diamonds", "blocksBroken", "mobsKilled", "distance"] },
+  { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title"] },
+  { key: "highlights", label: "Highlights", tone: "amethyst", types: ["first_join", "rank", "milestone", "record"] },
 ];
 
 export function typesForGroup(key: string | undefined): EventType[] | null {
   if (!key) return null;
   return EVENT_GROUPS.find((g) => g.key === key)?.types ?? null;
 }
+
+/** Kurzer Wert fürs Badge rechts im Feed (z. B. „+3“, „+1,2 km“, „577 Zuschauer“). */
+export function eventBadge(e: TrackerEvent): string | null {
+  switch (e.type) {
+    case "death":
+      return `+${num(e.delta ?? 1)}`;
+    case "diamonds":
+    case "blocksBroken":
+    case "mobsKilled":
+      return `+${num(e.delta ?? 0)}`;
+    case "distance":
+      return `+${distance(e.delta ?? 0)}`;
+    case "leave": {
+      const s = Number(e.meta?.sessionSeconds ?? 0);
+      return s > 0 ? duration(s) : null;
+    }
+    case "stream_start":
+    case "stream_title":
+      return e.value !== undefined ? `${num(e.value)} Zuschauer` : null;
+    case "stream_end": {
+      const s = Number(e.meta?.streamSeconds ?? 0);
+      return s > 0 ? duration(s) : null;
+    }
+    case "rank":
+      return `#${e.value}`;
+    case "milestone":
+      return e.meta?.board === "playtimeSeconds" ? `${Math.round((e.value ?? 0) / 3600)} h` : e.meta?.board === "distance" ? distance(e.value ?? 0) : num(e.value ?? 0);
+    case "record":
+      return num(e.value ?? 0);
+    case "server_online":
+      return e.meta?.onlineCount !== undefined ? `${num(Number(e.meta.onlineCount))} online` : null;
+    default:
+      return null;
+  }
+}
+
+/** Alle Ereignistypen mit Label, gruppiert – für den Typ-Filter. */
+export const EVENT_TYPES: EventType[] = [
+  "join",
+  "leave",
+  "first_join",
+  "death",
+  "diamonds",
+  "blocksBroken",
+  "mobsKilled",
+  "distance",
+  "stream_start",
+  "stream_end",
+  "stream_title",
+  "rank",
+  "milestone",
+  "record",
+  "server_online",
+  "server_offline",
+  "tracker_start",
+];
+
+export const TIME_RANGES: { key: string; label: string; ms: number | null }[] = [
+  { key: "1h", label: "Letzte Stunde", ms: 3600_000 },
+  { key: "6h", label: "6 Stunden", ms: 6 * 3600_000 },
+  { key: "24h", label: "24 Stunden", ms: 24 * 3600_000 },
+  { key: "7d", label: "7 Tage", ms: 7 * 24 * 3600_000 },
+  { key: "alle", label: "Alles", ms: null },
+];

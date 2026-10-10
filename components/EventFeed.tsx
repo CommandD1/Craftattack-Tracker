@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { TrackerEvent } from "@/lib/types";
-import { EVENT_META } from "@/lib/events";
+import { EVENT_META, eventBadge } from "@/lib/events";
 import { headUrl, time } from "@/lib/format";
 import { EVENT_ICON, Icon } from "./Icons";
 
@@ -18,9 +18,10 @@ export function EventRow({ e, showPlayer = true }: { e: TrackerEvent; showPlayer
   const sub = meta.sub?.(e);
   const whereLabel = e.where === "twitch" ? "Twitch" : e.where === "server" ? "Server" : "Tracker";
   const text = meta.text(e);
+  const badge = eventBadge(e);
   const showHead = Boolean(e.player);
   return (
-    <li className="ev">
+    <li className="ev" data-tone={meta.tone} data-type={e.type}>
       <span className="ev__icon" data-tone={meta.tone} title={meta.label}>
         {showHead ? (
           <img src={headUrl(e.uuid, 44, e.player)} alt="" width={44} height={44} loading="lazy" decoding="async" />
@@ -30,9 +31,15 @@ export function EventRow({ e, showPlayer = true }: { e: TrackerEvent; showPlayer
       </span>
       <div className="ev__body">
         <p className="ev__text">
+          <Link className="ev__type" data-tone={meta.tone} href={`/ereignisse?t=${e.type}`} title={`Nur „${meta.label}“ zeigen`}>
+            <IconCmp aria-hidden="true" /> {meta.label}
+          </Link>
           {e.player && showPlayer ? (
             <>
-              <Link href={`/spieler/${encodeURIComponent(e.player)}`}>{e.playerName ?? e.player}</Link> {text}
+              <Link className="ev__player" href={`/spieler/${encodeURIComponent(e.player)}`}>
+                {e.playerName ?? e.player}
+              </Link>{" "}
+              {text}
             </>
           ) : (
             text
@@ -44,6 +51,11 @@ export function EventRow({ e, showPlayer = true }: { e: TrackerEvent; showPlayer
           </p>
         )}
       </div>
+      {badge && (
+        <span className="ev__badge num" data-tone={meta.tone}>
+          {badge}
+        </span>
+      )}
       <div className="ev__time">
         <time dateTime={e.at}>{time(e.at)}</time>
         <span className="ev__where">{whereLabel}</span>
