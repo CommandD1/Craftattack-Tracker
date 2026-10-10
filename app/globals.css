@@ -1063,7 +1063,7 @@ a.st-chip-in[data-live="true"] {
   font-size: 0.9375rem;
   padding: 18px 0;
 }
-.chart svg {
+.chart .spark {
   width: 100%;
   height: 90px;
   display: block;
@@ -1327,4 +1327,43 @@ a.st-chip-in[data-live="true"] {
   .st-board__row--full {
     grid-template-columns: 2.5rem 28px minmax(0, 1fr) auto;
   }
+}
+
+/* ---------- Sparkline-Hover ---------- */
+.spark-wrap {
+  position: relative;
+}
+.spark-wrap .spark {
+  cursor: crosshair;
+  touch-action: none;
+}
+.spark__cursor {
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-dasharray: 3 3;
+  opacity: 0.6;
+}
+.spark__tip {
+  position: absolute;
+  top: -6px;
+  translate: 0 -100%;
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow: 0 0 0 2px var(--ink), 3px 3px 0 0 var(--ink);
+  padding: 4px 8px;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.spark__tip-val {
+  font-weight: 700;
+  font-size: 1rem;
+}
+.spark__tip-time {
+  opacity: 0.8;
 }

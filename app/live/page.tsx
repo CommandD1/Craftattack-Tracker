@@ -61,7 +61,7 @@ async function Live() {
               <span className="eyebrow">Zuschauer gesamt · letzte 6 Std</span>
               <span className="num spark-card__val">{num(viewers)}</span>
             </div>
-            <Sparkline values={hist.map((h) => h.viewers)} width={900} height={120} />
+            <Sparkline points={hist.map((h) => ({ at: h.at, v: h.viewers }))} width={900} height={120} format={num} label="Zuschauer" />
           </div>
         </div>
       </section>

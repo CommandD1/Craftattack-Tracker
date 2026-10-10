@@ -179,14 +179,14 @@ async function Dashboard() {
                   <span className="eyebrow">Online · 2 Std</span>
                   <span className="num spark-card__val">{s ? num(s.onlineCount) : "–"}</span>
                 </div>
-                <Sparkline values={hist.map((h) => h.onlineCount)} />
+                <Sparkline points={hist.map((h) => ({ at: h.at, v: h.onlineCount }))} format={num} label="Online" />
               </div>
               <div className="box spark-card" data-tone="white">
                 <div className="spark-card__head">
                   <span className="eyebrow">Zuschauer · 2 Std</span>
                   <span className="num spark-card__val">{num(viewers)}</span>
                 </div>
-                <Sparkline values={hist.map((h) => h.viewers)} />
+                <Sparkline points={hist.map((h) => ({ at: h.at, v: h.viewers }))} format={num} label="Zuschauer" />
               </div>
               <div className="box spark-card" data-tone="white">
                 <div className="spark-card__head">
