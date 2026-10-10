@@ -28,7 +28,8 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
     const av = a.live?.viewers ?? -1;
     const bv = b.live?.viewers ?? -1;
     if (av !== bv) return bv - av;
-    return (b.stats.playtimeSeconds ?? 0) - (a.stats.playtimeSeconds ?? 0) || a.name.localeCompare(b.name, "de");
+    const pt = (p: typeof a) => p.stats.playtimeSeconds ?? p.trackedSeconds + (p.online && p.sessionStart ? (now - Date.parse(p.sessionStart)) / 1000 : 0);
+    return pt(b) - pt(a) || a.name.localeCompare(b.name, "de");
   });
 
   const counts = {
@@ -97,7 +98,7 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
                     </div>
                     <dl className="player-card__stats">
                       <dt>Spielzeit</dt>
-                      <dd className="num">{p.stats.playtimeSeconds !== undefined ? duration(p.stats.playtimeSeconds) : "–"}</dd>
+                      <dd className="num">{p.stats.playtimeSeconds !== undefined ? duration(p.stats.playtimeSeconds) : <span title="Nicht in der Top 10 der API – vom Tracker gemessene Online-Zeit">{duration(p.trackedSeconds + (p.online && p.sessionStart ? (now - Date.parse(p.sessionStart)) / 1000 : 0))}*</span>}</dd>
                       <dt>Tode</dt>
                       <dd className="num">{p.stats.deaths !== undefined ? num(p.stats.deaths) : "–"}</dd>
                       <dt title="Vom Tracker gemessen, für alle Spieler">Online (Tracker)</dt>

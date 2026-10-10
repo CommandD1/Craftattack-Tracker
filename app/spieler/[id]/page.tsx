@@ -76,6 +76,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const overlaps = overlapsFor(id, allSessions, now);
   const nameOf = (pid: string) => state.players[pid]?.name ?? pid;
 
+  const trackedSeconds = p.trackedSeconds + (p.online && p.sessionStart ? (now - Date.parse(p.sessionStart)) / 1000 : 0);
   const mine = events.filter((e) => e.player === id);
   const sess = sessions(mine, p.online, p.sessionStart, now);
   const recent = [...mine].reverse().slice(0, 150);
@@ -146,6 +147,8 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
             {BOARD_KEYS.map((k) => {
               const IconCmp = Icon[BOARD_ICON[k]];
               const v = p.stats[k];
+              // Spielzeit gibt es von der API nur für die Top 10 – sonst die vom Tracker gemessene Online-Zeit zeigen
+              const fromTracker = k === "playtimeSeconds" && v === undefined && trackedSeconds > 0;
               return (
                 <div key={k} className="box st-fig" data-tone={TONE[k]}>
                   <dt>
@@ -162,16 +165,21 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                           {ranks[k].of ? <span className="muted">/{ranks[k].of}</span> : null}
                         </span>
                       )}
+                      {fromTracker && (
+                        <span className="tag" data-tone="ink" style={{ margin: 0, fontSize: ".75rem" }} title="Von der API gibt es Spielzeit nur für die Top 10. Das hier ist die vom Tracker seit seinem Start gemessene Online-Zeit.">
+                          Tracker
+                        </span>
+                      )}
                     </span>
                   </dt>
-                  <FigValue>{v !== undefined ? boardValue(k, v) : "–"}</FigValue>
+                  <FigValue>{v !== undefined ? boardValue(k, v) : fromTracker ? duration(trackedSeconds) : "–"}</FigValue>
                 </div>
               );
             })}
           </dl>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
             Tode, Diamanten, Blöcke, Mobs und Strecke kommen aus der Einzelstatistik der API (inklusive Rang unter allen
-            Teilnehmenden). Die Spielzeit liefert die API nur für die Top 10 – steht dort „–“, ist {p.name} (noch) nicht drin.
+            Teilnehmenden). Die Spielzeit liefert die API nur für die Top 10. Steht „Tracker“ dabei, ist es die seit Tracker-Start gemessene Online-Zeit.
           </p>
           <PlayerCharts points={history} name={p.name} />
         </div>
