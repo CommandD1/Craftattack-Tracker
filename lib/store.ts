@@ -366,3 +366,54 @@ export async function getPlayerHistory(id: string, limit = 3000): Promise<Player
     distance: r.distance === null ? null : Number(r.distance),
   }));
 }
+
+/* ---------- Komplette Bestenlisten (alle bekannten Spieler) ---------- */
+
+export interface FullBoardEntry {
+  id: string;
+  name: string;
+  uuid: string;
+  value: number;
+  /** Zeitpunkt, zu dem der Wert zuletzt in der API zu sehen war */
+  at: string;
+  online: boolean;
+}
+
+const COLUMN: Record<string, string> = {
+  playtimeSeconds: "playtime_seconds",
+  deaths: "deaths",
+  diamonds: "diamonds",
+  blocksBroken: "blocks_broken",
+  mobsKilled: "mobs_killed",
+  distance: "distance",
+};
+
+/** Letzter bekannter Wert pro Spieler für ein Board, absteigend sortiert. */
+export async function getFullBoard(key: string): Promise<FullBoardEntry[]> {
+  const col = COLUMN[key];
+  if (!col) return [];
+  await ensureLoaded();
+  const db = await getDb();
+  const rows = (
+    await db.query<{ player: string; at: Date; value: number | string }>(
+      `SELECT DISTINCT ON (player) player, at, ${col} AS value
+         FROM player_history
+        WHERE ${col} IS NOT NULL
+        ORDER BY player, at DESC`,
+    )
+  ).rows;
+  const players = g().state?.players ?? {};
+  return rows
+    .map((r) => {
+      const p = players[r.player];
+      return {
+        id: r.player,
+        name: p?.name ?? r.player,
+        uuid: p?.uuid ?? "",
+        value: Number(r.value),
+        at: iso(r.at)!,
+        online: p?.online ?? false,
+      };
+    })
+    .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, "de"));
+}

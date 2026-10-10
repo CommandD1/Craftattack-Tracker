@@ -1304,3 +1304,27 @@ a.st-chip-in[data-live="true"] {
   font-weight: 500;
   font-size: 0.8125rem;
 }
+
+/* ---------- Komplette Bestenlisten ---------- */
+.st-board__row--full {
+  grid-template-columns: 2.5rem 28px minmax(0, 1fr) auto auto;
+}
+.st-board__list--full .st-board__row:nth-child(n + 4) .st-board__rank {
+  opacity: 0.8;
+}
+.st-board__meta {
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.65;
+  white-space: nowrap;
+}
+@media (width <= 480px) {
+  .st-board__meta {
+    display: none;
+  }
+  .st-board__row--full {
+    grid-template-columns: 2.5rem 28px minmax(0, 1fr) auto;
+  }
+}

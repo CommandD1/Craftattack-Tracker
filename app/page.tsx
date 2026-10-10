@@ -237,7 +237,9 @@ async function Dashboard() {
             <h2 className="t-2" id="boards-h">
               Bestenlisten
             </h2>
-            <p className="muted">Top 10</p>
+            <Link className="btn btn--small" data-tone="white" href="/bestenlisten">
+              Mehr als Top 10
+            </Link>
           </div>
           <div className="grid st-boards">
             {BOARD_KEYS.map((key) => {
