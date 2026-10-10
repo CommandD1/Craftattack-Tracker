@@ -1409,3 +1409,8 @@ a.st-chip-in[data-live="true"] {
 .chart--big .spark {
   height: 110px;
 }
+
+.st-board__name .dot {
+  display: inline-block;
+  vertical-align: middle;
+}

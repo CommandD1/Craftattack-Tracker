@@ -211,38 +211,45 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                   <dd className="num">{num(mine.length)}</dd>
                 </dl>
               </div>
-              <div className="box" data-tone="white">
-                <p className="eyebrow" style={{ marginBottom: 10 }}>
-                  Gleichzeitig online mit
-                </p>
-                {overlaps.length === 0 ? (
-                  <p className="muted">Noch keine Überschneidung mit anderen Spielern gesehen.</p>
-                ) : (
-                  <ul className="sessions">
-                    {overlaps.slice(0, 10).map((o) => (
+              <section className="box st-board" data-tone="sky" aria-labelledby="b-with">
+                <header className="st-board__head">
+                  <span className="st-board__icon">
+                    <Icon.users aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h3 className="t-3" id="b-with">
+                      Mitspieler
+                    </h3>
+                    <p className="st-board__sub">Meiste gemeinsame Online-Zeit</p>
+                  </div>
+                </header>
+                <ol className="st-board__list">
+                  {overlaps.length === 0 ? (
+                    <li className="st-board__note">Noch keine Überschneidung gesehen.</li>
+                  ) : (
+                    overlaps.slice(0, 10).map((o, i) => (
                       <li key={o.player}>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                          <img className="head" src={headUrl(state.players[o.player]?.uuid, 24, o.player)} alt="" width={24} height={24} loading="lazy" />
-                          <Link href={`/spieler/${encodeURIComponent(o.player)}`} style={{ textDecoration: "none" }}>
+                        <Link
+                          className="st-board__row"
+                          href={`/spieler/${encodeURIComponent(o.player)}`}
+                          title={`${nameOf(o.player)}: ${duration(o.seconds)} gemeinsam online in ${num(o.sessions)} Sessions`}
+                        >
+                          <span className="st-board__rank num">{i + 1}</span>
+                          <img className="head" src={headUrl(state.players[o.player]?.uuid, 28, o.player)} alt="" width={28} height={28} loading="lazy" />
+                          <span className="st-board__name">
                             {nameOf(o.player)}
-                          </Link>
-                          {o.now && (
-                            <span className="tag" data-tone="grass" style={{ margin: 0, fontSize: ".75rem" }}>
-                              <span className="dot" /> jetzt
-                            </span>
-                          )}
-                        </span>
-                        <span className="num" title={`in ${num(o.sessions)} Sessions`}>
-                          {duration(o.seconds)}
-                        </span>
+                            {o.now && <span className="dot" style={{ marginLeft: 8 }} title="gerade gemeinsam online" />}
+                          </span>
+                          <span className="st-board__val num">{duration(o.seconds)}</span>
+                        </Link>
                       </li>
-                    ))}
-                  </ul>
-                )}
+                    ))
+                  )}
+                </ol>
                 <p className="muted" style={{ marginTop: 10, fontSize: ".875rem" }}>
-                  Gemeinsame Online-Zeit seit Tracker-Start, aus den Join/Leave-Ereignissen berechnet.
+                  Seit Tracker-Start, aus den Join/Leave-Ereignissen berechnet. Der grüne Punkt heißt: gerade gemeinsam online.
                 </p>
-              </div>
+              </section>
               <div className="box" data-tone="white">
                 <p className="eyebrow" style={{ marginBottom: 10 }}>
                   Sessions
