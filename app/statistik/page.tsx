@@ -83,13 +83,14 @@ function Record({
   tone?: string;
 }) {
   return (
-    <div className="box st-fig record" data-tone={tone}>
+    <div className="box record" data-tone={tone}>
       <dt>{label}</dt>
       <dd>
         <span className="num record__val">{value}</span>
         {who && (
           <Link className="record__who" href={`/spieler/${encodeURIComponent(who.id)}`}>
-            <img className="head" src={headUrl(uuid, 24, who.id)} alt="" width={24} height={24} loading="lazy" /> {who.name}
+            <img className="head" src={headUrl(uuid, 24, who.id)} alt="" width={24} height={24} loading="lazy" />
+            <span>{who.name}</span>
           </Link>
         )}
         {(whenLabel ?? when) && <small className="muted">{whenLabel ?? dateTime(when!)}</small>}
@@ -149,7 +150,7 @@ export default async function Page() {
           <h2 className="t-2" id="rec-h" style={{ marginBottom: 16 }}>
             Rekorde
           </h2>
-          <dl className="grid st-figs st-figs--6">
+          <dl className="grid records-grid">
             <Record label="Gleichzeitig online" tone="grass" value={state.records.peakOnline ? num(state.records.peakOnline.value) : "–"} when={state.records.peakOnline?.at} />
             <Record label="Gleichzeitig live" tone="twitch" value={state.records.peakLive ? num(state.records.peakLive.value) : "–"} when={state.records.peakLive?.at} />
             <Record label="Zuschauer gesamt" tone="twitch" value={state.records.peakViewers ? num(state.records.peakViewers.value) : "–"} when={state.records.peakViewers?.at} />

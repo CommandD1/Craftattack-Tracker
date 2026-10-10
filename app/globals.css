@@ -1384,27 +1384,63 @@ a.st-chip-in[data-live="true"] {
 }
 
 /* ---------- Statistik: Rekorde ---------- */
+.records-grid {
+  --min: 200px;
+  --gap: 16px;
+  margin: 0;
+}
+.record {
+  min-width: 0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.record dt {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  opacity: 0.85;
+}
 .record dd {
+  margin: 0;
+  min-width: 0;
   display: grid;
   gap: 6px;
 }
 .record__val {
-  font-size: 1.5rem;
+  font-size: clamp(1.375rem, 2.2vw, 1.75rem);
   font-weight: 700;
   line-height: 1.1;
+  overflow-wrap: anywhere;
 }
 .record__who {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-weight: 600;
+  min-width: 0;
+  font-size: 1rem;
+  font-weight: 700;
   text-decoration: none;
+  color: inherit;
 }
 .record__who .head {
+  width: 24px;
+  height: 24px;
+  flex: none;
   box-shadow: 0 0 0 2px var(--ink);
+}
+.record__who span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .record small {
   font-size: 0.8125rem;
+  font-weight: 500;
 }
 .chart--big .spark {
   height: 110px;
