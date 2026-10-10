@@ -1450,3 +1450,33 @@ a.st-chip-in[data-live="true"] {
   display: inline-block;
   vertical-align: middle;
 }
+
+/* ---------- Profil: Statistik-Kacheln ---------- */
+.pstat {
+  display: grid;
+  gap: 8px;
+}
+.pstat__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.pstat__label svg {
+  flex: none;
+}
+.pstat__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pstat__meta .tag {
+  margin: 0;
+  font-size: 0.75rem;
+  padding: 3px 8px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.pstat__meta .tag .muted {
+  opacity: 0.7;
+}

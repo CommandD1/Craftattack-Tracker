@@ -151,26 +151,26 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
               const fromTracker = k === "playtimeSeconds" && v === undefined && trackedSeconds > 0;
               return (
                 <div key={k} className="box st-fig" data-tone={TONE[k]}>
-                  <dt>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                      <IconCmp width={18} height={18} aria-hidden="true" /> {LABEL[k]}
-                      {ranks[k] && (
-                        <span
-                          className="tag"
-                          data-tone="ink"
-                          style={{ margin: 0, fontSize: ".75rem" }}
-                          title={ranks[k].of ? `Platz ${ranks[k].rank} von ${ranks[k].of}` : `Platz ${ranks[k].rank} in der Top 10`}
-                        >
-                          #{ranks[k].rank}
-                          {ranks[k].of ? <span className="muted">/{ranks[k].of}</span> : null}
-                        </span>
-                      )}
-                      {fromTracker && (
-                        <span className="tag" data-tone="ink" style={{ margin: 0, fontSize: ".75rem" }} title="Von der API gibt es Spielzeit nur für die Top 10. Das hier ist die vom Tracker seit seinem Start gemessene Online-Zeit.">
-                          Tracker
-                        </span>
-                      )}
+                  <dt className="pstat">
+                    <span className="pstat__label">
+                      <IconCmp width={18} height={18} aria-hidden="true" />
+                      <span>{LABEL[k]}</span>
                     </span>
+                    {(ranks[k] || fromTracker) && (
+                      <span className="pstat__meta">
+                        {ranks[k] && (
+                          <span className="tag" data-tone="ink" title={ranks[k].of ? `Platz ${ranks[k].rank} von ${ranks[k].of}` : `Platz ${ranks[k].rank} in der Top 10`}>
+                            Platz {ranks[k].rank}
+                            {ranks[k].of ? <span className="muted"> / {ranks[k].of}</span> : null}
+                          </span>
+                        )}
+                        {fromTracker && (
+                          <span className="tag" data-tone="ink" title="Von der API gibt es Spielzeit nur für die Top 10. Das hier ist die vom Tracker seit seinem Start gemessene Online-Zeit.">
+                            Tracker
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </dt>
                   <FigValue>{v !== undefined ? boardValue(k, v) : fromTracker ? duration(trackedSeconds) : "–"}</FigValue>
                 </div>
