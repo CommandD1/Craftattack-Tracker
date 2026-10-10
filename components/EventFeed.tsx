@@ -22,7 +22,7 @@ export function EventRow({ e, showPlayer = true }: { e: TrackerEvent; showPlayer
   return (
     <li className="ev">
       <span className="ev__icon" data-tone={meta.tone} title={meta.label}>
-        {showHead && e.type !== "death" ? (
+        {showHead ? (
           <img src={headUrl(e.uuid, 44, e.player)} alt="" width={44} height={44} loading="lazy" decoding="async" />
         ) : (
           <IconCmp aria-hidden="true" />
