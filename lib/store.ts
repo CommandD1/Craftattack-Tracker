@@ -1,4 +1,5 @@
 import "server-only";
+import { connection } from "next/server";
 import { getDb } from "./db";
 import type { PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState } from "./types";
 
@@ -476,4 +477,134 @@ export async function getAllSessions(): Promise<StoredSession[]> {
     }
   }
   return out;
+}
+
+/* ---------- Statistik-Seite: alle Daten, gebündelt ---------- */
+
+const statsCache = new Map<string, { at: number; value: unknown }>();
+async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+  await connection(); // dynamisch: Date.now() ist hier sonst beim Prerendern verboten
+  const hit = statsCache.get(key);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.value as T;
+  const value = await load();
+  statsCache.set(key, { at: Date.now(), value });
+  return value;
+}
+
+/** Bündelgröße so wählen, dass es höchstens ~`target` Punkte gibt (mindestens `minMinutes`). */
+function bucketMinutes(firstAt: Date | null, target: number, minMinutes: number) {
+  if (!firstAt) return minMinutes;
+  const spanMin = (Date.now() - firstAt.getTime()) / 60_000;
+  const steps = [1, 2, 5, 10, 15, 30, 60, 120, 180, 360, 720, 1440];
+  return steps.find((s) => s >= minMinutes && spanMin / s <= target) ?? 1440;
+}
+
+/** Kompletter Server-Verlauf (Online, Live, Zuschauer, Spielzeit, Tode), auf ~1500 Punkte gebündelt (Maximum pro Bündel). */
+export async function getHistoryAll(): Promise<{ points: TotalsPoint[]; bucketMinutes: number }> {
+  return cached("historyAll", 60_000, async () => {
+    await ensureLoaded();
+    const db = await getDb();
+    const first = (await db.query<{ at: Date }>(`SELECT min(at) AS at FROM history`)).rows[0]?.at ?? null;
+    const minutes = bucketMinutes(first, 1500, 1);
+    const rows = (
+      await db.query<HistoryRow>(
+        `SELECT to_timestamp(floor(extract(epoch FROM at) / ($1 * 60)) * ($1 * 60)) AS at,
+                max(online_count) AS online_count, max(live_count) AS live_count, max(viewers) AS viewers,
+                max(playtime_seconds) AS playtime_seconds, max(deaths) AS deaths
+           FROM history GROUP BY 1 ORDER BY 1`,
+        [minutes],
+      )
+    ).rows;
+    return { points: rows.map(rowToPoint), bucketMinutes: minutes };
+  });
+}
+
+export interface TotalsSeriesPoint {
+  at: string;
+  diamonds: number;
+  blocksBroken: number;
+  mobsKilled: number;
+  distance: number;
+}
+
+/** Summe aller Spieler je Zähler über die Zeit (letzter Wert je Spieler wird fortgeschrieben). */
+export async function getBoardTotalsOverTime(): Promise<{ points: TotalsSeriesPoint[]; bucketMinutes: number }> {
+  return cached("boardTotals", 120_000, async () => {
+    await ensureLoaded();
+    const db = await getDb();
+    const first = (await db.query<{ at: Date }>(`SELECT min(at) AS at FROM player_history`)).rows[0]?.at ?? null;
+    const minutes = bucketMinutes(first, 800, 5);
+    const rows = (
+      await db.query<{ player: string; bucket: Date; diamonds: number | null; blocks_broken: number | null; mobs_killed: number | null; distance: number | string | null }>(
+        `SELECT DISTINCT ON (player, bucket) player, bucket, diamonds, blocks_broken, mobs_killed, distance
+           FROM (SELECT player, at, diamonds, blocks_broken, mobs_killed, distance,
+                        to_timestamp(floor(extract(epoch FROM at) / ($1 * 60)) * ($1 * 60)) AS bucket
+                   FROM player_history
+                  WHERE diamonds IS NOT NULL OR blocks_broken IS NOT NULL OR mobs_killed IS NOT NULL OR distance IS NOT NULL) x
+          ORDER BY player, bucket, at DESC`,
+        [minutes],
+      )
+    ).rows;
+    // Nach Bündel sortieren und je Spieler den letzten Stand fortschreiben
+    rows.sort((a, b) => a.bucket.getTime() - b.bucket.getTime());
+    const last = new Map<string, TotalsSeriesPoint>();
+    const points: TotalsSeriesPoint[] = [];
+    let i = 0;
+    while (i < rows.length) {
+      const t = rows[i].bucket.getTime();
+      for (; i < rows.length && rows[i].bucket.getTime() === t; i++) {
+        const r = rows[i];
+        const prev = last.get(r.player);
+        last.set(r.player, {
+          at: "",
+          diamonds: r.diamonds ?? prev?.diamonds ?? 0,
+          blocksBroken: r.blocks_broken ?? prev?.blocksBroken ?? 0,
+          mobsKilled: r.mobs_killed ?? prev?.mobsKilled ?? 0,
+          distance: r.distance === null ? (prev?.distance ?? 0) : Number(r.distance),
+        });
+      }
+      const sum: TotalsSeriesPoint = { at: new Date(t).toISOString(), diamonds: 0, blocksBroken: 0, mobsKilled: 0, distance: 0 };
+      for (const v of last.values()) {
+        sum.diamonds += v.diamonds;
+        sum.blocksBroken += v.blocksBroken;
+        sum.mobsKilled += v.mobsKilled;
+        sum.distance += v.distance;
+      }
+      points.push(sum);
+    }
+    return { points, bucketMinutes: minutes };
+  });
+}
+
+export interface DayCount {
+  day: string; // YYYY-MM-DD (Europe/Berlin)
+  value: number;
+}
+
+/** Summe eines Zähler-Ereignistyps pro Tag (z. B. Tode), inkl. Tage ohne Wert = 0. */
+export async function getDailyEventSum(type: TrackerEvent["type"]): Promise<DayCount[]> {
+  return cached(`daily:${type}`, 60_000, async () => {
+    await ensureLoaded();
+    const db = await getDb();
+    const rows = (
+      await db.query<{ day: string; value: number | string }>(
+        `SELECT to_char(at AT TIME ZONE 'Europe/Berlin', 'YYYY-MM-DD') AS day, coalesce(sum(delta), 0) AS value
+           FROM events WHERE type = $1 GROUP BY 1 ORDER BY 1`,
+        [type],
+      )
+    ).rows;
+    return rows.map((r) => ({ day: r.day, value: Number(r.value) }));
+  });
+}
+
+/** Die größten Einzel-Ereignisse eines Typs (z. B. größter Diamanten-Fund auf einmal). */
+export async function getBiggestEvents(type: TrackerEvent["type"], limit = 1): Promise<TrackerEvent[]> {
+  return cached(`biggest:${type}:${limit}`, 60_000, async () => {
+    await ensureLoaded();
+    const db = await getDb();
+    const rows = (
+      await db.query<EventRow>(`SELECT * FROM events WHERE type = $1 AND player IS NOT NULL ORDER BY delta DESC NULLS LAST LIMIT $2`, [type, limit])
+    ).rows;
+    return rows.map(rowToEvent);
+  });
 }

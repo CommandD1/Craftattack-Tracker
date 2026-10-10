@@ -58,3 +58,7 @@ export function boardValue(key: string, v: number) {
 /** Kopf-Bild über unseren Proxy: kuratierter Kopf von craftattack.one, sonst Mojang-Skin per UUID. */
 export const headUrl = (uuid: string | undefined, size = 32, id?: string) =>
   `/api/head/${encodeURIComponent(id ?? "_")}?u=${encodeURIComponent(uuid ?? "")}&s=${size}`;
+
+/** Ganzkörper-Render (3D) über unseren Proxy: kuratiert von craftattack.one, sonst Mojang-Skin per UUID. */
+export const skinUrl = (uuid: string | undefined, size = 256, id?: string) =>
+  `/api/skin/${encodeURIComponent(id ?? "_")}?u=${encodeURIComponent(uuid ?? "")}&s=${size}`;

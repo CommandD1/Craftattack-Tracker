@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { BOARD_KEYS, type BoardKey, type TrackerEvent } from "@/lib/types";
-import { ago, boardValue, dateTime, duration, headUrl, num } from "@/lib/format";
+import { ago, boardValue, dateTime, duration, headUrl, num, skinUrl } from "@/lib/format";
 import { EventFeed } from "@/components/EventFeed";
 import { BOARD_ICON, Icon } from "@/components/Icons";
 import { FigValue } from "@/components/FigValue";
@@ -101,7 +101,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
             / Profil
           </p>
           <div className="player-head" style={{ marginTop: 16 }}>
-            <img className="head" src={headUrl(p.uuid, 112, p.id)} alt={`Kopf von ${p.name}`} width={112} height={112} />
+            <img className="skin" src={skinUrl(p.uuid, 256, p.id)} alt={`Skin von ${p.name}`} width={180} height={200} />
             <div>
               <h1 className="t-1">{p.name}</h1>
               <div className="player-head__tags">

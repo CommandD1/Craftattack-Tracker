@@ -1373,3 +1373,39 @@ a.st-chip-in[data-live="true"] {
   font-weight: 500;
   font-size: 0.875rem;
 }
+
+/* ---------- 3D-Skin im Profil ---------- */
+.player-head .skin {
+  width: clamp(120px, 18vw, 180px);
+  height: auto;
+  image-rendering: pixelated;
+  flex: none;
+  filter: drop-shadow(0 6px 0 #16120f66);
+}
+
+/* ---------- Statistik: Rekorde ---------- */
+.record dd {
+  display: grid;
+  gap: 6px;
+}
+.record__val {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.record__who {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.record__who .head {
+  box-shadow: 0 0 0 2px var(--ink);
+}
+.record small {
+  font-size: 0.8125rem;
+}
+.chart--big .spark {
+  height: 110px;
+}

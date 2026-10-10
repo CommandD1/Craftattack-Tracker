@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/ereignisse", label: "Ereignisse" },
   { href: "/spieler", label: "Spieler" },
   { href: "/bestenlisten", label: "Bestenlisten" },
+  { href: "/statistik", label: "Statistik" },
   { href: "/live", label: "Live" },
   { href: "/events", label: "Events" },
 ] as const;

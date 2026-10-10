@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { loadTracker } from "@/lib/data";
+import { getHistoryAll } from "@/lib/store";
 import { BOARD_KEYS, type BoardKey } from "@/lib/types";
 import { boardValue, headUrl, num, duration, dateTime } from "@/lib/format";
 import { StatusLine } from "@/components/StatusLine";
@@ -28,11 +29,13 @@ export default function Home() {
 
 async function Dashboard() {
   const { state, events, now } = await loadTracker();
+  const histAll = await getHistoryAll();
   const s = state.latest;
   const liveList = s ? [...(s.live ?? [])].sort((a, b) => b.viewers - a.viewers) : [];
   const viewers = liveList.reduce((a, l) => a + l.viewers, 0);
   const recent = [...events].reverse().slice(0, 25);
-  const hist = state.history.slice(-240); // letzte 2 Std
+  // Gesamte Laufzeit (gebündelt), nicht nur die letzten Stunden
+  const hist = histAll.points.length >= 2 ? histAll.points : state.history;
   const trackedPlayers = Object.keys(state.players).length;
   // Vom Tracker selbst gemessene Online-Zeit – für alle Spieler, nicht nur die Top 10 der API
   const trackedTime = Object.values(state.players)
@@ -176,14 +179,14 @@ async function Dashboard() {
             <aside className="stack" style={{ "--stack": "16px" } as React.CSSProperties}>
               <div className="box spark-card" data-tone="white">
                 <div className="spark-card__head">
-                  <span className="eyebrow">Online · 2 Std</span>
+                  <span className="eyebrow">Online · seit Start</span>
                   <span className="num spark-card__val">{s ? num(s.onlineCount) : "–"}</span>
                 </div>
                 <Sparkline points={hist.map((h) => ({ at: h.at, v: h.onlineCount }))} label="Online" />
               </div>
               <div className="box spark-card" data-tone="white">
                 <div className="spark-card__head">
-                  <span className="eyebrow">Zuschauer · 2 Std</span>
+                  <span className="eyebrow">Zuschauer · seit Start</span>
                   <span className="num spark-card__val">{num(viewers)}</span>
                 </div>
                 <Sparkline points={hist.map((h) => ({ at: h.at, v: h.viewers }))} label="Zuschauer" />

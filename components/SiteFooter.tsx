@@ -32,6 +32,9 @@ export function SiteFooter() {
             <Link href="/spieler">Spieler</Link>
           </li>
           <li>
+            <Link href="/statistik">Statistik</Link>
+          </li>
+          <li>
             <Link href="/live">Live</Link>
           </li>
           <li>
