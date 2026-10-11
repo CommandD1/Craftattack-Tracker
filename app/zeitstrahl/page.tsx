@@ -20,6 +20,10 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
   const span = nav.to - nav.from;
   const pct = (t: number) => Math.max(0, Math.min(100, ((t - nav.from) / span) * 100));
   const nowPct = now < nav.to && now > nav.from ? pct(now) : null;
+  /** „12:30–14:05“ bzw. „… – jetzt“ für einen Balken */
+  const span = (a: number, b: number) => `${time(new Date(a).toISOString())}–${b >= now - 60_000 && !nav.next ? "jetzt" : time(new Date(b).toISOString())}`;
+  /** Tooltip am Rand nach innen ausrichten */
+  const edge = (a: number, b: number) => ((pct(a) + pct(b)) / 2 > 72 ? "right" : (pct(a) + pct(b)) / 2 < 18 ? "left" : undefined);
   const total = rows.reduce((s, r) => s + r.seconds, 0);
   const afkTotal = rows.reduce((s, r) => s + r.afkSeconds, 0);
   const liveCount = rows.filter((r) => r.live.length).length;
@@ -99,15 +103,15 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
                       <img className="head" src={headUrl(r.uuid, 24, r.id)} alt="" width={24} height={24} loading="lazy" />
                       <span>{r.name}</span>
                     </Link>
-                    <div className="gantt__track" role="cell" title={`${r.name}: ${duration(r.seconds)}`}>
+                    <div className="gantt__track" role="cell">
                       {r.online.map(([a, b], k) => (
-                        <span key={`o${k}`} className="gantt__on" style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }} title={`${time(new Date(a).toISOString())}–${b >= now - 60_000 && !nav.next ? "jetzt" : time(new Date(b).toISOString())}`} />
+                        <span key={`o${k}`} className="gantt__on tip" style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }} data-edge={edge(a, b)} data-tip={`${r.name} · ${span(a, b)} · ${duration((b - a) / 1000)}`} tabIndex={0} />
                       ))}
                       {r.afk.map(([a, b], k) => (
-                        <span key={`a${k}`} className="gantt__afk" style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }} title={`AFK ${time(new Date(a).toISOString())}–${b >= now - 60_000 && !nav.next ? "jetzt" : time(new Date(b).toISOString())}`} />
+                        <span key={`a${k}`} className="gantt__afk tip" style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }} data-edge={edge(a, b)} data-tip={`${r.name} · AFK ${span(a, b)} · ${duration((b - a) / 1000)}`} tabIndex={0} />
                       ))}
                       {r.live.map(([a, b], k) => (
-                        <span key={`l${k}`} className="gantt__live" style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }} />
+                        <span key={`l${k}`} className="gantt__live tip" style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }} data-edge={edge(a, b)} data-tip={`${r.name} · live ${span(a, b)} · ${duration((b - a) / 1000)}`} tabIndex={0} />
                       ))}
                       {nowPct !== null && <span className="gantt__now" style={{ left: `${nowPct}%` }} />}
                     </div>
