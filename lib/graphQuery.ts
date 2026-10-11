@@ -50,7 +50,7 @@ export const RASTER: { key: string; label: string }[] = [
   { key: "360", label: "6 Std" },
   { key: "1440", label: "1 Tag" },
 ];
-export const COLORS = ["#16120f", "#9146ff", "#ff6452", "#1f9e8f", "#2f9a1f", "#d9a300", "#d35fb3", "#ff7a00", "#2b7bd1", "#8a5a3b", "#4f1a6d", "#6d6d6d"];
+export const COLORS = ["var(--ink)", "#9146ff", "#ff6452", "#1f9e8f", "#2f9a1f", "#d9a300", "#d35fb3", "#ff7a00", "#2b7bd1", "#8a5a3b", "#4f1a6d", "#6d6d6d"];
 
 export interface PlayerOption {
   id: string;

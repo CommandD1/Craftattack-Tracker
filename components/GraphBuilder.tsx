@@ -207,7 +207,7 @@ function MultiChart({ lines, hidden, dataKey }: { lines: Line[]; hidden: Set<str
               <line x1={x(tipT)} x2={x(tipT)} y1={0} y2={H} className="spark__cursor" vectorEffect="non-scaling-stroke" />
               {tip.map(
                 (t) =>
-                  t.p && <circle key={t.line.id} cx={x(Date.parse(t.p.at))} cy={y(t.line, t.p.v)} r={5} fill={t.line.color} stroke="#16120f" strokeWidth={2} vectorEffect="non-scaling-stroke" />,
+                  t.p && <circle key={t.line.id} cx={x(Date.parse(t.p.at))} cy={y(t.line, t.p.v)} r={5} fill={t.line.color} stroke="var(--line)" strokeWidth={2} vectorEffect="non-scaling-stroke" />,
               )}
             </>
           )}
