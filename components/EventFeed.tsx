@@ -33,6 +33,15 @@ function detail(e: TrackerEvent): string | null {
       return "Neu";
     case "death":
       return e.meta?.unknown ? "unbekannt" : null;
+    // Zähler: die kleinen Icons sind nicht eindeutig, daher ein Wort dazu
+    case "diamonds":
+      return "Diamanten";
+    case "blocksBroken":
+      return "Blöcke abgebaut";
+    case "mobsKilled":
+      return "Mobs";
+    case "distance":
+      return "gelaufen";
     default:
       return null;
   }
