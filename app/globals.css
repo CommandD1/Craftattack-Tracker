@@ -2168,7 +2168,7 @@ a.st-chip-in[data-live="true"] {
 }
 .gantt__row {
   display: grid;
-  grid-template-columns: minmax(130px, 180px) minmax(360px, 1fr) 118px;
+  grid-template-columns: minmax(130px, 180px) minmax(360px, 1fr) 150px;
   align-items: center;
   gap: 10px;
   min-height: 34px;
@@ -2259,7 +2259,7 @@ a.st-chip-in[data-live="true"] {
   top: 0;
   bottom: 0;
   width: 2px;
-  background: var(--redstone);
+  background: var(--ink);
 }
 .gantt__sum {
   text-align: right;

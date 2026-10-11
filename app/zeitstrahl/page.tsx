@@ -119,7 +119,7 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
               </li>
               {nowPct !== null && (
                 <li>
-                  <i style={{ background: "var(--redstone)" }} /> jetzt
+                  <i style={{ background: "var(--ink)" }} /> jetzt
                 </li>
               )}
             </ul>
