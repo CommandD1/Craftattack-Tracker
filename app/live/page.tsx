@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
+import { getHistoryRange } from "@/lib/analytics";
+import { getHistoryAll } from "@/lib/store";
 import { ago, headUrl, num } from "@/lib/format";
 import { Sparkline } from "@/components/Sparkline";
 import { EventFeed } from "@/components/EventFeed";
@@ -11,22 +13,41 @@ export const instant = false;
 
 export const metadata: Metadata = { title: "Live" };
 
-export default function Page() {
-  return (
-      <Live />
-  );
+/** Wählbarer Zeitraum für Peak, Zuschauer-Graph und Chronik */
+const RANGES: { key: string; label: string; hours: number | null }[] = [
+  { key: "1h", label: "1 Std", hours: 1 },
+  { key: "6h", label: "6 Std", hours: 6 },
+  { key: "12h", label: "12 Std", hours: 12 },
+  { key: "24h", label: "24 Std", hours: 24 },
+  { key: "7d", label: "7 Tage", hours: 7 * 24 },
+  { key: "alle", label: "Alles", hours: null },
+];
+
+export default function Page(props: PageProps<"/live">) {
+  return <Live searchParams={props.searchParams} />;
 }
 
-async function Live() {
-  const { state, events } = await loadTracker();
+async function Live({ searchParams }: { searchParams: PageProps<"/live">["searchParams"] }) {
+  const sp = await searchParams;
+  const range = RANGES.find((r) => r.key === sp.zeit) ?? RANGES[1];
+  const [{ state, events, now }, hist] = await Promise.all([
+    loadTracker(),
+    range.hours === null
+      ? getHistoryAll().then((h) => h.points.map((p) => ({ at: p.at, v: p.viewers })))
+      : getHistoryRange(range.hours).then((rows) => rows.map((r) => ({ at: new Date(r.at).toISOString(), v: r.viewers }))),
+  ]);
+  const since = range.hours === null ? 0 : now - range.hours * 3600_000;
   const players = Object.values(state.players);
   const live = players.filter((p) => p.live).sort((a, b) => (b.live!.viewers ?? 0) - (a.live!.viewers ?? 0));
   const viewersAll = live.reduce((s, p) => s + (p.live?.viewers ?? 0), 0);
   // Zählt global nur, wer dabei auch auf dem Server ist
   const viewers = live.filter((p) => p.online).reduce((s, p) => s + (p.live?.viewers ?? 0), 0);
-  const hist = state.history.slice(-720); // 6 Std
-  const peak = hist.reduce((m, h) => Math.max(m, h.viewers), 0);
-  const twitchEvents = [...events].reverse().filter((e) => e.where === "twitch").slice(0, 40);
+  const peak = hist.reduce((m, h) => Math.max(m, h.v), 0);
+  const twitchEvents = [...events]
+    .reverse()
+    .filter((e) => e.where === "twitch" && Date.parse(e.at) >= since)
+    .slice(0, 40);
+  const rangeLabel = range.hours === null ? "gesamt" : `letzte ${range.label}`;
 
   return (
     <>
@@ -40,6 +61,15 @@ async function Live() {
 
       <section className="block block--tight" data-tone="ink">
         <div className="wrap">
+          <ul className="filters" aria-label="Zeitraum">
+            {RANGES.map((r) => (
+              <li key={r.key}>
+                <Link className="tag" aria-current={range.key === r.key ? "true" : undefined} href={r.key === "6h" ? "/live" : `/live?zeit=${r.key}`}>
+                  {r.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
           <dl className="grid st-figs">
             <div className="box st-fig" data-tone="amethyst">
               <dt>Streams</dt>
@@ -54,7 +84,7 @@ async function Live() {
               <FigValue>{num(viewersAll)}</FigValue>
             </div>
             <div className="box st-fig" data-tone="gold">
-              <dt>Peak · 6 Std</dt>
+              <dt>Peak · {rangeLabel}</dt>
               <FigValue>{num(peak)}</FigValue>
             </div>
             <div className="box st-fig" data-tone="grass">
@@ -64,10 +94,10 @@ async function Live() {
           </dl>
           <div className="box spark-card" data-tone="white" style={{ marginTop: 24 }}>
             <div className="spark-card__head">
-              <span className="eyebrow">Zuschauer auf dem Server · letzte 6 Std</span>
+              <span className="eyebrow">Zuschauer auf dem Server · {rangeLabel}</span>
               <span className="num spark-card__val">{num(viewers)}</span>
             </div>
-            <Sparkline points={hist.map((h) => ({ at: h.at, v: h.viewers }))} width={900} height={120} label="Zuschauer" />
+            <Sparkline points={hist} width={900} height={120} label="Zuschauer" />
           </div>
         </div>
       </section>
@@ -129,11 +159,11 @@ async function Live() {
         <div className="wrap">
           <div className="section-head">
             <h2 className="t-2">Stream-Chronik</h2>
-            <Link className="btn btn--small" data-tone="white" href="/ereignisse?wo=twitch">
+            <Link className="btn btn--small" data-tone="white" href={`/ereignisse?wo=twitch${range.hours === null ? "" : `&zeit=${range.key}`}`}>
               Alle
             </Link>
           </div>
-          <EventFeed events={twitchEvents} empty="Noch kein Stream an- oder ausgegangen, seit der Tracker läuft." />
+          <EventFeed events={twitchEvents} empty={range.hours === null ? "Noch kein Stream an- oder ausgegangen, seit der Tracker läuft." : `Kein Stream in den letzten ${range.label} an- oder ausgegangen.`} />
         </div>
       </section>
     </>
