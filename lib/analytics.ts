@@ -247,69 +247,6 @@ export async function getTimelapse(day?: string): Promise<Timelapse> {
   return { nav, stepMinutes: step, players, frames };
 }
 
-/* ============================================================ Netz: gleichzeitig online */
-
-export interface PresenceNode {
-  id: string;
-  name: string;
-  uuid: string;
-  /** Online-Sekunden im Zeitraum */
-  seconds: number;
-}
-export interface PresenceEdge {
-  a: string;
-  b: string;
-  /** Gemeinsame Sekunden */
-  seconds: number;
-  /** Wie viel häufiger als zufällig (1 = Zufall) */
-  lift: number;
-  now: boolean;
-}
-
-export async function getCoPresence(hours: number): Promise<{ nodes: PresenceNode[]; edges: PresenceEdge[]; from: number; to: number }> {
-  return cached(`copresence:${hours}`, 60_000, async () => {
-    const now = Date.now();
-    const first = (await firstDataAt()) ?? now;
-    const from = Math.max(first, now - hours * 3600_000);
-    const [sessions, state] = await Promise.all([getAllSessions(), getState()]);
-    const spans = clip(sessions, from, now, now);
-    const T = Math.max(1, now - from);
-    const total = new Map<string, number>();
-    for (const [id, l] of spans) total.set(id, l.reduce((s, [a, b]) => s + (b - a), 0));
-    const ids = [...spans.keys()];
-    const edges: PresenceEdge[] = [];
-    for (let i = 0; i < ids.length; i++) {
-      for (let j = i + 1; j < ids.length; j++) {
-        const A = spans.get(ids[i])!;
-        const B = spans.get(ids[j])!;
-        let shared = 0;
-        let nowBoth = false;
-        let x = 0;
-        let y = 0;
-        while (x < A.length && y < B.length) {
-          const s = Math.max(A[x][0], B[y][0]);
-          const e = Math.min(A[x][1], B[y][1]);
-          if (e > s) {
-            shared += e - s;
-            if (e >= now - 60_000) nowBoth = true;
-          }
-          if (A[x][1] < B[y][1]) x++;
-          else y++;
-        }
-        if (shared < 20 * 60_000) continue;
-        const expected = (total.get(ids[i])! * total.get(ids[j])!) / T;
-        const lift = expected > 0 ? shared / expected : 0;
-        edges.push({ a: ids[i], b: ids[j], seconds: shared / 1000, lift: Math.round(lift * 10) / 10, now: nowBoth });
-      }
-    }
-    // Nur auffällige Paare: mindestens 1,3× häufiger als zufällig, oder sehr viel gemeinsame Zeit
-    const strong = edges.filter((e) => e.lift >= 1.3 || e.seconds >= 6 * 3600).sort((a, b) => b.lift * Math.log1p(b.seconds) - a.lift * Math.log1p(a.seconds));
-    const used = new Set(strong.flatMap((e) => [e.a, e.b]));
-    const nodes: PresenceNode[] = [...used].map((id) => ({ id, name: state.players[id]?.name ?? id, uuid: state.players[id]?.uuid ?? "", seconds: (total.get(id) ?? 0) / 1000 }));
-    return { nodes, edges: strong.slice(0, 400), from, to: now };
-  });
-}
-
 /* ============================================================ Statistik-Erweiterungen */
 
 export interface DayRow {
@@ -549,39 +486,4 @@ export async function getBoardRanksBefore(hoursAgo = 24): Promise<Partial<Record
     }
     return out;
   });
-}
-
-/* ============================================================ Gruppen im Netz (Label Propagation) */
-
-/**
- * Teilt die Knoten anhand der gewichteten Kanten in Gruppen ein (gewichtete Label-Propagation, deterministisch).
- * Liefert Gruppen mit mindestens zwei Mitgliedern, größte zuerst.
- */
-export function detectGroups(nodes: PresenceNode[], edges: PresenceEdge[]): string[][] {
-  const w = (e: PresenceEdge) => e.lift * Math.log1p(e.seconds / 60);
-  const adj = new Map<string, { to: string; w: number }[]>();
-  for (const n of nodes) adj.set(n.id, []);
-  for (const e of edges) {
-    adj.get(e.a)?.push({ to: e.b, w: w(e) });
-    adj.get(e.b)?.push({ to: e.a, w: w(e) });
-  }
-  const ids = nodes.map((n) => n.id).sort();
-  const label = new Map(ids.map((id) => [id, id]));
-  for (let round = 0; round < 30; round++) {
-    let changed = false;
-    for (const id of ids) {
-      const score = new Map<string, number>();
-      for (const { to, w: ww } of adj.get(id) ?? []) score.set(label.get(to)!, (score.get(label.get(to)!) ?? 0) + ww);
-      if (!score.size) continue;
-      const best = [...score.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0][0];
-      if (best !== label.get(id)) {
-        label.set(id, best);
-        changed = true;
-      }
-    }
-    if (!changed) break;
-  }
-  const groups = new Map<string, string[]>();
-  for (const id of ids) (groups.get(label.get(id)!) ?? groups.set(label.get(id)!, []).get(label.get(id)!)!).push(id);
-  return [...groups.values()].filter((g) => g.length >= 2).sort((a, b) => b.length - a.length);
 }
