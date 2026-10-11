@@ -80,6 +80,8 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const twitchLogin = p.live?.login ?? p.twitchLogin;
   const twitchUrl = twitchLogin ? `https://www.twitch.tv/${encodeURIComponent(twitchLogin)}` : null;
   const streamSeconds = (p.streamOnServerSeconds ?? 0) + (p.streamOffServerSeconds ?? 0);
+  /** Link auf den Graphen der Statistik-Seite für diese Kennzahl und diesen Spieler */
+  const graphHref = (metric: string) => `/statistik?metric=${metric}&spieler=${encodeURIComponent(id)}&zeit=alle#graph`;
   const mine = events.filter((e) => e.player === id);
   const sess = sessions(mine, p.online, p.sessionStart, now);
   const recent = [...mine].reverse().slice(0, 150);
@@ -160,10 +162,11 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
               return (
                 <div key={k} className="box st-fig st-fig--spark" data-tone={TONE[k]}>
                   <dt className="pstat">
-                    <span className="pstat__label">
+                    <Link className="pstat__label pstat__link" href={graphHref(k)} title={`${LABEL[k]} von ${p.name} im Graphen der Statistik öffnen`}>
                       <IconCmp width={18} height={18} aria-hidden="true" />
                       <span>{LABEL[k]}</span>
-                    </span>
+                      <span className="pstat__go" aria-hidden="true">↗</span>
+                    </Link>
                     {(ranks[k] || fromTracker) && (
                       <span className="pstat__meta">
                         {ranks[k] && (
@@ -180,7 +183,9 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                       </span>
                     )}
                   </dt>
-                  <FigValue>{v !== undefined ? boardValue(k, v) : fromTracker ? duration(trackedSeconds) : "–"}</FigValue>
+                  <Link className="pstat__val" href={graphHref(k)} tabIndex={-1} aria-hidden="true">
+                    <FigValue>{v !== undefined ? boardValue(k, v) : fromTracker ? duration(trackedSeconds) : "–"}</FigValue>
+                  </Link>
                   <StatSpark points={history} k={k} label={LABEL[k]} />
                 </div>
               );
@@ -189,7 +194,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
             Tode, Diamanten, Blöcke, Mobs und Strecke kommen aus der Einzelstatistik der API (inklusive Rang unter allen
             Teilnehmenden). Die Spielzeit liefert die API nur für die Top 10. Steht „Tracker“ dabei, ist es die seit Tracker-Start gemessene Online-Zeit.
-            Die Kurven zeigen den Verlauf seit Tracker-Start ({num(history.length)} Messpunkte). Mit der Maus über die Kurve fahren zeigt Zeitpunkt und Wert.
+            Die Kurven zeigen den Verlauf seit Tracker-Start ({num(history.length)} Messpunkte). Mit der Maus über die Kurve fahren zeigt Zeitpunkt und Wert. Ein Klick auf Beschriftung oder Wert öffnet den großen Graphen auf der Statistik-Seite.
           </p>
         </div>
       </section>
@@ -240,7 +245,9 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                 {history.some((h) => h.viewers !== null) && (
                   <div style={{ marginTop: 12 }}>
                     <p className="eyebrow" style={{ marginBottom: 6 }}>
-                      Zuschauer
+                      <Link href={graphHref("viewers")} title="Zuschauer im Graphen der Statistik öffnen" style={{ textDecoration: "none" }}>
+                        Zuschauer <span aria-hidden="true">↗</span>
+                      </Link>
                     </p>
                     <StatSpark points={history} k="viewers" label="Zuschauer" height={48} />
                   </div>

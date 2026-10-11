@@ -2150,3 +2150,22 @@ a.st-chip-in[data-live="true"] {
   width: 18px;
   height: 18px;
 }
+
+/* Stat-Kacheln im Profil: Beschriftung und Wert verlinken auf den Statistik-Graphen */
+.pstat__link,
+.pstat__val {
+  text-decoration: none;
+  color: inherit;
+}
+.pstat__go {
+  font-size: 0.75em;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.st-fig:has(.pstat__link:hover, .pstat__val:hover) .pstat__go {
+  opacity: 0.8;
+}
+.pstat__val:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 3px;
+}
