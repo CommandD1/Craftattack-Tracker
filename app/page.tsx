@@ -8,6 +8,9 @@ import { EventFeed } from "@/components/EventFeed";
 import { Sparkline } from "@/components/Sparkline";
 import { BOARD_ICON, Icon } from "@/components/Icons";
 import { FigValue } from "@/components/FigValue";
+import { TrendChart } from "@/components/TrendChart";
+import { getBoardRanksBefore, getHistoryRange } from "@/lib/analytics";
+import { EVENT_GROUPS } from "@/lib/events";
 
 const BOARDS: Record<BoardKey, { title: string; sub: string; tone: string }> = {
   playtimeSeconds: { title: "Dauerzocker", sub: "Meiste Spielzeit", tone: "sky" },
@@ -29,7 +32,7 @@ export default function Home() {
 
 async function Dashboard() {
   const { state, events, now } = await loadTracker();
-  const histAll = await getHistoryAll();
+  const [histAll, trend, ranksBefore] = await Promise.all([getHistoryAll(), getHistoryRange(72), getBoardRanksBefore(24)]);
   const s = state.latest;
   const liveList = s ? [...(s.live ?? [])].sort((a, b) => b.viewers - a.viewers) : [];
   const viewers = liveList.reduce((a, l) => a + l.viewers, 0);
@@ -172,8 +175,23 @@ async function Dashboard() {
               Alle Ereignisse
             </Link>
           </div>
+          <div className="box trend-card" data-tone="white" style={{ marginBottom: 24 }}>
+            <div className="spark-card__head">
+              <span className="eyebrow">Verlauf</span>
+            </div>
+            <TrendChart points={trend} now={now} />
+          </div>
           <div className="grid" style={{ "--min": "300px", "--gap": "24px" } as React.CSSProperties}>
             <div style={{ gridColumn: "span 2" }} className="feed-col">
+              <ul className="filters" style={{ marginBottom: 12 }} aria-label="Nur eine Kategorie zeigen">
+                {EVENT_GROUPS.map((grp) => (
+                  <li key={grp.key}>
+                    <Link className="tag" data-tone={grp.tone} href={`/ereignisse?g=${grp.key}`}>
+                      {grp.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
               <EventFeed events={recent} />
             </div>
             <aside className="stack" style={{ "--stack": "16px" } as React.CSSProperties}>
@@ -266,16 +284,35 @@ async function Dashboard() {
                     {list.length === 0 ? (
                       <li className="st-board__note">Noch keiner.</li>
                     ) : (
-                      list.slice(0, 10).map((e, i) => (
-                        <li key={e.id}>
-                          <Link className="st-board__row" href={`/spieler/${encodeURIComponent(e.id)}`}>
-                            <span className="st-board__rank num">{i + 1}</span>
-                            <img className="head" src={headUrl(e.uuid, 28, e.id)} alt="" width={28} height={28} loading="lazy" />
-                            <span className="st-board__name">{e.name}</span>
-                            <span className="st-board__val num">{boardValue(key, e.value)}</span>
-                          </Link>
-                        </li>
-                      ))
+                      list.slice(0, 10).map((e, i) => {
+                        const before = ranksBefore[key]?.[e.id];
+                        const diff = before === undefined ? null : before - (i + 1);
+                        return (
+                          <li key={e.id}>
+                            <Link className="st-board__row" href={`/spieler/${encodeURIComponent(e.id)}`}>
+                              <span className="st-board__rank num">{i + 1}</span>
+                              <img className="head" src={headUrl(e.uuid, 28, e.id)} alt="" width={28} height={28} loading="lazy" />
+                              <span className="st-board__name">{e.name}</span>
+                              <span className="st-board__val num">{boardValue(key, e.value)}</span>
+                              {diff === null ? (
+                                <span className="st-board__mv st-board__mv--new" title="Vor 24 Stunden noch nicht erfasst">
+                                  neu
+                                </span>
+                              ) : diff > 0 ? (
+                                <span className="st-board__mv st-board__mv--up num" title={`Vor 24 Stunden Platz ${before}`}>
+                                  ▲{diff}
+                                </span>
+                              ) : diff < 0 ? (
+                                <span className="st-board__mv st-board__mv--down num" title={`Vor 24 Stunden Platz ${before}`}>
+                                  ▼{-diff}
+                                </span>
+                              ) : (
+                                <span className="st-board__mv" aria-hidden="true" />
+                              )}
+                            </Link>
+                          </li>
+                        );
+                      })
                     )}
                   </ol>
                 </section>
@@ -312,8 +349,8 @@ async function Dashboard() {
             </section>
           </div>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
-            Die sechs oberen Listen kommen so von der API (nur Top 10). „Dauergäste“ misst der Tracker selbst seit seinem Start,
-            dafür für alle Spieler.
+            Die sechs oberen Listen kommen so von der API (nur Top 10), ▲▼ zeigt die Bewegung gegenüber dem Stand vor 24 Stunden. „Dauergäste“
+            misst der Tracker selbst seit seinem Start, dafür für alle Spieler.
           </p>
         </div>
       </section>

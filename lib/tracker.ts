@@ -344,6 +344,8 @@ export function diffSnapshot(
         where: "server",
         delta,
         value: entry.value,
+        // Tod während eines Streams: merken, damit später der VOD-Link gesetzt werden kann
+        ...(type === "death" && ps.live ? { meta: { live: true, twitchLogin: ps.live.login, streamStartedAt: ps.liveSince } } : {}),
       });
     }
     // Rang-Wechsel in den Top 3 (nur Aufstiege)

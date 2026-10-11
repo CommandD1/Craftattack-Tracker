@@ -6,6 +6,8 @@ import { boardValue, dateTime, duration, headUrl, num } from "@/lib/format";
 import { Sparkline, type SparkPoint } from "@/components/Sparkline";
 import { GraphBuilder } from "@/components/GraphBuilder";
 import { parseGraphQuery } from "@/lib/graphQuery";
+import { dayKey, getStatsExtras } from "@/lib/analytics";
+import { StatsExtras } from "@/components/StatsExtras";
 
 // Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
 export const instant = false;
@@ -104,7 +106,8 @@ function Record({
 export default async function Page(props: PageProps<"/statistik">) {
   const sp = await props.searchParams;
   const { state, now } = await loadTracker();
-  const [hist, totals, deathsPerDay, bigDiamonds, bigDistance, bigBlocks, bigMobs] = await Promise.all([
+  const [extras, hist, totals, deathsPerDay, bigDiamonds, bigDistance, bigBlocks, bigMobs] = await Promise.all([
+    getStatsExtras(),
     getHistoryAll(),
     getBoardTotalsOverTime(),
     getDailyEventSum("death"),
@@ -137,6 +140,9 @@ export default async function Page(props: PageProps<"/statistik">) {
     .map((p) => ({ id: p.id, name: p.name }))
     .sort((a, b) => a.name.localeCompare(b.name, "de"));
   const who = (p: { id: string; name: string } | null) => (p ? { id: p.id, name: p.name } : null);
+  // Tag-Nummer der Staffel: Tag 1 = erster Tag mit Daten
+  const firstDay = extras.days[0]?.day ?? dayKey(Date.parse(since));
+  const tagNr = (day: string) => Math.round((Date.parse(`${day}T12:00:00Z`) - Date.parse(`${firstDay}T12:00:00Z`)) / 86400_000) + 1;
 
   return (
     <>
@@ -151,7 +157,19 @@ export default async function Page(props: PageProps<"/statistik">) {
         </div>
       </section>
 
-      <section className="block" data-tone="paper" aria-labelledby="graph-h">
+      <section className="block" data-tone="paper" aria-labelledby="season-h">
+        <div className="wrap">
+          <div className="section-head">
+            <h2 className="t-2" id="season-h">
+              Die Staffel in Zahlen
+            </h2>
+            <p className="muted">Gewohnheiten, Gefahren und Treue – über alle Tage, die der Tracker gesehen hat.</p>
+          </div>
+          <StatsExtras d={extras} tag={tagNr} />
+        </div>
+      </section>
+
+      <section className="block" data-tone="paper" aria-labelledby="graph-h" style={{ paddingTop: 0 }}>
         <div className="wrap">
           <div className="section-head">
             <h2 className="t-2" id="graph-h">

@@ -19,6 +19,7 @@ export function EventRow({ e, showPlayer = true }: { e: TrackerEvent; showPlayer
   const whereLabel = e.where === "twitch" ? "Twitch" : e.where === "server" ? "Server" : "Tracker";
   const text = meta.text(e);
   const badge = eventBadge(e);
+  const vod = typeof e.meta?.vodUrl === "string" ? e.meta.vodUrl : null;
   const showHead = Boolean(e.player);
   return (
     <li className="ev" data-tone={meta.tone} data-type={e.type}>
@@ -45,8 +46,14 @@ export function EventRow({ e, showPlayer = true }: { e: TrackerEvent; showPlayer
             text
           )}
         </p>
-        {sub && (
-          <p className="ev__sub" title={sub}>
+        {(sub || vod) && (
+          <p className="ev__sub" title={sub ?? undefined}>
+            {vod && (
+              <a className="ev__vod" href={vod} target="_blank" rel="noopener" title="Diesen Moment im Twitch-VOD ansehen">
+                <Icon.twitch aria-hidden="true" /> Im VOD ansehen
+              </a>
+            )}
+            {vod && sub ? " · " : null}
             {sub}
           </p>
         )}

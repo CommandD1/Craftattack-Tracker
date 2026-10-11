@@ -32,9 +32,7 @@ export const EVENT_META: Record<EventType, EventMeta> = {
     sub: (e) =>
       e.meta?.unknown
         ? "Außerhalb der Top 10 – wer genau, verrät die API nicht."
-        : e.value !== undefined
-          ? `Insgesamt ${num(e.value)} Tode`
-          : null,
+        : [e.value !== undefined ? `Insgesamt ${num(e.value)} Tode` : null, e.meta?.live ? "Live auf Twitch" : null].filter(Boolean).join(" · ") || null,
   },
   diamonds: {
     label: "Diamanten",

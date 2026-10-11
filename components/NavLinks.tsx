@@ -9,6 +9,9 @@ const LINKS = [
   { href: "/spieler", label: "Spieler" },
   { href: "/bestenlisten", label: "Bestenlisten" },
   { href: "/statistik", label: "Statistik" },
+  { href: "/zeitstrahl", label: "Zeitstrahl" },
+  { href: "/zeitraffer", label: "Zeitraffer" },
+  { href: "/netz", label: "Netz" },
   { href: "/live", label: "Live" },
   { href: "/events", label: "Events" },
 ] as const;

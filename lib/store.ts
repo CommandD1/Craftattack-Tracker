@@ -312,6 +312,13 @@ export async function appendEvents(events: TrackerEvent[]) {
   }
 }
 
+/** Ergänzt `meta` eines Ereignisses (im Speicher und in der DB), z. B. um einen VOD-Link. */
+export async function updateEventMeta(e: TrackerEvent, patch: NonNullable<TrackerEvent["meta"]>) {
+  e.meta = { ...(e.meta ?? {}), ...patch };
+  const db = await getDb();
+  await db.query(`UPDATE events SET meta = COALESCE(meta, '{}'::jsonb) || $2::jsonb WHERE id = $1`, [e.id, JSON.stringify(patch)]);
+}
+
 /* ---------- Spieler-Zeitreihe ---------- */
 
 const PLAYER_POINT_MAX_GAP_MS = 5 * 60_000;
