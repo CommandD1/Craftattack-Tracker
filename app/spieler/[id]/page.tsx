@@ -14,6 +14,7 @@ import { TwitchEmbed } from "@/components/TwitchEmbed";
 import { PlayerInsights } from "@/components/PlayerInsights";
 import { getPlayerAfkSpans, getPlayerRates, getRankHistory, spanSeconds } from "@/lib/analytics";
 import { PlayerActivity } from "@/components/PlayerActivity";
+import { playtimeOf, trackedSecondsOf } from "@/lib/playtime";
 
 // Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
 export const instant = false;
@@ -118,7 +119,9 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const overlaps = overlapsFor(id, allSessions, now);
   const nameOf = (pid: string) => state.players[pid]?.name ?? pid;
 
-  const trackedSeconds = p.trackedSeconds + (p.online && p.sessionStart ? (now - Date.parse(p.sessionStart)) / 1000 : 0);
+  const trackedSeconds = trackedSecondsOf(p, now);
+  // Spielzeit: API-Wert, außerhalb der Top 10 ab dem letzten API-Wert aus Join/Leave weitergerechnet
+  const playtime = playtimeOf(p, now);
   const twitchLogin = p.live?.login ?? p.twitchLogin;
   const twitchUrl = twitchLogin ? `https://www.twitch.tv/${encodeURIComponent(twitchLogin)}` : null;
   const streamSeconds = (p.streamOnServerSeconds ?? 0) + (p.streamOffServerSeconds ?? 0);
@@ -215,9 +218,14 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
           <dl className="grid st-figs st-figs--6">
             {BOARD_KEYS.map((k) => {
               const IconCmp = Icon[BOARD_ICON[k]];
-              const v = p.stats[k];
-              // Spielzeit gibt es von der API nur für die Top 10 – sonst die vom Tracker gemessene Online-Zeit zeigen
-              const fromTracker = k === "playtimeSeconds" && v === undefined && trackedSeconds > 0;
+              // Spielzeit gibt es von der API nur für die Top 10 – sonst geschätzt bzw. die vom Tracker gemessene Online-Zeit
+              const isPlaytime = k === "playtimeSeconds";
+              const v = isPlaytime ? (playtime.seconds > 0 ? playtime.seconds : undefined) : p.stats[k];
+              const fromTracker = isPlaytime && playtime.source !== "api" && v !== undefined;
+              const trackerTitle =
+                playtime.source === "estimate"
+                  ? "Von der API gibt es Spielzeit nur für die Top 10. Das hier ist der letzte API-Wert plus die seitdem vom Tracker gemessene Online-Zeit."
+                  : "Von der API gibt es Spielzeit nur für die Top 10. Das hier ist die vom Tracker seit seinem Start gemessene Online-Zeit.";
               return (
                 <div key={k} className="box st-fig st-fig--spark" data-tone={TONE[k]}>
                   <dt className="pstat">
@@ -235,15 +243,15 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                           </span>
                         )}
                         {fromTracker && (
-                          <span className="tag" data-tone="ink" title="Von der API gibt es Spielzeit nur für die Top 10. Das hier ist die vom Tracker seit seinem Start gemessene Online-Zeit.">
-                            Tracker
+                          <span className="tag" data-tone="ink" title={trackerTitle}>
+                            {playtime.source === "estimate" ? "geschätzt" : "Tracker"}
                           </span>
                         )}
                       </span>
                     )}
                   </dt>
                   <Link className="pstat__val" href={graphHref(k)} tabIndex={-1} aria-hidden="true">
-                    <FigValue>{v !== undefined ? boardValue(k, v) : fromTracker ? duration(trackedSeconds) : "–"}</FigValue>
+                    <FigValue>{v !== undefined ? boardValue(k, v) : "–"}</FigValue>
                   </Link>
                   <StatSpark points={history} k={k} label={LABEL[k]} href={graphHref(k)} />
                 </div>

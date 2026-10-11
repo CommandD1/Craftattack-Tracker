@@ -1,6 +1,7 @@
 import "server-only";
 import { appendEvents, getState, recordPlayerPoints, saveState } from "./store";
 import { fetchLiveStreams, TWITCH_ENABLED, type TwitchStream } from "./twitch";
+import { trackedSecondsOf } from "./playtime";
 import {
   BOARD_KEYS,
   type ApiExtPlayer,
@@ -65,7 +66,7 @@ function endAfk(ps: PlayerState) {
 }
 
 /** Wartezeit, bevor nicht zuordenbare Tode als „unbekannt“ gemeldet werden */
-const UNKNOWN_DEATH_GRACE_MS = Number(process.env.CA_UNKNOWN_DEATH_GRACE_MS ?? 10 * 60_000);
+export const UNKNOWN_DEATH_GRACE_MS = Number(process.env.CA_UNKNOWN_DEATH_GRACE_MS ?? 10 * 60_000);
 
 /** Mindest-Delta, ab dem ein Zähler-Ereignis entsteht (sonst zu viel Rauschen) */
 const MIN_DELTA: Partial<Record<BoardKey, number>> = {
@@ -224,6 +225,7 @@ function ensurePlayer(
       lastSeen: now,
       sessionStart: null,
       trackedSeconds: 0,
+      playtimeTracked: null,
       sessions: 0,
       liveSince: null,
       peakViewers: 0,
@@ -463,6 +465,8 @@ export function diffSnapshot(
       const known = ps.stats[key];
       ps.stats[key] = entry.value;
       (freshStats.get(entry.id) ?? freshStats.set(entry.id, new Set()).get(entry.id)!).add(key);
+      // Frische Spielzeit: Bezugspunkt merken, damit sie außerhalb der Top 10 aus Join/Leave weitergerechnet werden kann
+      if (key === "playtimeSeconds") ps.playtimeTracked = trackedSecondsOf(ps, nowDate.getTime());
       // Strecke gestiegen (oder erster Wert): der Spieler bewegt sich
       if (key === "distance" && (known === undefined || entry.value > known)) ps.lastMoveAt = now;
       const type = COUNTER_EVENTS[key];

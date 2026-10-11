@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { duration, headUrl, num, ago } from "@/lib/format";
+import { playtimeOf, trackedSecondsOf } from "@/lib/playtime";
 
 // Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
 export const instant = false;
@@ -29,8 +30,7 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
     const av = a.live?.viewers ?? -1;
     const bv = b.live?.viewers ?? -1;
     if (av !== bv) return bv - av;
-    const pt = (p: typeof a) => p.stats.playtimeSeconds ?? p.trackedSeconds + (p.online && p.sessionStart ? (now - Date.parse(p.sessionStart)) / 1000 : 0);
-    return pt(b) - pt(a) || a.name.localeCompare(b.name, "de");
+    return playtimeOf(b, now).seconds - playtimeOf(a, now).seconds || a.name.localeCompare(b.name, "de");
   });
 
   const counts = {
@@ -106,12 +106,19 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
                     </div>
                     <dl className="player-card__stats">
                       <dt>Spielzeit</dt>
-                      <dd className="num">{p.stats.playtimeSeconds !== undefined ? duration(p.stats.playtimeSeconds) : <span title="Nicht in der Top 10 der API – vom Tracker gemessene Online-Zeit">{duration(p.trackedSeconds + (p.online && p.sessionStart ? (now - Date.parse(p.sessionStart)) / 1000 : 0))}*</span>}</dd>
+                      <dd className="num">
+                        {(() => {
+                          const pt = playtimeOf(p, now);
+                          if (pt.source === "api") return duration(pt.seconds);
+                          const title = pt.source === "estimate" ? "Nicht mehr in der Top 10 der API – letzter API-Wert plus seitdem vom Tracker gemessene Online-Zeit" : "Nicht in der Top 10 der API – vom Tracker gemessene Online-Zeit";
+                          return <span title={title}>{duration(pt.seconds)}*</span>;
+                        })()}
+                      </dd>
                       <dt>Tode</dt>
                       <dd className="num">{p.stats.deaths !== undefined ? num(p.stats.deaths) : "–"}</dd>
                       <dt title="Vom Tracker gemessen, für alle Spieler">Online (Tracker)</dt>
                       <dd className="num">
-                        {duration(p.trackedSeconds + (p.online && p.sessionStart ? (now - Date.parse(p.sessionStart)) / 1000 : 0))}
+                        {duration(trackedSecondsOf(p, now))}
                       </dd>
                       <dt>Sessions</dt>
                       <dd className="num">{num(p.sessions)}</dd>

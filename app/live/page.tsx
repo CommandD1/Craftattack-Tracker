@@ -23,6 +23,9 @@ const RANGES: { key: string; label: string; hours: number | null }[] = [
   { key: "alle", label: "Alles", hours: null },
 ];
 
+/** Zeitraum der Live-Seite → Zeitraum des Graph-Baukastens (der kennt kein 12 h) */
+const GRAPH_ZEIT: Record<string, string> = { "1h": "1h", "6h": "6h", "12h": "24h", "24h": "24h", "7d": "7d", alle: "alle" };
+
 export default function Page(props: PageProps<"/live">) {
   return <Live searchParams={props.searchParams} />;
 }
@@ -92,13 +95,21 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
               <FigValue>{num(live.filter((p) => p.online).length)}</FigValue>
             </div>
           </dl>
-          <div className="box spark-card" data-tone="white" style={{ marginTop: 24 }}>
+          <Link
+            className="box spark-card spark-card--link"
+            data-tone="white"
+            style={{ marginTop: 24 }}
+            href={`/statistik?metric=viewers&zeit=${GRAPH_ZEIT[range.key] ?? "6h"}#graph`}
+            title="Zuschauer-Graph in der Statistik öffnen"
+          >
             <div className="spark-card__head">
-              <span className="eyebrow">Zuschauer auf dem Server · {rangeLabel}</span>
+              <span className="eyebrow">
+                Zuschauer auf dem Server · {rangeLabel} <span className="pstat__go" aria-hidden="true">↗</span>
+              </span>
               <span className="num spark-card__val">{num(viewers)}</span>
             </div>
             <Sparkline points={hist} width={900} height={120} label="Zuschauer" />
-          </div>
+          </Link>
         </div>
       </section>
 

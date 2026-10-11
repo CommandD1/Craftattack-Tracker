@@ -99,8 +99,22 @@ async function firstDataAt(): Promise<number | null> {
   });
 }
 
-/** Zeitspanne [von, bis] in ms; AFK-Phasen tragen optional die Art (AFK-Farm) */
-export type Span = [a: number, b: number, kind?: AfkKind];
+/** Einzelheiten einer AFK-Farm innerhalb einer AFK-Phase (für den rückwirkenden Nachtrag der Farm-Ereignisse) */
+export interface AfkFarmInfo {
+  /** Zeitpunkt (ms), an dem die Schwelle AFK_FARM_MIN erstmals erreicht war */
+  at: number;
+  /** Gefarmte Menge der Art zu diesem Zeitpunkt */
+  atValue: number;
+  /** Gefarmte Menge der Art am Ende der Phase */
+  value: number;
+  mobs: number;
+  blocks: number;
+  /** Phase endete mit dem Leave (oder dem letzten Gesehen-Zeitpunkt) statt mit Bewegung */
+  byLeave: boolean;
+}
+
+/** Zeitspanne [von, bis] in ms; AFK-Phasen tragen optional die Art (AFK-Farm) und deren Einzelheiten */
+export type Span = [a: number, b: number, kind?: AfkKind, farm?: AfkFarmInfo];
 
 function clip(sessions: StoredSession[], from: number, to: number, now: number): Map<string, Span[]> {
   const out = new Map<string, Span[]>();
@@ -168,12 +182,12 @@ export function spanSeconds(spans: Span[], kind?: AfkKind | "none"): number {
  */
 function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, state: TrackerState): Map<string, Span[]> {
   const out = new Map<string, Span[]>();
-  const add = (id: string, a: number, b: number, kind: AfkKind | undefined) => {
+  const add = (id: string, a: number, b: number, kind: AfkKind | undefined, farm?: AfkFarmInfo) => {
     const x = Math.max(from, a);
     const y = Math.min(to, b);
     if (y - x <= 0) return;
     const l = out.get(id) ?? [];
-    l.push(kind ? [x, y, kind] : [x, y]);
+    l.push(kind && farm ? [x, y, kind, farm] : kind ? [x, y, kind] : [x, y]);
     out.set(id, l);
   };
   let cur: string | null = null;
@@ -185,23 +199,33 @@ function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, stat
   let lastBlocks: number | null = null;
   let moveMobs: number | null = null;
   let moveBlocks: number | null = null;
+  // Erstes Erreichen der Farm-Schwelle innerhalb der laufenden Stillstandsphase
+  let farmAt: { at: number; value: number } | null = null;
+  const gained = (now: number | null, at: number | null) => (now === null || at === null ? 0 : Math.max(0, now - at));
   const kindOf = (mobs: number | null, blocks: number | null): AfkKind | undefined =>
     mobs !== null && moveMobs !== null && mobs - moveMobs >= AFK_FARM_MIN ? "mobs" : blocks !== null && moveBlocks !== null && blocks - moveBlocks >= AFK_FARM_MIN ? "blocks" : undefined;
-  const close = (id: string, t: number, mobs = lastMobs, blocks = lastBlocks) => {
-    if (wasOnline && lastDist !== null && t - lastMove >= AFK_MS) add(id, lastMove, t, kindOf(mobs, blocks));
+  const close = (id: string, t: number, byLeave = false, mobs = lastMobs, blocks = lastBlocks) => {
+    if (!(wasOnline && lastDist !== null && t - lastMove >= AFK_MS)) return;
+    const kind = kindOf(mobs, blocks);
+    if (!kind) return add(id, lastMove, t, undefined);
+    const m = gained(mobs, moveMobs);
+    const b = gained(blocks, moveBlocks);
+    const value = kind === "mobs" ? m : b;
+    add(id, lastMove, t, kind, { at: farmAt?.at ?? t, atValue: farmAt?.value ?? value, value, mobs: m, blocks: b, byLeave });
   };
   const finish = (id: string) => {
     const p = state.players[id];
     const mobs = p?.stats.mobsKilled ?? lastMobs;
     const blocks = p?.stats.blocksBroken ?? lastBlocks;
-    if (p?.online) close(id, Math.min(now, to), mobs, blocks);
-    else if (wasOnline) close(id, Date.parse(p?.lastSeen ?? new Date(now).toISOString()), mobs, blocks);
+    if (p?.online) close(id, Math.min(now, to), false, mobs, blocks);
+    else if (wasOnline) close(id, Date.parse(p?.lastSeen ?? new Date(now).toISOString()), true, mobs, blocks);
   };
   const restart = (t: number, d: number | null) => {
     lastMove = t;
     lastDist = d;
     moveMobs = lastMobs;
     moveBlocks = lastBlocks;
+    farmAt = null;
   };
   let lastAt = 0;
   for (const r of rows) {
@@ -217,6 +241,9 @@ function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, stat
       lastAt = t;
       continue;
     }
+    // Zähler des vorigen Punkts (Stand, als der Spieler zuletzt nachweislich stillstand)
+    const prevMobs = lastMobs;
+    const prevBlocks = lastBlocks;
     if (r.mobs !== null) lastMobs = Number(r.mobs);
     if (r.blocks !== null) lastBlocks = Number(r.blocks);
     const prevAt = lastAt;
@@ -225,13 +252,13 @@ function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, stat
     // Eine bis dahin laufende Phase endet mit dem letzten belegten Punkt; die Bewegungsuhr startet erst mit dem
     // nächsten frischen Streckenwert neu.
     if (t - prevAt > AFK_GAP_MS || (r.online && d === null)) {
-      close(cur, prevAt);
+      close(cur, prevAt, false, prevMobs, prevBlocks);
       wasOnline = r.online;
       restart(t, d);
       continue;
     }
     if (!r.online) {
-      if (wasOnline) close(cur, t);
+      if (wasOnline) close(cur, t, true);
       wasOnline = false;
       restart(t, d);
       continue;
@@ -243,8 +270,14 @@ function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, stat
       continue;
     }
     if (d !== null && (lastDist === null || d > lastDist)) {
-      close(cur, t);
+      // Bewegung irgendwann zwischen dem vorigen Punkt und jetzt: Stillstand ist nur bis zum vorigen Punkt belegt.
+      // (Sonst würde jede Tracker-Pause ≥ AFK_MS, z. B. ein Deploy, bei laufenden Spielern eine AFK-Phase erzeugen.)
+      close(cur, prevAt, false, prevMobs, prevBlocks);
       restart(t, d);
+    } else if (farmAt === null && lastDist !== null && t - lastMove >= AFK_MS) {
+      // Steht weiter still: Farm-Schwelle erstmals erreicht? (Zeitpunkt für das Start-Ereignis der AFK-Farm)
+      const k = kindOf(lastMobs, lastBlocks);
+      if (k) farmAt = { at: t, value: k === "mobs" ? gained(lastMobs, moveMobs) : gained(lastBlocks, moveBlocks) };
     }
     if (d !== null) lastDist = d;
   }
@@ -256,21 +289,25 @@ function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, stat
 /**
  * AFK-Phasen aller Spieler aus dem Spielerverlauf: online, aber die Strecke steigt mindestens AFK_MS lang nicht.
  * Funktioniert damit auch rückwirkend für Tage vor Einführung der AFK-Erkennung. Die Phase beginnt mit der
- * letzten Bewegung und endet mit der nächsten Bewegung bzw. dem Leave; läuft sie noch, endet sie bei `now`.
+ * letzten Bewegung und endet mit dem letzten Punkt vor der nächsten Bewegung bzw. mit dem Leave; läuft sie noch,
+ * endet sie bei `now`.
  */
 export async function getAfkSpans(from: number, to: number, now: number): Promise<Map<string, Span[]>> {
-  return cached(`afk:${from}:${to}`, 60_000, async () => {
-    await ensureLoaded();
-    const db = await getDb();
-    // Vorlauf, damit die letzte Bewegung vor `from` bekannt ist
-    const rows = (
-      await db.query<AfkRow>(`SELECT ${AFK_COLS} FROM player_history WHERE at >= $1 AND at < $2 ORDER BY player, at`, [
-        new Date(from - 12 * 3600_000),
-        new Date(to),
-      ])
-    ).rows;
-    return afkFromRows(rows, from, to, now, await getState());
-  });
+  return cached(`afk:${from}:${to}`, 60_000, () => loadAfkSpans(from, to, now));
+}
+
+/** Wie `getAfkSpans`, aber ohne Cache und ohne Request-Kontext (auch beim Prozessstart nutzbar). */
+export async function loadAfkSpans(from: number, to: number, now: number): Promise<Map<string, Span[]>> {
+  await ensureLoaded();
+  const db = await getDb();
+  // Vorlauf, damit die letzte Bewegung vor `from` bekannt ist
+  const rows = (
+    await db.query<AfkRow>(`SELECT ${AFK_COLS} FROM player_history WHERE at >= $1 AND at < $2 ORDER BY player, at`, [
+      new Date(from - 12 * 3600_000),
+      new Date(to),
+    ])
+  ).rows;
+  return afkFromRows(rows, from, to, now, await getState());
 }
 
 /** AFK-Phasen aller Spieler über die gesamte Laufzeit (für Bestenliste und Graph). */

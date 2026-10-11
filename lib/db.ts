@@ -107,6 +107,9 @@ async function migrate(db: Db) {
   await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS afk_farm text`);
   await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS afk_mobs_at integer`);
   await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS afk_blocks_at integer`);
+  await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS playtime_tracked integer`);
+  // Stand der einmaligen Verlaufs-Korrekturen (siehe lib/backfill.ts)
+  await db.query(`ALTER TABLE tracker_meta ADD COLUMN IF NOT EXISTS history_fix integer NOT NULL DEFAULT 0`);
   await db.query(`CREATE INDEX IF NOT EXISTS events_at_idx ON events (at)`);
   await db.query(`CREATE INDEX IF NOT EXISTS events_player_at_idx ON events (player, at)`);
   await db.query(`CREATE INDEX IF NOT EXISTS events_type_at_idx ON events (type, at)`);

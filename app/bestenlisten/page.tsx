@@ -13,7 +13,7 @@ export const instant = false;
 export const metadata: Metadata = { title: "Bestenlisten" };
 
 const BOARDS: Record<BoardKey | "tracked" | "afk" | "afkmobs" | "afkblocks", { title: string; sub: string; tone: string }> = {
-  playtimeSeconds: { title: "Dauerzocker", sub: "Spielzeit laut API", tone: "sky" },
+  playtimeSeconds: { title: "Dauerzocker", sub: "Spielzeit laut API, außerhalb der Top 10 aus Join/Leave weitergerechnet", tone: "sky" },
   diamonds: { title: "Diamantenbank", sub: "Diamanten", tone: "diamond" },
   deaths: { title: "Friedhof", sub: "Tode", tone: "redstone" },
   blocksBroken: { title: "Abrissbirne", sub: "Abgebaute Blöcke", tone: "gold" },

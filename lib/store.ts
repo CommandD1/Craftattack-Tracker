@@ -1,6 +1,7 @@
 import "server-only";
 import { connection } from "next/server";
-import { getDb } from "./db";
+import { getDb, type Db } from "./db";
+import { playtimeOf } from "./playtime";
 import type { BoardKey, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind } from "./types";
 
 const MAX_EVENTS_IN_MEMORY = 20000;
@@ -87,6 +88,7 @@ interface PlayerRow {
   afk_farm: AfkKind | null;
   afk_mobs_at: number | null;
   afk_blocks_at: number | null;
+  playtime_tracked: number | null;
 }
 
 interface EventRow {
@@ -125,6 +127,7 @@ function rowToPlayer(r: PlayerRow): PlayerState {
     lastSeen: iso(r.last_seen)!,
     sessionStart: iso(r.session_start),
     trackedSeconds: r.tracked_seconds,
+    playtimeTracked: r.playtime_tracked ?? null,
     sessions: r.sessions,
     liveSince: iso(r.live_since),
     peakViewers: r.peak_viewers,
@@ -194,6 +197,13 @@ async function loadFromDb() {
   ).rows;
   state.history = hist.reverse().map(rowToPoint);
   store.historySaved = state.history.length;
+
+  // Altes Sammel-Ereignis „afk_farm“ (bis 11.10.2026) in die heutigen Start-Ereignisse je Art überführen;
+  // das passende Ende trägt der Nachtrag (lib/backfill.ts) aus dem Spielerverlauf nach.
+  await db.query(
+    `UPDATE events SET type = CASE WHEN meta->>'kind' = 'blocks' THEN 'afk_blocks_start' ELSE 'afk_mobs_start' END
+      WHERE type = 'afk_farm'`,
+  );
 
   const events = (
     await db.query<EventRow>(`SELECT * FROM events ORDER BY at DESC, id DESC LIMIT $1`, [MAX_EVENTS_IN_MEMORY])
@@ -274,8 +284,8 @@ export async function saveState(state: TrackerState) {
       `INSERT INTO players (id, name, uuid, online, live, stats, first_seen, last_seen, session_start,
                             tracked_seconds, sessions, live_since, peak_viewers, longest_session, ranks, twitch_login,
                             peak_viewers_on_server, stream_on_server_seconds, stream_off_server_seconds,
-                            last_move_at, afk_since, afk_seconds, afk_farm, afk_mobs_at, afk_blocks_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+                            last_move_at, afk_since, afk_seconds, afk_farm, afk_mobs_at, afk_blocks_at, playtime_tracked)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name, uuid = EXCLUDED.uuid, online = EXCLUDED.online, live = EXCLUDED.live,
          stats = EXCLUDED.stats, first_seen = EXCLUDED.first_seen, last_seen = EXCLUDED.last_seen,
@@ -285,7 +295,8 @@ export async function saveState(state: TrackerState) {
          twitch_login = EXCLUDED.twitch_login, peak_viewers_on_server = EXCLUDED.peak_viewers_on_server,
          stream_on_server_seconds = EXCLUDED.stream_on_server_seconds, stream_off_server_seconds = EXCLUDED.stream_off_server_seconds,
          last_move_at = EXCLUDED.last_move_at, afk_since = EXCLUDED.afk_since, afk_seconds = EXCLUDED.afk_seconds,
-         afk_farm = EXCLUDED.afk_farm, afk_mobs_at = EXCLUDED.afk_mobs_at, afk_blocks_at = EXCLUDED.afk_blocks_at`,
+         afk_farm = EXCLUDED.afk_farm, afk_mobs_at = EXCLUDED.afk_mobs_at, afk_blocks_at = EXCLUDED.afk_blocks_at,
+         playtime_tracked = EXCLUDED.playtime_tracked`,
       [
         p.id,
         p.name,
@@ -312,6 +323,7 @@ export async function saveState(state: TrackerState) {
         p.afkFarm ?? null,
         p.afkMobsAt ?? null,
         p.afkBlocksAt ?? null,
+        p.playtimeTracked === null || p.playtimeTracked === undefined ? null : Math.round(p.playtimeTracked),
       ],
     );
   }
@@ -337,23 +349,85 @@ export async function appendEvents(events: TrackerEvent[]) {
   if (store.events.length > MAX_EVENTS_IN_MEMORY) {
     store.events = store.events.slice(-MAX_EVENTS_IN_MEMORY);
   }
+  for (const e of events) await insertEventRow(db, e);
+}
+
+/** Fügt ein Ereignis in die DB ein; false, wenn es die ID schon gab. */
+async function insertEventRow(db: Db, e: TrackerEvent): Promise<boolean> {
+  const r = await db.query(
+    `INSERT INTO events (id, at, type, player, player_name, uuid, "where", delta, value, meta)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (id) DO NOTHING RETURNING id`,
+    [
+      e.id,
+      toDate(e.at),
+      e.type,
+      e.player ?? null,
+      e.playerName ?? null,
+      e.uuid ?? null,
+      e.where,
+      e.delta ?? null,
+      e.value ?? null,
+      e.meta ? JSON.stringify(e.meta) : null,
+    ],
+  );
+  return r.rows.length > 0;
+}
+
+/**
+ * Trägt rückwirkend erzeugte Ereignisse (Zeitpunkt in der Vergangenheit) ein. Über ihre feste ID sind sie
+ * idempotent; neu eingefügte werden im Speicher zeitlich einsortiert. Liefert die Zahl der neuen Ereignisse.
+ */
+export async function insertPastEvents(events: TrackerEvent[]): Promise<number> {
+  if (events.length === 0) return 0;
+  await ensureLoaded();
+  const store = g();
+  const db = await getDb();
+  let added = 0;
   for (const e of events) {
-    await db.query(
-      `INSERT INTO events (id, at, type, player, player_name, uuid, "where", delta, value, meta)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (id) DO NOTHING`,
-      [
-        e.id,
-        toDate(e.at),
-        e.type,
-        e.player ?? null,
-        e.playerName ?? null,
-        e.uuid ?? null,
-        e.where,
-        e.delta ?? null,
-        e.value ?? null,
-        e.meta ? JSON.stringify(e.meta) : null,
-      ],
-    );
+    if (await insertEventRow(db, e)) {
+      added++;
+      store.events.push(e);
+    }
+  }
+  if (added > 0) {
+    store.events.sort((x, y) => Date.parse(x.at) - Date.parse(y.at) || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+    if (store.events.length > MAX_EVENTS_IN_MEMORY) store.events = store.events.slice(-MAX_EVENTS_IN_MEMORY);
+    if (store.state) store.state.eventCount += added;
+  }
+  return added;
+}
+
+/** Entfernt alle rückwirkend nachgetragenen Ereignisse (meta.backfilled) aus DB und Speicher, z. B. vor einem Neuaufbau. */
+export async function deleteBackfilledEvents(): Promise<number> {
+  await ensureLoaded();
+  const store = g();
+  const db = await getDb();
+  const gone = (await db.query<{ id: string }>(`DELETE FROM events WHERE meta->>'backfilled' = 'true' RETURNING id`)).rows.length;
+  if (gone > 0) {
+    store.events = store.events.filter((e) => e.meta?.backfilled !== true);
+    if (store.state) store.state.eventCount = Math.max(0, store.state.eventCount - gone);
+  }
+  return gone;
+}
+
+/** Ordnet ein bisher spielerloses Ereignis (z. B. unbekannter Tod) nachträglich einem Spieler zu – in DB und Speicher. */
+export async function assignEventPlayer(id: string, p: { id: string; name: string; uuid: string }, patch: NonNullable<TrackerEvent["meta"]>) {
+  await ensureLoaded();
+  const db = await getDb();
+  await db.query(
+    `UPDATE events SET player = $2, player_name = $3, uuid = $4, value = NULL,
+            meta = (COALESCE(meta, '{}'::jsonb) - 'unknown') || $5::jsonb WHERE id = $1`,
+    [id, p.id, p.name, p.uuid, JSON.stringify(patch)],
+  );
+  const e = g().events.find((x) => x.id === id);
+  if (e) {
+    e.player = p.id;
+    e.playerName = p.name;
+    e.uuid = p.uuid;
+    delete e.value;
+    const meta = { ...(e.meta ?? {}), ...patch };
+    delete meta.unknown;
+    e.meta = meta;
   }
 }
 
@@ -391,7 +465,8 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
       at,
       online: p.online,
       viewers: p.live ? p.live.viewers : null,
-      playtimeSeconds: p.stats.playtimeSeconds ?? null,
+      // Spielzeit außerhalb der Top 10: letzter API-Wert plus seitdem gemessene Online-Zeit (statt des stehenden Werts)
+      playtimeSeconds: p.stats.playtimeSeconds === undefined ? null : isFresh("playtimeSeconds") ? p.stats.playtimeSeconds : Math.round(playtimeOf(p, t).seconds),
       deaths: p.stats.deaths ?? null,
       diamonds: p.stats.diamonds ?? null,
       blocksBroken: isFresh("blocksBroken") ? (p.stats.blocksBroken ?? null) : null,

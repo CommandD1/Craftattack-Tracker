@@ -140,6 +140,11 @@ export interface PlayerState {
   sessionStart: string | null;
   /** Summe abgeschlossener Sessions in Sekunden (vom Tracker gemessen) */
   trackedSeconds: number;
+  /**
+   * Stand der gemessenen Online-Zeit (inkl. laufender Session), als die API zuletzt eine frische Spielzeit
+   * lieferte. Spielzeit außerhalb der Top 10 = letzter API-Wert + (Online-Zeit jetzt − dieser Stand). null = unbekannt.
+   */
+  playtimeTracked: number | null;
   sessions: number;
   liveSince: string | null;
   peakViewers: number;
