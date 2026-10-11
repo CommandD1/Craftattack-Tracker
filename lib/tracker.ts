@@ -134,9 +134,22 @@ export function extLogins(state: TrackerState, stats: ApiStats, ids: Iterable<st
   for (const l of stats.live ?? []) liveLogin.set(l.id, l.login);
   for (const p of stats.online) if (p.live?.login) liveLogin.set(p.id, p.live.login);
   const logins = new Set<string>();
-  for (const id of ids) logins.add(state.players[id]?.twitchLogin ?? liveLogin.get(id) ?? id);
+  for (const id of ids) logins.add(state.players[id]?.twitchLogin ?? liveLogin.get(id) ?? KNOWN_LOGINS[id] ?? id);
   return logins;
 }
+
+/**
+ * Feste Zuordnung Spieler-ID → Twitch-Login für Spieler, deren Login von der ID abweicht und die der
+ * Tracker nicht von selbst lernt (weil sie selten streamen). Quelle: Teilnehmerseite craftattack.one.
+ */
+export const KNOWN_LOGINS: Record<string, string> = {
+  balui: "baluilp",
+  caravas: "caravasyt",
+  larslp: "larslp_live",
+  syou: "syoutv",
+  thejocraft: "thejocraft_live",
+  noway4u: "noway4u_sir",
+};
 
 const newPlayers = new Set<string>();
 
@@ -173,6 +186,7 @@ function ensurePlayer(
   }
   ps.name = p.name || ps.name;
   ps.uuid = p.uuid || ps.uuid;
+  if (!ps.twitchLogin && KNOWN_LOGINS[ps.id]) ps.twitchLogin = KNOWN_LOGINS[ps.id];
   return ps;
 }
 
