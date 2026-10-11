@@ -34,8 +34,6 @@ const COUNTER_EVENTS: Partial<Record<BoardKey, EventType>> = {
 
 /** Wartezeit, bevor nicht zuordenbare Tode als „unbekannt“ gemeldet werden */
 const UNKNOWN_DEATH_GRACE_MS = Number(process.env.CA_UNKNOWN_DEATH_GRACE_MS ?? 10 * 60_000);
-/** „Unbekannt“-Tode überhaupt als Ereignis melden? Standard: nein, sie werden nur still verrechnet. */
-const REPORT_UNKNOWN_DEATHS = process.env.CA_UNKNOWN_DEATHS === "1";
 
 /** Mindest-Delta, ab dem ein Zähler-Ereignis entsteht (sonst zu viel Rauschen) */
 const MIN_DELTA: Partial<Record<BoardKey, number>> = {
@@ -442,7 +440,7 @@ export function diffSnapshot(
     if (state.pendingDeaths === 0) state.pendingSince = null;
     else if (!state.pendingSince) state.pendingSince = now;
     else if (nowDate.getTime() - Date.parse(state.pendingSince) >= UNKNOWN_DEATH_GRACE_MS) {
-      if (REPORT_UNKNOWN_DEATHS) push({
+      push({
         type: "death",
         where: "server",
         delta: state.pendingDeaths,
