@@ -150,6 +150,9 @@ const AFK_COLS = "player, at, online, distance, mobs_killed AS mobs, blocks_brok
 
 export const AFK_KIND_LABEL: Record<AfkKind, string> = { mobs: "Mobs farmen", blocks: "Blöcke farmen" };
 
+/** Liegen zwei Verlaufspunkte weiter auseinander, hat der Tracker nichts aufgezeichnet (sonst alle 5 Min ein Punkt) */
+const AFK_GAP_MS = 15 * 60_000;
+
 /** Sekunden aller Phasen, optional nur einer Art („none“ = AFK ohne Farm) */
 export function spanSeconds(spans: Span[], kind?: AfkKind | "none"): number {
   let sum = 0;
@@ -200,6 +203,7 @@ function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, stat
     moveMobs = lastMobs;
     moveBlocks = lastBlocks;
   };
+  let lastAt = 0;
   for (const r of rows) {
     const t = new Date(r.at).getTime();
     const d = r.distance === null ? null : Number(r.distance);
@@ -210,10 +214,22 @@ function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, stat
       lastBlocks = r.blocks === null ? null : Number(r.blocks);
       restart(t, d);
       wasOnline = r.online;
+      lastAt = t;
       continue;
     }
     if (r.mobs !== null) lastMobs = Number(r.mobs);
     if (r.blocks !== null) lastBlocks = Number(r.blocks);
+    const prevAt = lastAt;
+    lastAt = t;
+    // Datenlücke (Tracker stand still) oder keine Strecke bekannt: nichts über Bewegung aussagbar, also kein AFK.
+    // Eine bis dahin laufende Phase endet mit dem letzten belegten Punkt; die Bewegungsuhr startet erst mit dem
+    // nächsten frischen Streckenwert neu.
+    if (t - prevAt > AFK_GAP_MS || (r.online && d === null)) {
+      close(cur, prevAt);
+      wasOnline = r.online;
+      restart(t, d);
+      continue;
+    }
     if (!r.online) {
       if (wasOnline) close(cur, t);
       wasOnline = false;

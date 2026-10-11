@@ -1,7 +1,7 @@
 import "server-only";
 import { connection } from "next/server";
 import { getDb } from "./db";
-import type { PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind } from "./types";
+import type { BoardKey, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind } from "./types";
 
 const MAX_EVENTS_IN_MEMORY = 20000;
 const MAX_HISTORY_POINTS = 2880; // 24 h bei 30 s
@@ -374,13 +374,19 @@ function pointSignature(p: PlayerPoint) {
 }
 
 /** Schreibt pro Spieler einen Punkt, wenn sich etwas geändert hat oder der letzte Punkt zu alt ist. */
-export async function recordPlayerPoints(players: PlayerState[], at: string) {
+/**
+ * Einen Messpunkt je Spieler anhängen. `fresh` sagt, welche Zähler in dieser Abfrage wirklich geliefert wurden:
+ * Strecke, Mobs und Blöcke werden sonst als unbekannt (null) gespeichert, damit eine Datenlücke später nicht
+ * wie Stillstand aussieht (AFK-Erkennung).
+ */
+export async function recordPlayerPoints(players: PlayerState[], at: string, fresh?: Map<string, Set<BoardKey>>) {
   await ensureLoaded();
   const db = await getDb();
   const t = Date.parse(at);
   for (const p of players) {
     const hasData = p.online || p.live || Object.keys(p.stats).length > 0;
     if (!hasData) continue;
+    const isFresh = (key: BoardKey) => !fresh || (fresh.get(p.id)?.has(key) ?? false);
     const point: PlayerPoint = {
       at,
       online: p.online,
@@ -388,9 +394,9 @@ export async function recordPlayerPoints(players: PlayerState[], at: string) {
       playtimeSeconds: p.stats.playtimeSeconds ?? null,
       deaths: p.stats.deaths ?? null,
       diamonds: p.stats.diamonds ?? null,
-      blocksBroken: p.stats.blocksBroken ?? null,
-      mobsKilled: p.stats.mobsKilled ?? null,
-      distance: p.stats.distance ?? null,
+      blocksBroken: isFresh("blocksBroken") ? (p.stats.blocksBroken ?? null) : null,
+      mobsKilled: isFresh("mobsKilled") ? (p.stats.mobsKilled ?? null) : null,
+      distance: isFresh("distance") ? (p.stats.distance ?? null) : null,
     };
     const sig = pointSignature(point);
     const last = lastPoint.get(p.id);

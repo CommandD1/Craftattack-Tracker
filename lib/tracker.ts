@@ -79,6 +79,12 @@ const BOARD_LABEL: Record<BoardKey, string> = {
 };
 
 let seq = 0;
+/**
+ * Welche Zählerwerte in der letzten Abfrage wirklich frisch angekommen sind (Top-10 oder Einzelstatistik).
+ * Fehlt ein Spieler in der ext-Antwort, bleibt sein alter Wert im State stehen – der darf dann weder als
+ * Stillstand (AFK) zählen noch als unveränderte Strecke im Verlauf landen.
+ */
+export let freshStats = new Map<string, Set<BoardKey>>();
 function eventId(at: string) {
   seq = (seq + 1) % 100000;
   return `${Date.parse(at).toString(36)}-${seq.toString(36)}`;
@@ -417,6 +423,7 @@ export function diffSnapshot(
   }
 
   // --- Boards: Zähler-Deltas
+  freshStats = new Map();
   for (const key of BOARD_KEYS) {
     const list = stats.boards?.[key] ?? [];
     const prevList = state.latest?.boards?.[key] ?? [];
@@ -439,6 +446,7 @@ export function diffSnapshot(
       const ps = ensurePlayer(state, entry, now);
       const known = ps.stats[key];
       ps.stats[key] = entry.value;
+      (freshStats.get(entry.id) ?? freshStats.set(entry.id, new Set()).get(entry.id)!).add(key);
       // Strecke gestiegen (oder erster Wert): der Spieler bewegt sich
       if (key === "distance" && (known === undefined || entry.value > known)) ps.lastMoveAt = now;
       const type = COUNTER_EVENTS[key];
@@ -498,6 +506,12 @@ export function diffSnapshot(
   if (!first) {
     for (const ps of Object.values(state.players)) {
       if (!ps.online || ps.stats.distance === undefined) continue;
+      // Keine frische Strecke in dieser Abfrage (ext fehlgeschlagen/unbekannt): nichts bewerten. Läuft keine
+      // AFK-Phase, startet die Bewegungsuhr neu, damit die Datenlücke nicht als Stillstand zählt.
+      if (!freshStats.get(ps.id)?.has("distance")) {
+        if (!ps.afkSince) ps.lastMoveAt = now;
+        continue;
+      }
       // War schon online, bevor es die Bewegungsuhr gab (oder kam mit unbekannter Strecke): jetzt starten
       if (!ps.lastMoveAt) {
         ps.lastMoveAt = now;
@@ -651,7 +665,7 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       state.lastError = null;
       await appendEvents(events);
       await saveState(state);
-      await recordPlayerPoints(Object.values(state.players), now.toISOString());
+      await recordPlayerPoints(Object.values(state.players), now.toISOString(), freshStats);
       return { ok: true, events: events.length };
     } catch (err) {
       state.lastError = err instanceof Error ? err.message : String(err);
