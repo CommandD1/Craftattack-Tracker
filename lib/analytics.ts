@@ -515,3 +515,68 @@ export async function getTrackedRanksBefore(hoursAgo = 24): Promise<Record<strin
     return Object.fromEntries(rows.map((r, i) => [r.id, i + 1]));
   });
 }
+
+/* ---------- Spielerprofil: Raten pro Online-Stunde ---------- */
+
+export type RateKey = "deaths" | "diamonds" | "blocksBroken" | "mobsKilled" | "distance";
+export const RATE_KEYS: RateKey[] = ["deaths", "diamonds", "blocksBroken", "mobsKilled", "distance"];
+
+export interface PlayerRates {
+  /** Zuwachs seit Tracker-Start je Zähler */
+  delta: Record<RateKey, number>;
+  /** Vom Tracker gemessene Online-Stunden */
+  hours: number;
+  /** Zuwachs pro Online-Stunde; null, wenn zu wenig Online-Zeit */
+  perHour: Record<RateKey, number | null>;
+}
+
+const RATE_COL: Record<RateKey, string> = { deaths: "deaths", diamonds: "diamonds", blocksBroken: "blocks_broken", mobsKilled: "mobs_killed", distance: "distance" };
+const MIN_HOURS = 0.5;
+
+interface EdgeRow {
+  player: string;
+  deaths: number | null;
+  diamonds: number | null;
+  blocks_broken: number | null;
+  mobs_killed: number | null;
+  distance: number | string | null;
+}
+
+/**
+ * Raten aller Spieler (Zuwachs seit Tracker-Start geteilt durch gemessene Online-Zeit) plus Serverdurchschnitt.
+ * Erster und letzter bekannter Wert je Spieler aus der Historie.
+ */
+export async function getPlayerRates(): Promise<{ players: Record<string, PlayerRates>; server: Record<RateKey, number | null> }> {
+  return cached("playerRates", 300_000, async () => {
+    await ensureLoaded();
+    const db = await getDb();
+    const cols = Object.values(RATE_COL).join(", ");
+    const [firstRows, lastRows, state] = await Promise.all([
+      db.query<EdgeRow>(`SELECT DISTINCT ON (player) player, ${cols} FROM player_history WHERE deaths IS NOT NULL ORDER BY player, at ASC`).then((r) => r.rows),
+      db.query<EdgeRow>(`SELECT DISTINCT ON (player) player, ${cols} FROM player_history WHERE deaths IS NOT NULL ORDER BY player, at DESC`).then((r) => r.rows),
+      getState(),
+    ]);
+    const first = new Map(firstRows.map((r) => [r.player, r]));
+    const now = Date.now();
+    const players: Record<string, PlayerRates> = {};
+    const sum = { deaths: 0, diamonds: 0, blocksBroken: 0, mobsKilled: 0, distance: 0 };
+    let sumHours = 0;
+    for (const last of lastRows) {
+      const f = first.get(last.player);
+      const p = state.players[last.player];
+      if (!f || !p) continue;
+      const secs = p.trackedSeconds + (p.online && p.sessionStart ? (now - Date.parse(p.sessionStart)) / 1000 : 0);
+      const hours = secs / 3600;
+      const d = (k: RateKey) => Math.max(0, Number(last[RATE_COL[k] as keyof EdgeRow] ?? 0) - Number(f[RATE_COL[k] as keyof EdgeRow] ?? 0));
+      const delta = { deaths: d("deaths"), diamonds: d("diamonds"), blocksBroken: d("blocksBroken"), mobsKilled: d("mobsKilled"), distance: d("distance") };
+      const perHour = Object.fromEntries(RATE_KEYS.map((k) => [k, hours >= MIN_HOURS ? delta[k] / hours : null])) as Record<RateKey, number | null>;
+      players[last.player] = { delta, hours, perHour };
+      if (hours >= MIN_HOURS) {
+        sumHours += hours;
+        for (const k of RATE_KEYS) sum[k] += delta[k];
+      }
+    }
+    const server = Object.fromEntries(RATE_KEYS.map((k) => [k, sumHours > 0 ? sum[k] / sumHours : null])) as Record<RateKey, number | null>;
+    return { players, server };
+  });
+}

@@ -2736,3 +2736,122 @@ a.st-chip-in[data-live="true"] {
   width: 16px;
   height: 16px;
 }
+
+/* ---------- Spielerprofil: Auswertung ---------- */
+.rates {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.rates__row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto auto 3.2rem;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9375rem;
+}
+.rates__icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  background: var(--bg, var(--gold));
+  color: var(--fg, var(--ink));
+  box-shadow: 0 0 0 2px var(--ink);
+}
+.rates__icon svg {
+  width: 14px;
+  height: 14px;
+}
+.rates__label {
+  font-weight: 600;
+  opacity: 0.8;
+}
+.rates__val {
+  font-weight: 700;
+  text-align: right;
+}
+.rates__srv {
+  font-size: 0.8125rem;
+  opacity: 0.6;
+  text-align: right;
+}
+.rates__cmp {
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: right;
+  opacity: 0.6;
+}
+.rates__cmp--up {
+  color: #1d7a0f;
+  opacity: 1;
+}
+.rates__cmp--down {
+  color: #b2271a;
+  opacity: 1;
+}
+.windows {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+.windows th,
+.windows td {
+  padding: 5px 0;
+  border-top: 2px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  text-align: right;
+}
+.windows thead th {
+  border-top: 0;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+.windows th[scope="row"] {
+  text-align: left;
+  font-weight: 600;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+.windows th[scope="row"] svg {
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+.windows td {
+  font-weight: 700;
+}
+.vods {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vods a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--twitch);
+  text-decoration: none;
+  padding: 2px 6px;
+  box-shadow: 0 0 0 2px var(--twitch);
+}
+.vods a svg {
+  width: 12px;
+  height: 12px;
+}
+.vods a:hover {
+  background: var(--twitch);
+  color: #fff;
+}

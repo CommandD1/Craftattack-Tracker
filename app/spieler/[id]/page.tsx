@@ -11,6 +11,8 @@ import { StatSpark } from "@/components/StatSpark";
 import { getAllSessions, getPlayerHistory } from "@/lib/store";
 import { companionsOf, overlapsFor } from "@/lib/overlap";
 import { TwitchEmbed } from "@/components/TwitchEmbed";
+import { PlayerInsights } from "@/components/PlayerInsights";
+import { getPlayerRates } from "@/lib/analytics";
 
 // Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
 export const instant = false;
@@ -72,7 +74,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const { state, events, now } = await loadTracker();
   const p = state.players[id];
   if (!p) notFound();
-  const [history, allSessions] = await Promise.all([getPlayerHistory(id), getAllSessions()]);
+  const [history, allSessions, rates] = await Promise.all([getPlayerHistory(id), getAllSessions(), getPlayerRates()]);
   const overlaps = overlapsFor(id, allSessions, now);
   const nameOf = (pid: string) => state.players[pid]?.name ?? pid;
 
@@ -198,6 +200,8 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
           </p>
         </div>
       </section>
+
+      <PlayerInsights p={p} history={history} sessions={allSessions.filter((s) => s.player === id)} events={mine} rates={rates.players[id]} server={rates.server} now={now} />
 
       <section className="block" data-tone="paper">
         <div className="wrap">
