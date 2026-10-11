@@ -76,7 +76,9 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
                 <li key={p.id}>
                   <Link className="box player-card" data-tone="white" href={`/spieler/${encodeURIComponent(p.id)}`}>
                     <div className="player-card__top">
-                      <img className="head" src={headUrl(p.uuid, 48, p.id)} alt="" width={48} height={48} loading="lazy" />
+                      <span className={p.online && p.afkSince ? "head-afk" : undefined} title={p.online && p.afkSince ? "AFK" : undefined}>
+                        <img className="head" src={headUrl(p.uuid, 48, p.id)} alt="" width={48} height={48} loading="lazy" />
+                      </span>
                       <div>
                         <p className="player-card__name">{p.name}</p>
                         <div className="player-card__tags">
