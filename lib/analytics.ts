@@ -225,6 +225,91 @@ export async function getAfkSpans(from: number, to: number, now: number): Promis
   });
 }
 
+/** AFK-Phasen aller Spieler über die gesamte Laufzeit (für Bestenliste und Graph). */
+export async function getAllAfkSpans(): Promise<Map<string, Span[]>> {
+  return cached("afk:all", 60_000, async () => {
+    const now = Date.now();
+    return getAfkSpans(0, now, now);
+  });
+}
+
+/** AFK-Bestenliste: Summe der AFK-Phasen je Spieler, optional nur bis zu einem Zeitpunkt (für ▲/▼). */
+export async function getAfkBoard(untilMsAgo = 0): Promise<{ id: string; name: string; uuid: string; value: number; online: boolean; afkNow: boolean }[]> {
+  const [spans, state] = await Promise.all([getAllAfkSpans(), getState()]);
+  const until = Date.now() - untilMsAgo;
+  const rows: { id: string; name: string; uuid: string; value: number; online: boolean; afkNow: boolean }[] = [];
+  for (const [id, list] of spans) {
+    let sum = 0;
+    let afkNow = false;
+    for (const [a, b] of list) {
+      sum += Math.max(0, Math.min(b, until) - a) / 1000;
+      if (untilMsAgo === 0 && b >= until - 90_000 && state.players[id]?.online) afkNow = true;
+    }
+    if (sum <= 0) continue;
+    const p = state.players[id];
+    rows.push({ id, name: p?.name ?? id, uuid: p?.uuid ?? "", value: Math.round(sum), online: p?.online ?? false, afkNow });
+  }
+  return rows.sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, "de"));
+}
+
+/** Ränge der AFK-Bestenliste vor `hoursAgo` Stunden */
+export async function getAfkRanksBefore(hoursAgo = 24): Promise<Record<string, number>> {
+  return cached(`afkRanksBefore:${hoursAgo}`, 300_000, async () => {
+    const rows = await getAfkBoard(hoursAgo * 3600_000);
+    return Object.fromEntries(rows.map((r, i) => [r.id, i + 1]));
+  });
+}
+
+/**
+ * AFK-Zeit als Zeitreihe für den Graph-Baukasten: kumulierte AFK-Sekunden je Spieler (oder aller zusammen)
+ * zum Ende jedes Bündels.
+ */
+export async function getAfkSeries(q: { players: string[]; from: number | null; to: number | null; bucketMinutes: number | null; mode: "wert" | "zuwachs" }): Promise<{
+  series: { id: string; name: string; points: { at: string; v: number }[] }[];
+  bucketMinutes: number;
+}> {
+  const [spans, state, first] = await Promise.all([getAllAfkSpans(), getState(), firstDataAt()]);
+  const now = Date.now();
+  const from = q.from ?? first ?? now;
+  const to = Math.min(q.to ?? now, now);
+  const spanMin = Math.max(1, (to - from) / 60_000);
+  const steps = [1, 2, 5, 10, 15, 30, 60, 120, 180, 360, 720, 1440];
+  const minutes = q.bucketMinutes ?? (steps.find((s) => s >= 5 && spanMin / s <= 600) ?? 1440);
+  const stepMs = minutes * 60_000;
+  const t0 = Math.floor(from / stepMs) * stepMs;
+  const ids = q.players.length ? q.players : [...spans.keys()];
+  const cumulative = (list: Span[]) => {
+    const points: { at: string; v: number }[] = [];
+    let acc = 0;
+    let k = 0;
+    for (let t = t0; t <= to; t += stepMs) {
+      const end = t + stepMs;
+      // Alle Phasen, die vor `end` liegen, aufaddieren (Phasen sind sortiert)
+      while (k < list.length && list[k][1] <= end) {
+        acc += (list[k][1] - list[k][0]) / 1000;
+        k++;
+      }
+      let partial = 0;
+      for (let j = k; j < list.length && list[j][0] < end; j++) partial += Math.max(0, end - list[j][0]) / 1000;
+      points.push({ at: new Date(Math.min(end, now)).toISOString(), v: Math.round(acc + partial) });
+    }
+    return points;
+  };
+  let series: { id: string; name: string; points: { at: string; v: number }[] }[];
+  if (q.players.length) {
+    series = ids.map((id) => ({ id, name: state.players[id]?.name ?? id, points: cumulative(spans.get(id) ?? []) }));
+  } else {
+    const all = ids.map((id) => cumulative(spans.get(id) ?? []));
+    const n = all[0]?.length ?? 0;
+    const points = Array.from({ length: n }, (_, i) => ({ at: all[0][i].at, v: all.reduce((s, l) => s + (l[i]?.v ?? 0), 0) }));
+    series = [{ id: "alle", name: "Alle Spieler", points }];
+  }
+  if (q.mode === "zuwachs") {
+    series = series.map((s) => ({ ...s, points: s.points.slice(1).map((p, i) => ({ at: p.at, v: Math.max(0, p.v - s.points[i].v) })) }));
+  }
+  return { series, bucketMinutes: minutes };
+}
+
 /** AFK-Phasen eines Spielers über die gesamte Laufzeit. */
 export async function getPlayerAfkSpans(id: string): Promise<Span[]> {
   return cached(`afk:player:${id}`, 60_000, async () => {

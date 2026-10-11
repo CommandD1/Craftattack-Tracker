@@ -1,5 +1,6 @@
 import { NextResponse, connection } from "next/server";
 import { getSeries, SERIES_METRICS, type SeriesMetric } from "@/lib/store";
+import { getAfkSeries } from "@/lib/analytics";
 
 const BUCKETS = new Set([1, 5, 15, 30, 60, 180, 360, 720, 1440]);
 
@@ -15,6 +16,9 @@ export async function GET(req: Request) {
     return Number.isFinite(v) && v > 0 ? v : null;
   };
   const raster = n("raster");
+  const base = { players, from: n("von"), to: n("bis"), bucketMinutes: raster !== null && BUCKETS.has(raster) ? raster : null, mode: sp.get("modus") === "zuwachs" ? ("zuwachs" as const) : ("wert" as const) };
+  // AFK-Zeit kommt nicht aus einer Spalte, sondern aus den rückwirkend berechneten AFK-Phasen
+  if (metric === "afkSeconds") return NextResponse.json(await getAfkSeries(base), { headers: { "cache-control": "private, max-age=30" } });
   const data = await getSeries({
     metric,
     players,

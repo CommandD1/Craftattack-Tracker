@@ -479,7 +479,12 @@ export function diffSnapshot(
   // --- AFK: online, aber die Strecke steigt seit AFK_MS nicht mehr. Nur möglich, wenn es Streckendaten gibt.
   if (!first) {
     for (const ps of Object.values(state.players)) {
-      if (!ps.online || ps.stats.distance === undefined || !ps.lastMoveAt) continue;
+      if (!ps.online || ps.stats.distance === undefined) continue;
+      // War schon online, bevor es die Bewegungsuhr gab (oder kam mit unbekannter Strecke): jetzt starten
+      if (!ps.lastMoveAt) {
+        ps.lastMoveAt = now;
+        continue;
+      }
       const idle = nowDate.getTime() - Date.parse(ps.lastMoveAt);
       if (ps.afkSince) {
         ps.afkSeconds = (ps.afkSeconds ?? 0) + sinceLast;

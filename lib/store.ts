@@ -669,6 +669,7 @@ export const SERIES_METRICS = [
   "mobsKilled",
   "distance",
   "online",
+  "afkSeconds",
 ] as const;
 export type SeriesMetric = (typeof SERIES_METRICS)[number];
 

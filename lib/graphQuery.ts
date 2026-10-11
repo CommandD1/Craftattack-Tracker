@@ -2,7 +2,7 @@ import { boardValue, num } from "./format";
 
 /* ---------- Konfiguration ---------- */
 
-export type Metric = "onlineCount" | "liveCount" | "viewers" | "playtimeSeconds" | "deaths" | "diamonds" | "blocksBroken" | "mobsKilled" | "distance" | "online";
+export type Metric = "onlineCount" | "liveCount" | "viewers" | "playtimeSeconds" | "afkSeconds" | "deaths" | "diamonds" | "blocksBroken" | "mobsKilled" | "distance" | "online";
 
 interface MetricMeta {
   label: string;
@@ -23,6 +23,7 @@ export const METRICS: Record<Metric, MetricMeta> = {
   liveCount: { label: "Streams live", perPlayer: false, counter: false, format: num, tone: "twitch", icon: "twitch" },
   viewers: { label: "Zuschauer", perPlayer: true, counter: false, format: num, hint: "Ohne Spieler: Summe aller Streams", tone: "twitch", icon: "eye" },
   playtimeSeconds: { label: "Spielzeit", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "Die API liefert Spielzeit nur für die Top 10", tone: "sky", icon: "clock" },
+  afkSeconds: { label: "AFK-Zeit", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "AFK = online, aber ≥ 5 Min keine Bewegung; aus dem Spielerverlauf berechnet", tone: "gold", icon: "clock" },
   deaths: { label: "Tode", perPlayer: true, counter: true, format: num, tone: "redstone", icon: "skull" },
   diamonds: { label: "Diamanten", perPlayer: true, counter: true, format: num, tone: "diamond", icon: "diamond" },
   blocksBroken: { label: "Blöcke", perPlayer: true, counter: true, format: num, tone: "gold", icon: "pickaxe" },
