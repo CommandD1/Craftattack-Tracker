@@ -15,6 +15,16 @@ export async function loadTracker(): Promise<{ state: TrackerState; events: Trac
   const liveNow = Object.values(state.players)
     .filter((p) => p.live && p.liveSince)
     .map((p) => ({ player: p.id, since: p.liveSince!, login: p.live!.login }));
-  await attachVods(events, (id) => state.players[id]?.twitchLogin ?? state.players[id]?.live?.login ?? null, liveNow).catch(() => {});
+  // Nicht abwarten: Twitch-Abfragen dürfen den Seitenaufbau nicht verzögern. Treffer stehen beim nächsten Aufruf bereit.
+  if (!vodRun) {
+    vodRun = attachVods(events, (id) => state.players[id]?.twitchLogin ?? state.players[id]?.live?.login ?? null, liveNow)
+      .catch(() => {})
+      .finally(() => {
+        vodRun = null;
+      });
+  }
   return { state, events: withLiveLinks(events, liveNow), now: Date.now() };
 }
+
+/** Läuft gerade eine VOD-Nachzieh-Runde? Es gibt höchstens eine gleichzeitig. */
+let vodRun: Promise<void> | null = null;
