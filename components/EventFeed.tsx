@@ -107,6 +107,8 @@ export function EventFeed({
   showPlayer?: boolean;
   empty?: string;
 }) {
+  // Tode ohne Spieler („unbekannt“) nicht mehr zeigen
+  events = events.filter((e) => !(e.type === "death" && e.meta?.unknown));
   if (events.length === 0) return <p className="st-online__empty">{empty}</p>;
   const out: React.ReactNode[] = [];
   let lastDay = "";
