@@ -81,6 +81,9 @@ interface PlayerRow {
   peak_viewers_on_server: number | null;
   stream_on_server_seconds: number | null;
   stream_off_server_seconds: number | null;
+  last_move_at: Date | null;
+  afk_since: Date | null;
+  afk_seconds: number | null;
 }
 
 interface EventRow {
@@ -126,6 +129,9 @@ function rowToPlayer(r: PlayerRow): PlayerState {
     streamOnServerSeconds: r.stream_on_server_seconds ?? 0,
     streamOffServerSeconds: r.stream_off_server_seconds ?? 0,
     longestSession: r.longest_session ?? 0,
+    lastMoveAt: iso(r.last_move_at),
+    afkSince: iso(r.afk_since),
+    afkSeconds: r.afk_seconds ?? 0,
   };
 }
 
@@ -261,8 +267,9 @@ export async function saveState(state: TrackerState) {
     await db.query(
       `INSERT INTO players (id, name, uuid, online, live, stats, first_seen, last_seen, session_start,
                             tracked_seconds, sessions, live_since, peak_viewers, longest_session, ranks, twitch_login,
-                            peak_viewers_on_server, stream_on_server_seconds, stream_off_server_seconds)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+                            peak_viewers_on_server, stream_on_server_seconds, stream_off_server_seconds,
+                            last_move_at, afk_since, afk_seconds)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name, uuid = EXCLUDED.uuid, online = EXCLUDED.online, live = EXCLUDED.live,
          stats = EXCLUDED.stats, first_seen = EXCLUDED.first_seen, last_seen = EXCLUDED.last_seen,
@@ -270,7 +277,8 @@ export async function saveState(state: TrackerState) {
          sessions = EXCLUDED.sessions, live_since = EXCLUDED.live_since, peak_viewers = EXCLUDED.peak_viewers,
          longest_session = EXCLUDED.longest_session, ranks = EXCLUDED.ranks,
          twitch_login = EXCLUDED.twitch_login, peak_viewers_on_server = EXCLUDED.peak_viewers_on_server,
-         stream_on_server_seconds = EXCLUDED.stream_on_server_seconds, stream_off_server_seconds = EXCLUDED.stream_off_server_seconds`,
+         stream_on_server_seconds = EXCLUDED.stream_on_server_seconds, stream_off_server_seconds = EXCLUDED.stream_off_server_seconds,
+         last_move_at = EXCLUDED.last_move_at, afk_since = EXCLUDED.afk_since, afk_seconds = EXCLUDED.afk_seconds`,
       [
         p.id,
         p.name,
@@ -291,6 +299,9 @@ export async function saveState(state: TrackerState) {
         p.peakViewersOnServer,
         Math.round(p.streamOnServerSeconds),
         Math.round(p.streamOffServerSeconds),
+        toDate(p.lastMoveAt ?? null),
+        toDate(p.afkSince ?? null),
+        Math.round(p.afkSeconds ?? 0),
       ],
     );
   }

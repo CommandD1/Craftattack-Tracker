@@ -42,6 +42,8 @@ function detail(e: TrackerEvent): string | null {
       return "Mobs";
     case "distance":
       return "gelaufen";
+    case "afk_start":
+      return "AFK";
     default:
       return null;
   }

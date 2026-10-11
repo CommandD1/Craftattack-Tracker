@@ -23,6 +23,7 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
   if (filter === "online") players = players.filter((p) => p.online);
   if (filter === "live") players = players.filter((p) => p.live);
   if (filter === "nurserver") players = players.filter((p) => p.online && !p.live);
+  if (filter === "afk") players = players.filter((p) => p.online && p.afkSince);
   players.sort((a, b) => {
     if (a.online !== b.online) return a.online ? -1 : 1;
     const av = a.live?.viewers ?? -1;
@@ -86,6 +87,11 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
                           ) : (
                             <span className="tag" data-tone="paper">
                               Offline
+                            </span>
+                          )}
+                          {p.online && p.afkSince && (
+                            <span className="tag" data-tone="gold" title={`Keine Bewegung seit ${ago(p.afkSince).replace("vor ", "")}`}>
+                              AFK
                             </span>
                           )}
                           {p.live && (

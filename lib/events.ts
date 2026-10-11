@@ -11,6 +11,21 @@ export interface EventMeta {
 
 export const EVENT_META: Record<EventType, EventMeta> = {
   join: { label: "Join", tone: "grass", text: () => "ist auf den Server gekommen" },
+  afk_start: {
+    label: "AFK",
+    tone: "gold",
+    text: () => "ist AFK",
+    sub: (e) => (typeof e.meta?.since === "string" ? `Keine Bewegung seit ${new Date(e.meta.since).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" })} Uhr` : null),
+  },
+  afk_end: {
+    label: "Zurück",
+    tone: "grass",
+    text: (e) => (e.meta?.byLeave ? "war bis zum Leave AFK" : "ist wieder da"),
+    sub: (e) => {
+      const s = Number(e.meta?.afkSeconds ?? 0);
+      return s > 0 ? `AFK: ${duration(s)}` : null;
+    },
+  },
   leave: {
     label: "Leave",
     tone: "paper",
@@ -149,7 +164,7 @@ export const EVENT_META: Record<EventType, EventMeta> = {
 };
 
 export const EVENT_GROUPS: { key: string; label: string; tone: string; types: EventType[] }[] = [
-  { key: "server", label: "Server", tone: "grass", types: ["join", "leave", "server_online", "server_offline", "tracker_start"] },
+  { key: "server", label: "Server", tone: "grass", types: ["join", "leave", "afk_start", "afk_end", "server_online", "server_offline", "tracker_start"] },
   { key: "death", label: "Tode", tone: "redstone", types: ["death"] },
   { key: "loot", label: "Loot & Arbeit", tone: "gold", types: ["diamonds", "blocksBroken", "mobsKilled", "distance"] },
   { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title"] },
@@ -183,6 +198,10 @@ export function eventBadge(e: TrackerEvent): string | null {
       const s = Number(e.meta?.streamSeconds ?? 0);
       return s > 0 ? duration(s) : null;
     }
+    case "afk_end": {
+      const s = Number(e.meta?.afkSeconds ?? 0);
+      return s > 0 ? duration(s) : null;
+    }
     case "rank":
       return `#${e.value}`;
     case "milestone":
@@ -200,6 +219,8 @@ export function eventBadge(e: TrackerEvent): string | null {
 export const EVENT_TYPES: EventType[] = [
   "join",
   "leave",
+  "afk_start",
+  "afk_end",
   "first_join",
   "death",
   "diamonds",

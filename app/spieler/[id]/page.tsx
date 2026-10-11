@@ -83,6 +83,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const twitchLogin = p.live?.login ?? p.twitchLogin;
   const twitchUrl = twitchLogin ? `https://www.twitch.tv/${encodeURIComponent(twitchLogin)}` : null;
   const streamSeconds = (p.streamOnServerSeconds ?? 0) + (p.streamOffServerSeconds ?? 0);
+  const afkSeconds = p.afkSeconds ?? 0;
   /** Link auf den Graphen der Statistik-Seite für diese Kennzahl und diesen Spieler */
   const graphHref = (metric: string) => `/statistik?metric=${metric}&spieler=${encodeURIComponent(id)}&zeit=alle#graph`;
   const mine = events.filter((e) => e.player === id);
@@ -121,6 +122,11 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                 ) : (
                   <span className="tag" data-tone="paper">
                     Offline · zuletzt {ago(p.lastSeen)}
+                  </span>
+                )}
+                {p.online && p.afkSince && (
+                  <span className="tag" data-tone="gold" title="Die gelaufene Strecke steigt seit mindestens fünf Minuten nicht">
+                    AFK seit {ago(p.afkSince).replace("vor ", "")}
                   </span>
                 )}
                 {p.live && twitchUrl ? (
@@ -233,6 +239,8 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                   <dd className="num">{num(deaths)}</dd>
                   <dt>Längste Session</dt>
                   <dd className="num">{p.longestSession > 0 ? duration(p.longestSession) : "–"}</dd>
+                  <dt title="Online, aber ohne Streckenzuwachs für mindestens fünf Minuten. Zählt zur Online-Zeit dazu.">AFK-Zeit</dt>
+                  <dd className="num">{afkSeconds > 0 ? duration(afkSeconds) : "–"}</dd>
                   <dt>Peak-Zuschauer</dt>
                   <dd className="num">{num(p.peakViewers)}</dd>
                   <dt title="Höchste Zuschauerzahl, während der Spieler gleichzeitig auf dem Server war">Peak auf dem Server</dt>

@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { getDb } from "./db";
 import { ensureLoaded, getAllSessions, getDailyEventSum, getEvents, getState, type StoredSession } from "./store";
 import { EVENT_META } from "./events";
+import { AFK_MS } from "./tracker";
 import type { BoardKey, TrackerEvent } from "./types";
 import { BOARD_KEYS } from "./types";
 
@@ -141,6 +142,82 @@ async function dayNav(day: string | undefined, now: number): Promise<DayNav> {
   };
 }
 
+/* ============================================================ AFK-Phasen */
+
+/**
+ * AFK-Phasen aller Spieler aus dem Spielerverlauf: online, aber die Strecke steigt mindestens AFK_MS lang nicht.
+ * Funktioniert damit auch rückwirkend für Tage vor Einführung der AFK-Erkennung. Die Phase beginnt mit der
+ * letzten Bewegung und endet mit der nächsten Bewegung bzw. dem Leave; läuft sie noch, endet sie bei `now`.
+ */
+export async function getAfkSpans(from: number, to: number, now: number): Promise<Map<string, Span[]>> {
+  return cached(`afk:${from}:${to}`, 60_000, async () => {
+    await ensureLoaded();
+    const db = await getDb();
+    // Vorlauf, damit die letzte Bewegung vor `from` bekannt ist
+    const rows = (
+      await db.query<{ player: string; at: Date; online: boolean; distance: number | string | null }>(
+        `SELECT player, at, online, distance FROM player_history WHERE at >= $1 AND at < $2 ORDER BY player, at`,
+        [new Date(from - 12 * 3600_000), new Date(to)],
+      )
+    ).rows;
+    const state = await getState();
+    const out = new Map<string, Span[]>();
+    const add = (id: string, a: number, b: number) => {
+      const x = Math.max(from, a);
+      const y = Math.min(to, b);
+      if (y - x <= 0) return;
+      const l = out.get(id) ?? [];
+      l.push([x, y]);
+      out.set(id, l);
+    };
+    let cur: string | null = null;
+    let lastMove = 0;
+    let lastDist: number | null = null;
+    let wasOnline = false;
+    const close = (id: string, t: number) => {
+      if (wasOnline && lastDist !== null && t - lastMove >= AFK_MS) add(id, lastMove, t);
+    };
+    for (const r of rows) {
+      const t = new Date(r.at).getTime();
+      const d = r.distance === null ? null : Number(r.distance);
+      if (r.player !== cur) {
+        cur = r.player;
+        lastMove = t;
+        lastDist = d;
+        wasOnline = r.online;
+        continue;
+      }
+      if (!r.online) {
+        if (wasOnline) close(cur, t);
+        wasOnline = false;
+        lastMove = t;
+        lastDist = d;
+        continue;
+      }
+      if (!wasOnline) {
+        // Join: Bewegungsuhr neu starten
+        wasOnline = true;
+        lastMove = t;
+        lastDist = d;
+        continue;
+      }
+      if (d !== null && (lastDist === null || d > lastDist)) {
+        close(cur, t);
+        lastMove = t;
+      }
+      if (d !== null) lastDist = d;
+    }
+    // Letzter Spieler: läuft die Phase noch?
+    if (cur) {
+      const p = state.players[cur];
+      if (p?.online) close(cur, Math.min(now, to));
+      else if (wasOnline) close(cur, Date.parse(p?.lastSeen ?? new Date(now).toISOString()));
+    }
+    for (const l of out.values()) l.sort((x, y) => x[0] - y[0]);
+    return out;
+  });
+}
+
 /* ============================================================ Zeitstrahl */
 
 export interface TimelineRow {
@@ -150,19 +227,32 @@ export interface TimelineRow {
   online: Span[];
   live: Span[];
   seconds: number;
+  /** AFK-Phasen (Teil der Online-Zeit) */
+  afk: Span[];
+  afkSeconds: number;
 }
 
 export async function getDayTimeline(day?: string): Promise<{ nav: DayNav; rows: TimelineRow[]; now: number }> {
   const now = Date.now();
   const nav = await dayNav(day, now);
-  const [sessions, lives, state] = await Promise.all([getAllSessions(), getLiveSessions(), getState()]);
+  const [sessions, lives, state, afk] = await Promise.all([getAllSessions(), getLiveSessions(), getState(), getAfkSpans(nav.from, nav.to, now)]);
   const on = clip(sessions, nav.from, nav.to, now);
   const li = clip(lives, nav.from, nav.to, now);
   const ids = new Set([...on.keys(), ...li.keys()]);
   const rows: TimelineRow[] = [...ids].map((id) => {
     const p = state.players[id];
     const o = on.get(id) ?? [];
-    return { id, name: p?.name ?? id, uuid: p?.uuid ?? "", online: o, live: li.get(id) ?? [], seconds: o.reduce((s, [a, b]) => s + (b - a) / 1000, 0) };
+    const a = afk.get(id) ?? [];
+    return {
+      id,
+      name: p?.name ?? id,
+      uuid: p?.uuid ?? "",
+      online: o,
+      live: li.get(id) ?? [],
+      afk: a,
+      seconds: o.reduce((s, [x, y]) => s + (y - x) / 1000, 0),
+      afkSeconds: a.reduce((s, [x, y]) => s + (y - x) / 1000, 0),
+    };
   });
   rows.sort((a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name, "de"));
   return { nav, rows, now };

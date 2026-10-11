@@ -21,6 +21,7 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
   const pct = (t: number) => Math.max(0, Math.min(100, ((t - nav.from) / span) * 100));
   const nowPct = now < nav.to && now > nav.from ? pct(now) : null;
   const total = rows.reduce((s, r) => s + r.seconds, 0);
+  const afkTotal = rows.reduce((s, r) => s + r.afkSeconds, 0);
   const liveCount = rows.filter((r) => r.live.length).length;
   const peak = lapse.frames.reduce((m, f) => Math.max(m, f.online.length), 0);
 
@@ -31,7 +32,7 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
           <p className="eyebrow">Ein Tag auf dem Server</p>
           <h1 className="t-1">Zeitstrahl</h1>
           <p>
-            Oben der Tag als Film im Zeitraffer, darunter jede Session als Balken. Grün heißt auf dem Server, lila heißt live auf Twitch.
+            Oben der Tag als Film im Zeitraffer, darunter jede Session als Balken. Grün heißt auf dem Server, gestreift heißt AFK, lila heißt live auf Twitch.
             {nav.dataFrom && <> Daten an diesem Tag ab {time(new Date(nav.dataFrom).toISOString())} Uhr.</>}
           </p>
         </div>
@@ -43,7 +44,7 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
             <div>
               <h2 className="t-2">{dayLong.format(nav.from + 12 * 3600_000)}</h2>
               <p className="muted num" style={{ marginTop: 8 }}>
-                {num(rows.length)} Spieler · {duration(total)} Spielzeit zusammen · {num(liveCount)} mit Stream · Spitze {num(peak)} gleichzeitig
+                {num(rows.length)} Spieler · {duration(total)} Spielzeit zusammen{afkTotal > 0 ? ` (davon ${duration(afkTotal)} AFK)` : ""} · {num(liveCount)} mit Stream · Spitze {num(peak)} gleichzeitig
               </p>
             </div>
             <DateNav base="/zeitstrahl" day={nav.day} prev={nav.prev} next={nav.next} max={dayKey(now)} />
@@ -64,6 +65,9 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
             <ul className="legend" style={{ marginBottom: 12 }}>
               <li>
                 <i style={{ background: "var(--grass)" }} /> auf dem Server
+              </li>
+              <li>
+                <i className="legend__afk" /> AFK (keine Bewegung ≥ 5 Min)
               </li>
               <li>
                 <i style={{ background: "var(--twitch)" }} /> live auf Twitch
@@ -99,13 +103,17 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
                       {r.online.map(([a, b], k) => (
                         <span key={`o${k}`} className="gantt__on" style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }} title={`${time(new Date(a).toISOString())}–${b >= now - 60_000 && !nav.next ? "jetzt" : time(new Date(b).toISOString())}`} />
                       ))}
+                      {r.afk.map(([a, b], k) => (
+                        <span key={`a${k}`} className="gantt__afk" style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }} title={`AFK ${time(new Date(a).toISOString())}–${b >= now - 60_000 && !nav.next ? "jetzt" : time(new Date(b).toISOString())}`} />
+                      ))}
                       {r.live.map(([a, b], k) => (
                         <span key={`l${k}`} className="gantt__live" style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }} />
                       ))}
                       {nowPct !== null && <span className="gantt__now" style={{ left: `${nowPct}%` }} />}
                     </div>
-                    <span className="gantt__sum num" role="cell">
+                    <span className="gantt__sum num" role="cell" title={r.afkSeconds > 0 ? `davon ${duration(r.afkSeconds)} AFK` : undefined}>
                       {duration(r.seconds)}
+                      {r.afkSeconds > 0 && <small className="gantt__afk-sum">{duration(r.afkSeconds)} AFK</small>}
                     </span>
                   </div>
                 ))}
@@ -113,8 +121,8 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
             )}
           </div>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
-            Sessions entstehen aus den Join- und Leave-Ereignissen des Trackers, Streams aus den Stream-an/aus-Ereignissen. Genauigkeit: etwa 30
-            Sekunden.
+            Sessions entstehen aus den Join- und Leave-Ereignissen des Trackers, Streams aus den Stream-an/aus-Ereignissen. AFK heißt: online, aber
+            die gelaufene Strecke steigt mindestens fünf Minuten nicht, nur erkennbar bei Spielern mit Einzelstatistik. Genauigkeit: etwa 30 Sekunden.
           </p>
         </div>
       </section>

@@ -128,6 +128,8 @@ export const BOARD_ICON: Record<BoardKey, keyof typeof Icon> = {
 export const EVENT_ICON: Record<EventType, keyof typeof Icon> = {
   join: "login",
   leave: "logout",
+  afk_start: "clock",
+  afk_end: "boots",
   death: "skull",
   diamonds: "diamond",
   blocksBroken: "pickaxe",

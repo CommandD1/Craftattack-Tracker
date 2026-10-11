@@ -89,7 +89,9 @@ export type EventType =
   | "first_join"
   | "rank"
   | "milestone"
-  | "record";
+  | "record"
+  | "afk_start"
+  | "afk_end";
 
 export interface TrackerEvent {
   id: string;
@@ -142,6 +144,12 @@ export interface PlayerState {
   streamOffServerSeconds: number;
   /** Längste vom Tracker gemessene Session in Sekunden */
   longestSession: number;
+  /** Letzter Zeitpunkt, zu dem die Strecke gestiegen ist (null = keine Streckendaten) */
+  lastMoveAt: string | null;
+  /** Seit wann der Spieler als AFK gilt (Strecke seit ≥ AFK-Schwelle unverändert); null = nicht AFK */
+  afkSince: string | null;
+  /** Vom Tracker gemessene AFK-Zeit in Sekunden (zählt zur Online-Zeit dazu, wird nicht abgezogen) */
+  afkSeconds: number;
 }
 
 export interface RecordValue {

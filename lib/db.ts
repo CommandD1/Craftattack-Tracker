@@ -101,6 +101,9 @@ async function migrate(db: Db) {
   await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS peak_viewers_on_server integer NOT NULL DEFAULT 0`);
   await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS stream_on_server_seconds integer NOT NULL DEFAULT 0`);
   await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS stream_off_server_seconds integer NOT NULL DEFAULT 0`);
+  await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS last_move_at timestamptz`);
+  await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS afk_since timestamptz`);
+  await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS afk_seconds integer NOT NULL DEFAULT 0`);
   await db.query(`CREATE INDEX IF NOT EXISTS events_at_idx ON events (at)`);
   await db.query(`CREATE INDEX IF NOT EXISTS events_player_at_idx ON events (player, at)`);
   await db.query(`CREATE INDEX IF NOT EXISTS events_type_at_idx ON events (type, at)`);

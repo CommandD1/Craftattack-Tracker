@@ -32,6 +32,9 @@ const COUNTER_EVENTS: Partial<Record<BoardKey, EventType>> = {
   distance: "distance",
 };
 
+/** Ab wann ein Spieler ohne Streckenzuwachs als AFK gilt */
+export const AFK_MS = Number(process.env.CA_AFK_MINUTES ?? 5) * 60_000;
+
 /** Wartezeit, bevor nicht zuordenbare Tode als „unbekannt“ gemeldet werden */
 const UNKNOWN_DEATH_GRACE_MS = Number(process.env.CA_UNKNOWN_DEATH_GRACE_MS ?? 10 * 60_000);
 
@@ -193,6 +196,9 @@ function ensurePlayer(
       streamOnServerSeconds: 0,
       streamOffServerSeconds: 0,
       longestSession: 0,
+      lastMoveAt: null,
+      afkSince: null,
+      afkSeconds: 0,
       ranks: {},
       twitchLogin: null,
     };
@@ -234,6 +240,9 @@ export function diffSnapshot(
   }
   state.serverOnline = stats.serverOnline;
 
+  // Sekunden seit dem letzten erfolgreichen Poll (für Stream- und AFK-Zeit), gedeckelt auf 5 Min
+  const sinceLast = state.lastOk ? Math.min(Math.max(0, (nowDate.getTime() - Date.parse(state.lastOk)) / 1000), 300) : 0;
+
   // --- Online-Spieler: Join / Leave
   newPlayers.clear();
   const onlineNow = new Set(stats.online.map((p) => p.id));
@@ -244,6 +253,8 @@ export function diffSnapshot(
       ps.online = true;
       ps.sessionStart = now;
       ps.sessions += 1;
+      ps.lastMoveAt = now;
+      ps.afkSince = null;
       if (!first) {
         push({
           type: newPlayers.has(p.id) ? "first_join" : "join",
@@ -263,6 +274,13 @@ export function diffSnapshot(
       ps.trackedSeconds += dur;
       ps.longestSession = Math.max(ps.longestSession ?? 0, dur);
       ps.sessionStart = null;
+      if (ps.afkSince) {
+        const afk = Math.max(0, Math.round((nowDate.getTime() - Date.parse(ps.afkSince)) / 1000));
+        ps.afkSeconds = (ps.afkSeconds ?? 0) + sinceLast;
+        push({ type: "afk_end", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { afkSeconds: afk, since: ps.afkSince, byLeave: true } });
+        ps.afkSince = null;
+      }
+      ps.lastMoveAt = null;
       push({
         type: "leave",
         player: ps.id,
@@ -304,8 +322,6 @@ export function diffSnapshot(
   }
   for (const l of liveNow.values()) l.onServer = onlineNow.has(l.id);
 
-  // Stream-Zeit seit dem letzten Poll, getrennt nach „auf dem Server“ / „nicht auf dem Server“
-  const sinceLast = state.lastOk ? Math.min(Math.max(0, (nowDate.getTime() - Date.parse(state.lastOk)) / 1000), 300) : 0;
 
   for (const l of liveNow.values()) {
     const ps = ensurePlayer(state, { id: l.id, name: l.name, uuid: state.players[l.id]?.uuid ?? "" }, now);
@@ -405,6 +421,8 @@ export function diffSnapshot(
       const ps = ensurePlayer(state, entry, now);
       const known = ps.stats[key];
       ps.stats[key] = entry.value;
+      // Strecke gestiegen (oder erster Wert): der Spieler bewegt sich
+      if (key === "distance" && (known === undefined || entry.value > known)) ps.lastMoveAt = now;
       const type = COUNTER_EVENTS[key];
       if (!type || first) continue;
       // Erster ext-Wert eines Spielers: nur merken, kein Ereignis (wir wissen nicht, wann das passiert ist)
@@ -454,6 +472,28 @@ export function diffSnapshot(
           value: i + 1,
           meta: { board: key, label: BOARD_LABEL[key], before: before === -1 ? null : before + 1, score: entry.value },
         });
+      }
+    }
+  }
+
+  // --- AFK: online, aber die Strecke steigt seit AFK_MS nicht mehr. Nur möglich, wenn es Streckendaten gibt.
+  if (!first) {
+    for (const ps of Object.values(state.players)) {
+      if (!ps.online || ps.stats.distance === undefined || !ps.lastMoveAt) continue;
+      const idle = nowDate.getTime() - Date.parse(ps.lastMoveAt);
+      if (ps.afkSince) {
+        ps.afkSeconds = (ps.afkSeconds ?? 0) + sinceLast;
+        if (idle < AFK_MS) {
+          // Bewegung: AFK-Phase ist vorbei
+          const afk = Math.max(0, Math.round((nowDate.getTime() - Date.parse(ps.afkSince)) / 1000));
+          push({ type: "afk_end", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { afkSeconds: afk, since: ps.afkSince } });
+          ps.afkSince = null;
+        }
+      } else if (idle >= AFK_MS) {
+        // AFK beginnt rückwirkend mit der letzten Bewegung
+        ps.afkSince = ps.lastMoveAt;
+        ps.afkSeconds = (ps.afkSeconds ?? 0) + idle / 1000;
+        push({ type: "afk_start", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { since: ps.afkSince } });
       }
     }
   }
