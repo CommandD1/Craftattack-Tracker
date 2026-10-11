@@ -17,11 +17,14 @@ const SORTS = [
   { key: "spielzeit", label: "Spielzeit", hint: "Online-Zeit an diesem Tag, inklusive AFK" },
   { key: "aktiv", label: "Aktiv auf dem Server", hint: "Online-Zeit ohne AFK" },
   { key: "afk", label: "AFK-Zeit", hint: "Online, aber mindestens fünf Minuten keine Bewegung" },
+  { key: "afkmobs", label: "AFK Mobs farmen", hint: "AFK-Phasen, in denen trotzdem ≥ 10 Mobs gestorben sind" },
+  { key: "afkblocks", label: "AFK Blöcke farmen", hint: "AFK-Phasen, in denen trotzdem ≥ 10 Blöcke abgebaut wurden" },
   { key: "live", label: "Live auf Twitch", hint: "Stream-Dauer an diesem Tag" },
 ] as const;
 type SortKey = (typeof SORTS)[number]["key"];
-const sortValue = (r: { seconds: number; afkSeconds: number; liveSeconds: number }, key: SortKey) =>
-  key === "aktiv" ? r.seconds - r.afkSeconds : key === "afk" ? r.afkSeconds : key === "live" ? r.liveSeconds : r.seconds;
+const sortValue = (r: { seconds: number; afkSeconds: number; afkMobsSeconds: number; afkBlocksSeconds: number; liveSeconds: number }, key: SortKey) =>
+  key === "aktiv" ? r.seconds - r.afkSeconds : key === "afk" ? r.afkSeconds : key === "afkmobs" ? r.afkMobsSeconds : key === "afkblocks" ? r.afkBlocksSeconds : key === "live" ? r.liveSeconds : r.seconds;
+const AFK_TIP: Record<string, string> = { mobs: "AFK, farmt Mobs", blocks: "AFK, baut Blöcke ab" };
 
 export default async function Page(props: PageProps<"/zeitstrahl">) {
   const sp = await props.searchParams;
@@ -47,6 +50,7 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
   const edge = (a: number, b: number) => ((pct(a) + pct(b)) / 2 > 72 ? "right" : (pct(a) + pct(b)) / 2 < 18 ? "left" : undefined);
   const total = rows.reduce((s, r) => s + r.seconds, 0);
   const afkTotal = rows.reduce((s, r) => s + r.afkSeconds, 0);
+  const farmTotal = rows.reduce((s, r) => s + r.afkMobsSeconds + r.afkBlocksSeconds, 0);
   const liveCount = rows.filter((r) => r.live.length).length;
   const peak = lapse.frames.reduce((m, f) => Math.max(m, f.online.length), 0);
 
@@ -57,7 +61,7 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
           <p className="eyebrow">Ein Tag auf dem Server</p>
           <h1 className="t-1">Zeitstrahl</h1>
           <p>
-            Oben der Tag als Film im Zeitraffer, darunter jede Session als Balken. Grün heißt auf dem Server, gestreift heißt AFK, lila heißt live auf Twitch.
+            Oben der Tag als Film im Zeitraffer, darunter jede Session als Balken. Grün heißt auf dem Server, gestreift heißt AFK (rot bzw. blau gestreift: AFK-Farm), lila heißt live auf Twitch.
             {nav.dataFrom && <> Daten an diesem Tag ab {time(new Date(nav.dataFrom).toISOString())} Uhr.</>}
           </p>
         </div>
@@ -69,7 +73,7 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
             <div>
               <h2 className="t-2">{dayLong.format(nav.from + 12 * 3600_000)}</h2>
               <p className="muted num" style={{ marginTop: 8 }}>
-                {num(rows.length)} Spieler · {duration(total)} Spielzeit zusammen{afkTotal > 0 ? ` (davon ${duration(afkTotal)} AFK)` : ""} · {num(liveCount)} mit Stream · Spitze {num(peak)} gleichzeitig
+                {num(rows.length)} Spieler · {duration(total)} Spielzeit zusammen{afkTotal > 0 ? ` (davon ${duration(afkTotal)} AFK${farmTotal > 0 ? `, ${duration(farmTotal)} AFK-Farm` : ""})` : ""} · {num(liveCount)} mit Stream · Spitze {num(peak)} gleichzeitig
               </p>
             </div>
             <DateNav base="/zeitstrahl" day={nav.day} prev={nav.prev} next={nav.next} max={dayKey(now)} />
@@ -105,6 +109,12 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
                 <i className="legend__afk" /> AFK (keine Bewegung ≥ 5 Min)
               </li>
               <li>
+                <i className="legend__afk legend__afk--mobs" /> AFK, farmt Mobs (≥ 10 Mobs)
+              </li>
+              <li>
+                <i className="legend__afk legend__afk--blocks" /> AFK, baut Blöcke ab (≥ 10 Blöcke)
+              </li>
+              <li>
                 <i style={{ background: "var(--twitch)" }} /> live auf Twitch
               </li>
               {nowPct !== null && (
@@ -138,8 +148,8 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
                       {r.online.map(([a, b], k) => (
                         <span key={`o${k}`} className="gantt__on tip" style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }} data-edge={edge(a, b)} data-tip={`${r.name} · ${fmtSpan(a, b)} · ${duration((b - a) / 1000)}`} tabIndex={0} />
                       ))}
-                      {r.afk.map(([a, b], k) => (
-                        <span key={`a${k}`} className="gantt__afk tip" style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }} data-edge={edge(a, b)} data-tip={`${r.name} · AFK ${fmtSpan(a, b)} · ${duration((b - a) / 1000)}`} tabIndex={0} />
+                      {r.afk.map(([a, b, kind], k) => (
+                        <span key={`a${k}`} className="gantt__afk tip" data-kind={kind} style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }} data-edge={edge(a, b)} data-tip={`${r.name} · ${kind ? AFK_TIP[kind] : "AFK"} ${fmtSpan(a, b)} · ${duration((b - a) / 1000)}`} tabIndex={0} />
                       ))}
                       {r.live.map(([a, b], k) => (
                         <span key={`l${k}`} className="gantt__live tip" style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }} data-edge={edge(a, b)} data-tip={`${r.name} · live ${fmtSpan(a, b)} · ${duration((b - a) / 1000)}`} tabIndex={0} />
@@ -149,7 +159,7 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
                     <span
                       className="gantt__sum num"
                       role="cell"
-                      title={`${duration(r.seconds)} online${r.afkSeconds > 0 ? ` · davon ${duration(r.afkSeconds)} AFK` : ""}${r.liveSeconds > 0 ? ` · ${duration(r.liveSeconds)} live` : ""}`}
+                      title={`${duration(r.seconds)} online${r.afkSeconds > 0 ? ` · davon ${duration(r.afkSeconds)} AFK` : ""}${r.afkMobsSeconds > 0 ? ` · ${duration(r.afkMobsSeconds)} Mobs farmen` : ""}${r.afkBlocksSeconds > 0 ? ` · ${duration(r.afkBlocksSeconds)} Blöcke farmen` : ""}${r.liveSeconds > 0 ? ` · ${duration(r.liveSeconds)} live` : ""}`}
                     >
                       {sort === "spielzeit" ? (
                         <>
@@ -170,7 +180,8 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
           </div>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
             Sessions entstehen aus den Join- und Leave-Ereignissen des Trackers, Streams aus den Stream-an/aus-Ereignissen. AFK heißt: online, aber
-            die gelaufene Strecke steigt mindestens fünf Minuten nicht, nur erkennbar bei Spielern mit Einzelstatistik. Genauigkeit: etwa 30 Sekunden.
+            die gelaufene Strecke steigt mindestens fünf Minuten nicht, nur erkennbar bei Spielern mit Einzelstatistik. Sterben dabei trotzdem zehn Mobs oder
+            fallen zehn Blöcke, ist es eine AFK-Farm. Genauigkeit: etwa 30 Sekunden.
           </p>
         </div>
       </section>

@@ -2223,6 +2223,21 @@ a.st-chip-in[data-live="true"] {
 .legend__afk {
   background: repeating-linear-gradient(135deg, var(--gold) 0 3px, color-mix(in srgb, var(--gold) 35%, var(--paper)) 3px 6px);
 }
+/* AFK-Farm: Mobs rot-gold, Blöcke blau-gold gestreift */
+.gantt__afk[data-kind="mobs"],
+.legend__afk--mobs,
+.zr__heads li[data-afk="mobs"] {
+  background: repeating-linear-gradient(135deg, var(--redstone) 0 3px, var(--gold) 3px 6px);
+}
+.gantt__afk[data-kind="blocks"],
+.legend__afk--blocks,
+.zr__heads li[data-afk="blocks"] {
+  background: repeating-linear-gradient(135deg, var(--sky) 0 3px, var(--gold) 3px 6px);
+}
+.zr__afk--farm {
+  font-size: 0.5625rem;
+  letter-spacing: 0;
+}
 .gantt__afk-sum {
   display: block;
   font-size: 0.75rem;

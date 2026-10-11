@@ -3,8 +3,8 @@ import { connection } from "next/server";
 import { getDb } from "./db";
 import { ensureLoaded, getAllSessions, getDailyEventSum, getEvents, getState, type StoredSession } from "./store";
 import { EVENT_META } from "./events";
-import { AFK_MS } from "./tracker";
-import type { BoardKey, TrackerEvent, TrackerState } from "./types";
+import { AFK_MS, AFK_FARM_MIN } from "./tracker";
+import type { BoardKey, TrackerEvent, TrackerState, AfkKind } from "./types";
 import { BOARD_KEYS } from "./types";
 
 /* ============================================================ Tage (Europe/Berlin) */
@@ -99,7 +99,8 @@ async function firstDataAt(): Promise<number | null> {
   });
 }
 
-export type Span = [number, number];
+/** Zeitspanne [von, bis] in ms; AFK-Phasen tragen optional die Art (AFK-Farm) */
+export type Span = [a: number, b: number, kind?: AfkKind];
 
 function clip(sessions: StoredSession[], from: number, to: number, now: number): Map<string, Span[]> {
   const out = new Map<string, Span[]>();
@@ -144,30 +145,60 @@ async function dayNav(day: string | undefined, now: number): Promise<DayNav> {
 
 /* ============================================================ AFK-Phasen */
 
-type AfkRow = { player: string; at: Date; online: boolean; distance: number | string | null };
+type AfkRow = { player: string; at: Date; online: boolean; distance: number | string | null; mobs: number | string | null; blocks: number | string | null };
+const AFK_COLS = "player, at, online, distance, mobs_killed AS mobs, blocks_broken AS blocks";
 
-/** Kern der AFK-Erkennung über nach Spieler und Zeit sortierte Verlaufspunkte (siehe `getAfkSpans`). */
+export const AFK_KIND_LABEL: Record<AfkKind, string> = { mobs: "Mobs farmen", blocks: "Blöcke farmen" };
+
+/** Sekunden aller Phasen, optional nur einer Art („none“ = AFK ohne Farm) */
+export function spanSeconds(spans: Span[], kind?: AfkKind | "none"): number {
+  let sum = 0;
+  for (const [a, b, k] of spans) {
+    if (kind === undefined || (kind === "none" ? !k : k === kind)) sum += (b - a) / 1000;
+  }
+  return sum;
+}
+
+/**
+ * Kern der AFK-Erkennung über nach Spieler und Zeit sortierte Verlaufspunkte (siehe `getAfkSpans`).
+ * Steigen Mobs bzw. Blöcke innerhalb einer Phase um ≥ AFK_FARM_MIN, bekommt sie die Art „mobs“ bzw. „blocks“ (AFK-Farm).
+ */
 function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, state: TrackerState): Map<string, Span[]> {
   const out = new Map<string, Span[]>();
-  const add = (id: string, a: number, b: number) => {
+  const add = (id: string, a: number, b: number, kind: AfkKind | undefined) => {
     const x = Math.max(from, a);
     const y = Math.min(to, b);
     if (y - x <= 0) return;
     const l = out.get(id) ?? [];
-    l.push([x, y]);
+    l.push(kind ? [x, y, kind] : [x, y]);
     out.set(id, l);
   };
   let cur: string | null = null;
   let lastMove = 0;
   let lastDist: number | null = null;
   let wasOnline = false;
-  const close = (id: string, t: number) => {
-    if (wasOnline && lastDist !== null && t - lastMove >= AFK_MS) add(id, lastMove, t);
+  // Zähler zuletzt gesehen bzw. bei der letzten Bewegung
+  let lastMobs: number | null = null;
+  let lastBlocks: number | null = null;
+  let moveMobs: number | null = null;
+  let moveBlocks: number | null = null;
+  const kindOf = (mobs: number | null, blocks: number | null): AfkKind | undefined =>
+    mobs !== null && moveMobs !== null && mobs - moveMobs >= AFK_FARM_MIN ? "mobs" : blocks !== null && moveBlocks !== null && blocks - moveBlocks >= AFK_FARM_MIN ? "blocks" : undefined;
+  const close = (id: string, t: number, mobs = lastMobs, blocks = lastBlocks) => {
+    if (wasOnline && lastDist !== null && t - lastMove >= AFK_MS) add(id, lastMove, t, kindOf(mobs, blocks));
   };
   const finish = (id: string) => {
     const p = state.players[id];
-    if (p?.online) close(id, Math.min(now, to));
-    else if (wasOnline) close(id, Date.parse(p?.lastSeen ?? new Date(now).toISOString()));
+    const mobs = p?.stats.mobsKilled ?? lastMobs;
+    const blocks = p?.stats.blocksBroken ?? lastBlocks;
+    if (p?.online) close(id, Math.min(now, to), mobs, blocks);
+    else if (wasOnline) close(id, Date.parse(p?.lastSeen ?? new Date(now).toISOString()), mobs, blocks);
+  };
+  const restart = (t: number, d: number | null) => {
+    lastMove = t;
+    lastDist = d;
+    moveMobs = lastMobs;
+    moveBlocks = lastBlocks;
   };
   for (const r of rows) {
     const t = new Date(r.at).getTime();
@@ -175,28 +206,29 @@ function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, stat
     if (r.player !== cur) {
       if (cur) finish(cur);
       cur = r.player;
-      lastMove = t;
-      lastDist = d;
+      lastMobs = r.mobs === null ? null : Number(r.mobs);
+      lastBlocks = r.blocks === null ? null : Number(r.blocks);
+      restart(t, d);
       wasOnline = r.online;
       continue;
     }
+    if (r.mobs !== null) lastMobs = Number(r.mobs);
+    if (r.blocks !== null) lastBlocks = Number(r.blocks);
     if (!r.online) {
       if (wasOnline) close(cur, t);
       wasOnline = false;
-      lastMove = t;
-      lastDist = d;
+      restart(t, d);
       continue;
     }
     if (!wasOnline) {
       // Join: Bewegungsuhr neu starten
       wasOnline = true;
-      lastMove = t;
-      lastDist = d;
+      restart(t, d);
       continue;
     }
     if (d !== null && (lastDist === null || d > lastDist)) {
       close(cur, t);
-      lastMove = t;
+      restart(t, d);
     }
     if (d !== null) lastDist = d;
   }
@@ -216,7 +248,7 @@ export async function getAfkSpans(from: number, to: number, now: number): Promis
     const db = await getDb();
     // Vorlauf, damit die letzte Bewegung vor `from` bekannt ist
     const rows = (
-      await db.query<AfkRow>(`SELECT player, at, online, distance FROM player_history WHERE at >= $1 AND at < $2 ORDER BY player, at`, [
+      await db.query<AfkRow>(`SELECT ${AFK_COLS} FROM player_history WHERE at >= $1 AND at < $2 ORDER BY player, at`, [
         new Date(from - 12 * 3600_000),
         new Date(to),
       ])
@@ -233,12 +265,13 @@ export async function getAllAfkSpans(): Promise<Map<string, Span[]>> {
   });
 }
 
-/** AFK-Bestenliste: Summe der AFK-Phasen je Spieler, optional nur bis zu einem Zeitpunkt (für ▲/▼). */
-export async function getAfkBoard(untilMsAgo = 0): Promise<{ id: string; name: string; uuid: string; value: number; online: boolean; afkNow: boolean }[]> {
+/** AFK-Bestenliste: Summe der AFK-Phasen je Spieler (optional nur einer Art), optional nur bis zu einem Zeitpunkt (für ▲/▼). */
+export async function getAfkBoard(kind?: AfkKind, untilMsAgo = 0): Promise<{ id: string; name: string; uuid: string; value: number; online: boolean; afkNow: boolean }[]> {
   const [spans, state] = await Promise.all([getAllAfkSpans(), getState()]);
   const until = Date.now() - untilMsAgo;
   const rows: { id: string; name: string; uuid: string; value: number; online: boolean; afkNow: boolean }[] = [];
-  for (const [id, list] of spans) {
+  for (const [id, all] of spans) {
+    const list = kind ? all.filter((s) => s[2] === kind) : all;
     let sum = 0;
     let afkNow = false;
     for (const [a, b] of list) {
@@ -253,9 +286,9 @@ export async function getAfkBoard(untilMsAgo = 0): Promise<{ id: string; name: s
 }
 
 /** Ränge der AFK-Bestenliste vor `hoursAgo` Stunden */
-export async function getAfkRanksBefore(hoursAgo = 24): Promise<Record<string, number>> {
-  return cached(`afkRanksBefore:${hoursAgo}`, 300_000, async () => {
-    const rows = await getAfkBoard(hoursAgo * 3600_000);
+export async function getAfkRanksBefore(hoursAgo = 24, kind?: AfkKind): Promise<Record<string, number>> {
+  return cached(`afkRanksBefore:${hoursAgo}:${kind ?? "alle"}`, 300_000, async () => {
+    const rows = await getAfkBoard(kind, hoursAgo * 3600_000);
     return Object.fromEntries(rows.map((r, i) => [r.id, i + 1]));
   });
 }
@@ -264,7 +297,7 @@ export async function getAfkRanksBefore(hoursAgo = 24): Promise<Record<string, n
  * AFK-Zeit als Zeitreihe für den Graph-Baukasten: kumulierte AFK-Sekunden je Spieler (oder aller zusammen)
  * zum Ende jedes Bündels.
  */
-export async function getAfkSeries(q: { players: string[]; from: number | null; to: number | null; bucketMinutes: number | null; mode: "wert" | "zuwachs" }): Promise<{
+export async function getAfkSeries(q: { players: string[]; from: number | null; to: number | null; bucketMinutes: number | null; mode: "wert" | "zuwachs"; kind?: AfkKind }): Promise<{
   series: { id: string; name: string; points: { at: string; v: number }[] }[];
   bucketMinutes: number;
 }> {
@@ -278,6 +311,7 @@ export async function getAfkSeries(q: { players: string[]; from: number | null; 
   const stepMs = minutes * 60_000;
   const t0 = Math.floor(from / stepMs) * stepMs;
   const ids = q.players.length ? q.players : [...spans.keys()];
+  const pick = (id: string) => (spans.get(id) ?? []).filter((s) => !q.kind || s[2] === q.kind);
   const cumulative = (list: Span[]) => {
     const points: { at: string; v: number }[] = [];
     let acc = 0;
@@ -297,9 +331,9 @@ export async function getAfkSeries(q: { players: string[]; from: number | null; 
   };
   let series: { id: string; name: string; points: { at: string; v: number }[] }[];
   if (q.players.length) {
-    series = ids.map((id) => ({ id, name: state.players[id]?.name ?? id, points: cumulative(spans.get(id) ?? []) }));
+    series = ids.map((id) => ({ id, name: state.players[id]?.name ?? id, points: cumulative(pick(id)) }));
   } else {
-    const all = ids.map((id) => cumulative(spans.get(id) ?? []));
+    const all = ids.map((id) => cumulative(pick(id)));
     const n = all[0]?.length ?? 0;
     const points = Array.from({ length: n }, (_, i) => ({ at: all[0][i].at, v: all.reduce((s, l) => s + (l[i]?.v ?? 0), 0) }));
     series = [{ id: "alle", name: "Alle Spieler", points }];
@@ -316,7 +350,7 @@ export async function getPlayerAfkSpans(id: string): Promise<Span[]> {
     await ensureLoaded();
     const db = await getDb();
     const now = Date.now();
-    const rows = (await db.query<AfkRow>(`SELECT player, at, online, distance FROM player_history WHERE player = $1 ORDER BY at`, [id])).rows;
+    const rows = (await db.query<AfkRow>(`SELECT ${AFK_COLS} FROM player_history WHERE player = $1 ORDER BY at`, [id])).rows;
     return afkFromRows(rows, 0, now, now, await getState()).get(id) ?? [];
   });
 }
@@ -333,6 +367,9 @@ export interface TimelineRow {
   /** AFK-Phasen (Teil der Online-Zeit) */
   afk: Span[];
   afkSeconds: number;
+  /** Davon AFK-Farm: Mobs bzw. Blöcke (Sekunden) */
+  afkMobsSeconds: number;
+  afkBlocksSeconds: number;
   /** Live-Zeit auf Twitch an diesem Tag (Sekunden) */
   liveSeconds: number;
 }
@@ -357,7 +394,9 @@ export async function getDayTimeline(day?: string): Promise<{ nav: DayNav; rows:
       live: l,
       afk: a,
       seconds: o.reduce((s, [x, y]) => s + (y - x) / 1000, 0),
-      afkSeconds: a.reduce((s, [x, y]) => s + (y - x) / 1000, 0),
+      afkSeconds: spanSeconds(a),
+      afkMobsSeconds: spanSeconds(a, "mobs"),
+      afkBlocksSeconds: spanSeconds(a, "blocks"),
       liveSeconds: l.reduce((s, [x, y]) => s + (y - x) / 1000, 0),
     };
   });
@@ -374,6 +413,9 @@ export interface TimelapseFrame {
   live: number[];
   /** Indizes der Spieler, die online, aber AFK sind */
   afk: number[];
+  /** Davon: AFK-Farm (Mobs bzw. Blöcke) */
+  afkMobs: number[];
+  afkBlocks: number[];
   deaths: number | null;
   viewers: number | null;
   messages: string[];
@@ -430,12 +472,19 @@ export async function getTimelapse(day?: string): Promise<Timelapse> {
     const online: number[] = [];
     const live: number[] = [];
     const afk: number[] = [];
+    const afkMobs: number[] = [];
+    const afkBlocks: number[] = [];
     for (const id of ids) {
       const i = index.get(id)!;
       const isOn = covers(on.get(id), t);
       if (isOn) online.push(i);
       if (covers(li.get(id), t)) live.push(i);
-      if (isOn && covers(afkSpans.get(id), t)) afk.push(i);
+      const span = isOn ? afkSpans.get(id)?.find(([a, b]) => a <= t && t < b) : undefined;
+      if (span) {
+        afk.push(i);
+        if (span[2] === "mobs") afkMobs.push(i);
+        if (span[2] === "blocks") afkBlocks.push(i);
+      }
     }
     const h = histAt.get(t);
     if (h) lastDeaths = Number(h.deaths);
@@ -444,7 +493,7 @@ export async function getTimelapse(day?: string): Promise<Timelapse> {
       if (Date.parse(sorted[ei].at) > t - stepMs) messages.push(text(sorted[ei]));
       ei++;
     }
-    frames.push({ at: t, online, live, afk, deaths: h ? Number(h.deaths) : lastDeaths, viewers: h ? Number(h.viewers) : null, messages: messages.slice(0, 6) });
+    frames.push({ at: t, online, live, afk, afkMobs, afkBlocks, deaths: h ? Number(h.deaths) : lastDeaths, viewers: h ? Number(h.viewers) : null, messages: messages.slice(0, 6) });
   }
   return { nav, stepMinutes: step, players, frames };
 }
@@ -468,6 +517,8 @@ export interface StatsExtras {
     perPlayer: { id: string; name: string; uuid: string; seconds: number; onlineSeconds: number; share: number }[];
     longest: { id: string; name: string; uuid: string; seconds: number; from: string; to: string } | null;
     totalHours: number;
+    /** AFK-Farmen: je Art die Top-Spieler (Sekunden) und die Gesamtstunden */
+    farm: Record<AfkKind, { perPlayer: { id: string; name: string; uuid: string; seconds: number }[]; hours: number }>;
   };
   /** Längste Sessions */
   marathons: { id: string; name: string; uuid: string; seconds: number; start: string; end: string | null }[];
@@ -561,10 +612,12 @@ export async function getStatsExtras(): Promise<StatsExtras> {
     const afkSpans = await getAfkSpans(firstAt, now, now);
     const afkPerDay = new Map<string, number>();
     const afkPerPlayer = new Map<string, number>();
+    const farmPerPlayer: Record<AfkKind, Map<string, number>> = { mobs: new Map(), blocks: new Map() };
     let longestAfk: StatsExtras["afk"]["longest"] = null;
     for (const [id, spans] of afkSpans) {
-      for (const [a, b] of spans) {
+      for (const [a, b, kind] of spans) {
         afkPerPlayer.set(id, (afkPerPlayer.get(id) ?? 0) + (b - a) / 1000);
+        if (kind) farmPerPlayer[kind].set(id, (farmPerPlayer[kind].get(id) ?? 0) + (b - a) / 1000);
         if (!longestAfk || b - a > longestAfk.seconds * 1000) {
           longestAfk = { id, name: state.players[id]?.name ?? id, uuid: state.players[id]?.uuid ?? "", seconds: Math.round((b - a) / 1000), from: new Date(a).toISOString(), to: new Date(b).toISOString() };
         }
@@ -583,7 +636,19 @@ export async function getStatsExtras(): Promise<StatsExtras> {
         return { id, name: state.players[id]?.name ?? id, uuid: state.players[id]?.uuid ?? "", seconds: Math.round(seconds), onlineSeconds: Math.round(onlineSeconds), share: onlineSeconds > 0 ? Math.min(1, seconds / onlineSeconds) : 0 };
       })
       .sort((a, b) => b.seconds - a.seconds);
-    const afk: StatsExtras["afk"] = { perPlayer: afkPlayers.slice(0, 10), longest: longestAfk, totalHours: [...afkPerDay.values()].reduce((s, v) => s + v, 0) };
+    const farmList = (m: Map<string, number>) => ({
+      perPlayer: [...m]
+        .map(([id, seconds]) => ({ id, name: state.players[id]?.name ?? id, uuid: state.players[id]?.uuid ?? "", seconds: Math.round(seconds) }))
+        .sort((x, y) => y.seconds - x.seconds)
+        .slice(0, 8),
+      hours: [...m.values()].reduce((s, v) => s + v, 0) / 3600,
+    });
+    const afk: StatsExtras["afk"] = {
+      perPlayer: afkPlayers.slice(0, 10),
+      longest: longestAfk,
+      totalHours: [...afkPerDay.values()].reduce((s, v) => s + v, 0),
+      farm: { mobs: farmList(farmPerPlayer.mobs), blocks: farmList(farmPerPlayer.blocks) },
+    };
 
     // Längste Sessions
     const marathons: StatsExtras["marathons"] = sessions

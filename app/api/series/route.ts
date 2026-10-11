@@ -18,7 +18,10 @@ export async function GET(req: Request) {
   const raster = n("raster");
   const base = { players, from: n("von"), to: n("bis"), bucketMinutes: raster !== null && BUCKETS.has(raster) ? raster : null, mode: sp.get("modus") === "zuwachs" ? ("zuwachs" as const) : ("wert" as const) };
   // AFK-Zeit kommt nicht aus einer Spalte, sondern aus den rückwirkend berechneten AFK-Phasen
-  if (metric === "afkSeconds") return NextResponse.json(await getAfkSeries(base), { headers: { "cache-control": "private, max-age=30" } });
+  if (metric === "afkSeconds" || metric === "afkMobsSeconds" || metric === "afkBlocksSeconds") {
+    const kind = metric === "afkMobsSeconds" ? ("mobs" as const) : metric === "afkBlocksSeconds" ? ("blocks" as const) : undefined;
+    return NextResponse.json(await getAfkSeries({ ...base, kind }), { headers: { "cache-control": "private, max-age=30" } });
+  }
   const data = await getSeries({
     metric,
     players,

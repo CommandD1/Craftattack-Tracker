@@ -51,6 +51,9 @@ export function Timelapse({ data }: { data: TimelapseData }) {
   const online = useMemo(() => new Set(f?.online ?? []), [f]);
   const live = useMemo(() => new Set(f?.live ?? []), [f]);
   const afk = useMemo(() => new Set(f?.afk ?? []), [f]);
+  const afkMobs = useMemo(() => new Set(f?.afkMobs ?? []), [f]);
+  const afkBlocks = useMemo(() => new Set(f?.afkBlocks ?? []), [f]);
+  const farming = f ? f.afkMobs.length + f.afkBlocks.length : 0;
   const liveOnServer = f ? f.live.filter((k) => online.has(k)).length : 0;
 
   if (!frames.length) return <p className="st-online__empty">Für diesen Tag liegen keine Daten vor.</p>;
@@ -72,8 +75,8 @@ export function Timelapse({ data }: { data: TimelapseData }) {
           {num(f.online.length)} online
         </span>
         {f.afk.length > 0 && (
-          <span className="tag" data-tone="gold" title="Auf dem Server, aber seit mindestens fünf Minuten keine Bewegung">
-            {num(f.afk.length)} AFK
+          <span className="tag" data-tone="gold" title="Auf dem Server, aber seit mindestens fünf Minuten keine Bewegung · davon an einer AFK-Farm">
+            {num(f.afk.length)} AFK{farming > 0 ? ` · ${num(farming)} farmen` : ""}
           </span>
         )}
         <span className="tag" data-tone="twitch" title="Live auf Twitch · davon auf dem Server">
@@ -128,6 +131,12 @@ export function Timelapse({ data }: { data: TimelapseData }) {
               <i className="legend__afk" /> auf dem Server, AFK
             </li>
             <li>
+              <i className="legend__afk legend__afk--mobs" /> AFK, farmt Mobs
+            </li>
+            <li>
+              <i className="legend__afk legend__afk--blocks" /> AFK, baut Blöcke ab
+            </li>
+            <li>
               <i className="zr__legend-live" /> live, auf dem Server
             </li>
             <li>
@@ -139,14 +148,16 @@ export function Timelapse({ data }: { data: TimelapseData }) {
               const isOn = online.has(k);
               const isLive = live.has(k);
               const isAfk = afk.has(k);
-              const state = isLive && isOn ? (isAfk ? "live, auf dem Server, AFK" : "live, auf dem Server") : isLive ? "live, nicht auf dem Server" : isAfk ? "auf dem Server, AFK" : isOn ? "auf dem Server" : "";
+              const farm = afkMobs.has(k) ? "mobs" : afkBlocks.has(k) ? "blocks" : null;
+              const afkText = farm === "mobs" ? "AFK, farmt Mobs" : farm === "blocks" ? "AFK, baut Blöcke ab" : "AFK";
+              const state = isLive && isOn ? (isAfk ? `live, auf dem Server, ${afkText}` : "live, auf dem Server") : isLive ? "live, nicht auf dem Server" : isAfk ? `auf dem Server, ${afkText}` : isOn ? "auf dem Server" : "";
               return (
-                <li key={p.id} data-on={isOn ? "true" : undefined} data-afk={isAfk ? "true" : undefined} data-live={isLive ? "true" : undefined}>
+                <li key={p.id} data-on={isOn ? "true" : undefined} data-afk={isAfk ? (farm ?? "true") : undefined} data-live={isLive ? "true" : undefined}>
                   <Link href={`/spieler/${encodeURIComponent(p.id)}`} title={`${p.name}${state ? ` · ${state}` : ""}`}>
                     <img src={headUrl(p.uuid, 40, p.id)} alt={p.name} width={40} height={40} loading="lazy" decoding="async" />
                     {isAfk && (
-                      <span className="zr__afk" aria-hidden="true">
-                        AFK
+                      <span className={farm ? "zr__afk zr__afk--farm" : "zr__afk"} aria-hidden="true">
+                        {farm === "mobs" ? "MOBS" : farm === "blocks" ? "BLÖCKE" : "AFK"}
                       </span>
                     )}
                   </Link>

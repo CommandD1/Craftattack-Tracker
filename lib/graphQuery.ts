@@ -2,7 +2,7 @@ import { boardValue, num } from "./format";
 
 /* ---------- Konfiguration ---------- */
 
-export type Metric = "onlineCount" | "liveCount" | "viewers" | "playtimeSeconds" | "afkSeconds" | "deaths" | "diamonds" | "blocksBroken" | "mobsKilled" | "distance" | "online";
+export type Metric = "onlineCount" | "liveCount" | "viewers" | "playtimeSeconds" | "afkSeconds" | "afkMobsSeconds" | "afkBlocksSeconds" | "deaths" | "diamonds" | "blocksBroken" | "mobsKilled" | "distance" | "online";
 
 interface MetricMeta {
   label: string;
@@ -24,6 +24,8 @@ export const METRICS: Record<Metric, MetricMeta> = {
   viewers: { label: "Zuschauer", perPlayer: true, counter: false, format: num, hint: "Ohne Spieler: Summe aller Streams", tone: "twitch", icon: "eye" },
   playtimeSeconds: { label: "Spielzeit", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "Die API liefert Spielzeit nur für die Top 10", tone: "sky", icon: "clock" },
   afkSeconds: { label: "AFK-Zeit", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "AFK = online, aber ≥ 5 Min keine Bewegung; aus dem Spielerverlauf berechnet", tone: "gold", icon: "clock" },
+  afkMobsSeconds: { label: "AFK: Mobs farmen", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "AFK-Phasen, in denen trotzdem ≥ 10 Mobs gestorben sind (Mob-Farm)", tone: "gold", icon: "sword" },
+  afkBlocksSeconds: { label: "AFK: Blöcke farmen", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "AFK-Phasen, in denen trotzdem ≥ 10 Blöcke abgebaut wurden (Block-Farm)", tone: "gold", icon: "pickaxe" },
   deaths: { label: "Tode", perPlayer: true, counter: true, format: num, tone: "redstone", icon: "skull" },
   diamonds: { label: "Diamanten", perPlayer: true, counter: true, format: num, tone: "diamond", icon: "diamond" },
   blocksBroken: { label: "Blöcke", perPlayer: true, counter: true, format: num, tone: "gold", icon: "pickaxe" },

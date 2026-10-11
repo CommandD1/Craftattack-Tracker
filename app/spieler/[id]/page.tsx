@@ -12,7 +12,7 @@ import { getAllSessions, getPlayerHistory } from "@/lib/store";
 import { companionsOf, overlapsFor } from "@/lib/overlap";
 import { TwitchEmbed } from "@/components/TwitchEmbed";
 import { PlayerInsights } from "@/components/PlayerInsights";
-import { getPlayerAfkSpans, getPlayerRates, getRankHistory } from "@/lib/analytics";
+import { getPlayerAfkSpans, getPlayerRates, getRankHistory, spanSeconds } from "@/lib/analytics";
 import { PlayerActivity } from "@/components/PlayerActivity";
 
 // Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
@@ -124,6 +124,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const streamSeconds = (p.streamOnServerSeconds ?? 0) + (p.streamOffServerSeconds ?? 0);
   // AFK-Zeit aus dem Spielerverlauf (rückwirkend, gleiche Quelle wie Zeitstrahl und Statistik)
   const afkSeconds = afkSpans.reduce((s, [a, b]) => s + (b - a) / 1000, 0);
+  const afkFarm = { mobs: spanSeconds(afkSpans, "mobs"), blocks: spanSeconds(afkSpans, "blocks") };
   const onlineSeconds = trackedSeconds;
   const activeSeconds = Math.max(0, onlineSeconds - afkSeconds);
   /** Link auf den Graphen der Statistik-Seite für diese Kennzahl und diesen Spieler */
@@ -173,8 +174,9 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                   </span>
                 )}
                 {p.online && p.afkSince && (
-                  <span className="tag" data-tone="gold" title="Die gelaufene Strecke steigt seit mindestens fünf Minuten nicht">
+                  <span className="tag" data-tone="gold" title={p.afkFarm ? `Die Strecke steigt nicht, aber ${p.afkFarm === "mobs" ? "Mobs sterben" : "Blöcke fallen"} – eine AFK-Farm` : "Die gelaufene Strecke steigt seit mindestens fünf Minuten nicht"}>
                     AFK seit {ago(p.afkSince).replace("vor ", "")}
+                    {p.afkFarm ? ` · ${p.afkFarm === "mobs" ? "farmt Mobs" : "baut Blöcke ab"}` : ""}
                   </span>
                 )}
                 {p.live && twitchUrl ? (
@@ -291,6 +293,10 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                   <dd className="num">
                     {afkSeconds > 0 ? duration(afkSeconds) : "–"}
                     {afkSeconds > 0 && onlineSeconds > 0 && <small className="muted"> {Math.round((afkSeconds / onlineSeconds) * 100)} %</small>}
+                  </dd>
+                  <dt title="AFK-Phasen, in denen trotzdem mindestens zehn Mobs starben bzw. zehn Blöcke fielen">AFK-Farmen</dt>
+                  <dd className="num">
+                    {afkFarm.mobs > 0 || afkFarm.blocks > 0 ? [afkFarm.mobs > 0 ? `Mobs ${duration(afkFarm.mobs)}` : null, afkFarm.blocks > 0 ? `Blöcke ${duration(afkFarm.blocks)}` : null].filter(Boolean).join(" · ") : "–"}
                   </dd>
                   <dt>Peak-Zuschauer</dt>
                   <dd className="num">{num(p.peakViewers)}</dd>

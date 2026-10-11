@@ -11,6 +11,7 @@ import {
   type PlayerState,
   type TrackerEvent,
   type TrackerState,
+  type AfkKind,
 } from "./types";
 
 export const STATS_URL = process.env.CA_STATS_URL ?? "https://craftattack.one/api/stats";
@@ -34,6 +35,20 @@ const COUNTER_EVENTS: Partial<Record<BoardKey, EventType>> = {
 
 /** Ab wann ein Spieler ohne Streckenzuwachs als AFK gilt */
 export const AFK_MS = Number(process.env.CA_AFK_MINUTES ?? 5) * 60_000;
+/** Ab so vielen Mobs bzw. Blöcken innerhalb einer AFK-Phase gilt sie als AFK-Farm */
+export const AFK_FARM_MIN = Number(process.env.CA_AFK_FARM_MIN ?? 10);
+
+/** Was der Spieler seit Beginn der laufenden AFK-Phase trotzdem gemacht hat */
+function afkFarmDelta(ps: PlayerState): { mobs: number; blocks: number } {
+  const d = (now: number | undefined, at: number | null | undefined) => (now === undefined || at === null || at === undefined ? 0 : Math.max(0, now - at));
+  return { mobs: d(ps.stats.mobsKilled, ps.afkMobsAt), blocks: d(ps.stats.blocksBroken, ps.afkBlocksAt) };
+}
+function endAfk(ps: PlayerState) {
+  ps.afkSince = null;
+  ps.afkFarm = null;
+  ps.afkMobsAt = null;
+  ps.afkBlocksAt = null;
+}
 
 /** Wartezeit, bevor nicht zuordenbare Tode als „unbekannt“ gemeldet werden */
 const UNKNOWN_DEATH_GRACE_MS = Number(process.env.CA_UNKNOWN_DEATH_GRACE_MS ?? 10 * 60_000);
@@ -199,6 +214,9 @@ function ensurePlayer(
       lastMoveAt: null,
       afkSince: null,
       afkSeconds: 0,
+      afkFarm: null,
+      afkMobsAt: null,
+      afkBlocksAt: null,
       ranks: {},
       twitchLogin: null,
     };
@@ -277,8 +295,8 @@ export function diffSnapshot(
       if (ps.afkSince) {
         const afk = Math.max(0, Math.round((nowDate.getTime() - Date.parse(ps.afkSince)) / 1000));
         ps.afkSeconds = (ps.afkSeconds ?? 0) + sinceLast;
-        push({ type: "afk_end", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { afkSeconds: afk, since: ps.afkSince, byLeave: true } });
-        ps.afkSince = null;
+        push({ type: "afk_end", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { afkSeconds: afk, since: ps.afkSince, byLeave: true, farm: ps.afkFarm, ...afkFarmDelta(ps) } });
+        endAfk(ps);
       }
       ps.lastMoveAt = null;
       push({
@@ -488,16 +506,27 @@ export function diffSnapshot(
       const idle = nowDate.getTime() - Date.parse(ps.lastMoveAt);
       if (ps.afkSince) {
         ps.afkSeconds = (ps.afkSeconds ?? 0) + sinceLast;
+        const farm = afkFarmDelta(ps);
         if (idle < AFK_MS) {
           // Bewegung: AFK-Phase ist vorbei
           const afk = Math.max(0, Math.round((nowDate.getTime() - Date.parse(ps.afkSince)) / 1000));
-          push({ type: "afk_end", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { afkSeconds: afk, since: ps.afkSince } });
-          ps.afkSince = null;
+          push({ type: "afk_end", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { afkSeconds: afk, since: ps.afkSince, farm: ps.afkFarm, ...farm } });
+          endAfk(ps);
+        } else if (!ps.afkFarm) {
+          // Steht still, aber Mobs/Blöcke steigen: AFK-Farm (die erste erreichte Schwelle zählt)
+          const kind: AfkKind | null = farm.mobs >= AFK_FARM_MIN ? "mobs" : farm.blocks >= AFK_FARM_MIN ? "blocks" : null;
+          if (kind) {
+            ps.afkFarm = kind;
+            push({ type: "afk_farm", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", value: kind === "mobs" ? farm.mobs : farm.blocks, meta: { kind, since: ps.afkSince, ...farm } });
+          }
         }
       } else if (idle >= AFK_MS) {
         // AFK beginnt rückwirkend mit der letzten Bewegung
         ps.afkSince = ps.lastMoveAt;
         ps.afkSeconds = (ps.afkSeconds ?? 0) + idle / 1000;
+        ps.afkFarm = null;
+        ps.afkMobsAt = ps.stats.mobsKilled ?? null;
+        ps.afkBlocksAt = ps.stats.blocksBroken ?? null;
         push({ type: "afk_start", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { since: ps.afkSince } });
       }
     }

@@ -17,13 +17,24 @@ export const EVENT_META: Record<EventType, EventMeta> = {
     text: () => "ist AFK",
     sub: (e) => (typeof e.meta?.since === "string" ? `Keine Bewegung seit ${new Date(e.meta.since).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" })} Uhr` : null),
   },
+  afk_farm: {
+    label: "AFK-Farm",
+    tone: "gold",
+    text: (e) => (e.meta?.kind === "blocks" ? "baut AFK Blöcke ab" : "farmt AFK Mobs"),
+    sub: (e) => {
+      const n = Number(e.value ?? 0);
+      const since = typeof e.meta?.since === "string" ? new Date(e.meta.since).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" }) : null;
+      return [n > 0 ? `${num(n)} ${e.meta?.kind === "blocks" ? "Blöcke" : "Mobs"} ohne Bewegung` : null, since ? `AFK seit ${since} Uhr` : null].filter(Boolean).join(" · ") || null;
+    },
+  },
   afk_end: {
     label: "Zurück",
     tone: "grass",
     text: (e) => (e.meta?.byLeave ? "war bis zum Leave AFK" : "ist wieder da"),
     sub: (e) => {
       const s = Number(e.meta?.afkSeconds ?? 0);
-      return s > 0 ? `AFK: ${duration(s)}` : null;
+      const farm = e.meta?.farm === "mobs" ? `dabei ${num(Number(e.meta.mobs ?? 0))} Mobs gefarmt` : e.meta?.farm === "blocks" ? `dabei ${num(Number(e.meta.blocks ?? 0))} Blöcke abgebaut` : null;
+      return s > 0 ? `AFK: ${duration(s)}${farm ? ` · ${farm}` : ""}` : null;
     },
   },
   leave: {
@@ -164,7 +175,7 @@ export const EVENT_META: Record<EventType, EventMeta> = {
 };
 
 export const EVENT_GROUPS: { key: string; label: string; tone: string; types: EventType[] }[] = [
-  { key: "server", label: "Server", tone: "grass", types: ["join", "leave", "afk_start", "afk_end", "server_online", "server_offline", "tracker_start"] },
+  { key: "server", label: "Server", tone: "grass", types: ["join", "leave", "afk_start", "afk_farm", "afk_end", "server_online", "server_offline", "tracker_start"] },
   { key: "death", label: "Tode", tone: "redstone", types: ["death"] },
   { key: "loot", label: "Loot & Arbeit", tone: "gold", types: ["diamonds", "blocksBroken", "mobsKilled", "distance"] },
   { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title"] },
@@ -202,6 +213,8 @@ export function eventBadge(e: TrackerEvent): string | null {
       const s = Number(e.meta?.afkSeconds ?? 0);
       return s > 0 ? duration(s) : null;
     }
+    case "afk_farm":
+      return e.value ? `${num(e.value)} ${e.meta?.kind === "blocks" ? "Blöcke" : "Mobs"}` : null;
     case "rank":
       return `#${e.value}`;
     case "milestone":
@@ -220,6 +233,7 @@ export const EVENT_TYPES: EventType[] = [
   "join",
   "leave",
   "afk_start",
+  "afk_farm",
   "afk_end",
   "first_join",
   "death",

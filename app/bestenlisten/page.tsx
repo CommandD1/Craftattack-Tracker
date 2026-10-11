@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { getFullBoard } from "@/lib/store";
 import { getAfkBoard, getAfkRanksBefore, getBoardRanksBefore, getTrackedRanksBefore } from "@/lib/analytics";
-import { BOARD_KEYS, type BoardKey } from "@/lib/types";
+import { BOARD_KEYS, type AfkKind, type BoardKey } from "@/lib/types";
 import { ago, boardValue, duration, headUrl, num } from "@/lib/format";
 import { BOARD_ICON, Icon } from "@/components/Icons";
 
@@ -12,7 +12,7 @@ export const instant = false;
 
 export const metadata: Metadata = { title: "Bestenlisten" };
 
-const BOARDS: Record<BoardKey | "tracked" | "afk", { title: string; sub: string; tone: string }> = {
+const BOARDS: Record<BoardKey | "tracked" | "afk" | "afkmobs" | "afkblocks", { title: string; sub: string; tone: string }> = {
   playtimeSeconds: { title: "Dauerzocker", sub: "Spielzeit laut API", tone: "sky" },
   diamonds: { title: "Diamantenbank", sub: "Diamanten", tone: "diamond" },
   deaths: { title: "Friedhof", sub: "Tode", tone: "redstone" },
@@ -21,8 +21,13 @@ const BOARDS: Record<BoardKey | "tracked" | "afk", { title: string; sub: string;
   distance: { title: "Weltenbummler", sub: "Gelaufene Strecke", tone: "pink" },
   tracked: { title: "Dauergäste", sub: "Online-Zeit laut Tracker, alle Spieler", tone: "lava" },
   afk: { title: "Standbilder", sub: "AFK-Zeit laut Tracker: online, aber ≥ 5 Min keine Bewegung", tone: "gold" },
+  afkmobs: { title: "Mob-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Mobs gestorben sind (AFK-Mobfarm)", tone: "gold" },
+  afkblocks: { title: "Block-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke abgebaut wurden (AFK-Blockfarm)", tone: "gold" },
 };
-const KEYS = [...BOARD_KEYS, "tracked", "afk"] as const;
+const KEYS = [...BOARD_KEYS, "tracked", "afk", "afkmobs", "afkblocks"] as const;
+const AFK_KEYS = ["afk", "afkmobs", "afkblocks"] as const;
+const isAfkKey = (k: string): k is (typeof AFK_KEYS)[number] => (AFK_KEYS as readonly string[]).includes(k);
+const afkKindOf = (k: string): AfkKind | undefined => (k === "afkmobs" ? "mobs" : k === "afkblocks" ? "blocks" : undefined);
 type Key = (typeof KEYS)[number];
 /** Vergleichszeitraum für die ▲/▼-Anzeige */
 const SPANS = {
@@ -50,13 +55,13 @@ export default async function Page(props: PageProps<"/bestenlisten">) {
   const hours = SPANS[span].hours;
   const [{ state, now }, ranksBefore] = await Promise.all([
     loadTracker(),
-    key === "tracked" ? getTrackedRanksBefore(hours) : key === "afk" ? getAfkRanksBefore(hours) : getBoardRanksBefore(hours).then((r) => r[key] ?? {}),
+    key === "tracked" ? getTrackedRanksBefore(hours) : isAfkKey(key) ? getAfkRanksBefore(hours, afkKindOf(key)) : getBoardRanksBefore(hours).then((r) => r[key] ?? {}),
   ]);
   const b = BOARDS[key];
 
   let rows: { id: string; name: string; uuid: string; value: number; at: string | null; online: boolean; afkNow?: boolean }[];
-  if (key === "afk") {
-    rows = (await getAfkBoard()).map((r) => ({ ...r, at: null }));
+  if (isAfkKey(key)) {
+    rows = (await getAfkBoard(afkKindOf(key))).map((r) => ({ ...r, at: null }));
   } else if (key === "tracked") {
     rows = Object.values(state.players)
       .map((p) => ({
@@ -72,9 +77,9 @@ export default async function Page(props: PageProps<"/bestenlisten">) {
   } else {
     rows = await getFullBoard(key);
   }
-  const inApi = new Set((key === "tracked" || key === "afk" ? [] : state.latest?.boards?.[key] ?? []).map((e) => e.id));
-  const fmt = (v: number) => (key === "tracked" || key === "afk" ? duration(v) : boardValue(key, v));
-  const IconCmp = key === "tracked" ? Icon.users : key === "afk" ? Icon.clock : Icon[BOARD_ICON[key]];
+  const inApi = new Set((key === "tracked" || isAfkKey(key) ? [] : state.latest?.boards?.[key] ?? []).map((e) => e.id));
+  const fmt = (v: number) => (key === "tracked" || isAfkKey(key) ? duration(v) : boardValue(key, v));
+  const IconCmp = key === "tracked" ? Icon.users : key === "afkmobs" ? Icon.sword : key === "afkblocks" ? Icon.pickaxe : key === "afk" ? Icon.clock : Icon[BOARD_ICON[key]];
 
   return (
     <>
@@ -140,7 +145,7 @@ export default async function Page(props: PageProps<"/bestenlisten">) {
                         {e.online && <span className="dot" style={{ display: "inline-block", marginLeft: 8, verticalAlign: "middle" }} title="online" />}
                       </span>
                       <span className="st-board__meta">
-                        {key === "afk" ? (e.afkNow ? "gerade AFK" : "") : key === "tracked" ? (e.online ? "läuft" : "") : inApi.has(e.id) ? "aktuell" : e.at ? `Stand ${ago(e.at, now)}` : ""}
+                        {isAfkKey(key) ? (e.afkNow ? (key === "afk" ? "gerade AFK" : "farmt gerade") : "") : key === "tracked" ? (e.online ? "läuft" : "") : inApi.has(e.id) ? "aktuell" : e.at ? `Stand ${ago(e.at, now)}` : ""}
                       </span>
                       <span className="st-board__val num">{fmt(e.value)}</span>
                       {diff === null ? (
@@ -167,7 +172,7 @@ export default async function Page(props: PageProps<"/bestenlisten">) {
           </section>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem", maxWidth: 760 }}>
             „Aktuell“ heißt: steht gerade in der Top 10 der API. Bei allen anderen ist der Wert der letzte, den der
-            Tracker gesehen hat, der echte Wert kann inzwischen höher sein. „Dauergäste“ und „Standbilder“ misst der Tracker selbst, für alle. ▲▼ zeigt die
+            Tracker gesehen hat, der echte Wert kann inzwischen höher sein. „Dauergäste“, „Standbilder“ und die AFK-Farmer misst der Tracker selbst, für alle. ▲▼ zeigt die
             Bewegung gegenüber dem Stand vor {SPANS[span].label}, „neu“ heißt: damals noch nicht in der Liste.
           </p>
         </div>

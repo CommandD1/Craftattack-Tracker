@@ -91,7 +91,11 @@ export type EventType =
   | "milestone"
   | "record"
   | "afk_start"
-  | "afk_end";
+  | "afk_end"
+  | "afk_farm";
+
+/** Was ein Spieler während einer AFK-Phase trotzdem tut: Mobs farmen oder Blöcke abbauen */
+export type AfkKind = "mobs" | "blocks";
 
 export interface TrackerEvent {
   id: string;
@@ -150,6 +154,11 @@ export interface PlayerState {
   afkSince: string | null;
   /** Vom Tracker gemessene AFK-Zeit in Sekunden (zählt zur Online-Zeit dazu, wird nicht abgezogen) */
   afkSeconds: number;
+  /** Laufende AFK-Phase ist eine Farm: Mobs oder Blöcke seit AFK-Beginn ≥ Schwelle */
+  afkFarm: AfkKind | null;
+  /** Mobs/Blöcke-Zähler zu Beginn der laufenden AFK-Phase (für die Farm-Erkennung) */
+  afkMobsAt: number | null;
+  afkBlocksAt: number | null;
 }
 
 export interface RecordValue {

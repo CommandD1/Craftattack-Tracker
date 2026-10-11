@@ -1,7 +1,7 @@
 import "server-only";
 import { connection } from "next/server";
 import { getDb } from "./db";
-import type { PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState } from "./types";
+import type { PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind } from "./types";
 
 const MAX_EVENTS_IN_MEMORY = 20000;
 const MAX_HISTORY_POINTS = 2880; // 24 h bei 30 s
@@ -84,6 +84,9 @@ interface PlayerRow {
   last_move_at: Date | null;
   afk_since: Date | null;
   afk_seconds: number | null;
+  afk_farm: AfkKind | null;
+  afk_mobs_at: number | null;
+  afk_blocks_at: number | null;
 }
 
 interface EventRow {
@@ -132,6 +135,9 @@ function rowToPlayer(r: PlayerRow): PlayerState {
     lastMoveAt: iso(r.last_move_at),
     afkSince: iso(r.afk_since),
     afkSeconds: r.afk_seconds ?? 0,
+    afkFarm: r.afk_farm ?? null,
+    afkMobsAt: r.afk_mobs_at ?? null,
+    afkBlocksAt: r.afk_blocks_at ?? null,
   };
 }
 
@@ -268,8 +274,8 @@ export async function saveState(state: TrackerState) {
       `INSERT INTO players (id, name, uuid, online, live, stats, first_seen, last_seen, session_start,
                             tracked_seconds, sessions, live_since, peak_viewers, longest_session, ranks, twitch_login,
                             peak_viewers_on_server, stream_on_server_seconds, stream_off_server_seconds,
-                            last_move_at, afk_since, afk_seconds)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+                            last_move_at, afk_since, afk_seconds, afk_farm, afk_mobs_at, afk_blocks_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name, uuid = EXCLUDED.uuid, online = EXCLUDED.online, live = EXCLUDED.live,
          stats = EXCLUDED.stats, first_seen = EXCLUDED.first_seen, last_seen = EXCLUDED.last_seen,
@@ -278,7 +284,8 @@ export async function saveState(state: TrackerState) {
          longest_session = EXCLUDED.longest_session, ranks = EXCLUDED.ranks,
          twitch_login = EXCLUDED.twitch_login, peak_viewers_on_server = EXCLUDED.peak_viewers_on_server,
          stream_on_server_seconds = EXCLUDED.stream_on_server_seconds, stream_off_server_seconds = EXCLUDED.stream_off_server_seconds,
-         last_move_at = EXCLUDED.last_move_at, afk_since = EXCLUDED.afk_since, afk_seconds = EXCLUDED.afk_seconds`,
+         last_move_at = EXCLUDED.last_move_at, afk_since = EXCLUDED.afk_since, afk_seconds = EXCLUDED.afk_seconds,
+         afk_farm = EXCLUDED.afk_farm, afk_mobs_at = EXCLUDED.afk_mobs_at, afk_blocks_at = EXCLUDED.afk_blocks_at`,
       [
         p.id,
         p.name,
@@ -302,6 +309,9 @@ export async function saveState(state: TrackerState) {
         toDate(p.lastMoveAt ?? null),
         toDate(p.afkSince ?? null),
         Math.round(p.afkSeconds ?? 0),
+        p.afkFarm ?? null,
+        p.afkMobsAt ?? null,
+        p.afkBlocksAt ?? null,
       ],
     );
   }
@@ -670,6 +680,8 @@ export const SERIES_METRICS = [
   "distance",
   "online",
   "afkSeconds",
+  "afkMobsSeconds",
+  "afkBlocksSeconds",
 ] as const;
 export type SeriesMetric = (typeof SERIES_METRICS)[number];
 

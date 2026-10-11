@@ -199,6 +199,24 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
           </ol>
         </Card>
 
+        <Card title="AFK-Farmen" sub="AFK-Phasen, in denen trotzdem Mobs starben oder Blöcke fielen (ab zehn Stück) – wer steht am längsten an der Farm?" tone="white">
+          <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+            {(["mobs", "blocks"] as const).map((kind) => (
+              <div key={kind}>
+                <p className="eyebrow" style={{ marginBottom: 8 }}>
+                  {kind === "mobs" ? "Mobs farmen" : "Blöcke farmen"} · {num(Math.round(d.afk.farm[kind].hours * 10) / 10)} h
+                </p>
+                <ol className="plist">
+                  {d.afk.farm[kind].perPlayer.map((r) => (
+                    <Person key={r.id} id={r.id} name={r.name} uuid={r.uuid} right={duration(r.seconds)} />
+                  ))}
+                  {d.afk.farm[kind].perPlayer.length === 0 && <li className="muted">Noch keine erkannt.</li>}
+                </ol>
+              </div>
+            ))}
+          </div>
+        </Card>
+
         <Card title="Todesrate" sub="Tode pro Online-Stunde laut Tracker, ab zwei Toden und einer Stunde">
           <ol className="plist">
             {d.deathRate.map((r) => (

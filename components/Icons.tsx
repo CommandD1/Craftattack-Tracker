@@ -129,6 +129,7 @@ export const EVENT_ICON: Record<EventType, keyof typeof Icon> = {
   join: "login",
   leave: "logout",
   afk_start: "clock",
+  afk_farm: "sword",
   afk_end: "boots",
   death: "skull",
   diamonds: "diamond",
