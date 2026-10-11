@@ -346,8 +346,19 @@ export interface DayRow {
   playerHours: number;
   deaths: number;
   maxViewers: number;
+  /** AFK-Stunden an diesem Tag (Teil der Spielerstunden) */
+  afkHours: number;
 }
 export interface StatsExtras {
+  /** Spielerstunden je Tagesstunde (Berliner Zeit) */
+  playHours: { hour: number; hours: number }[];
+  afk: {
+    perPlayer: { id: string; name: string; uuid: string; seconds: number; onlineSeconds: number; share: number }[];
+    longest: { id: string; name: string; uuid: string; seconds: number; from: string; to: string } | null;
+    totalHours: number;
+  };
+  /** Längste Sessions */
+  marathons: { id: string; name: string; uuid: string; seconds: number; start: string; end: string | null }[];
   heatmap: (number | null)[][]; // [7][24] Ø online
   days: DayRow[];
   deathsByHour: { hour: number; deaths: number; playerHours: number; rate: number | null }[];
@@ -431,6 +442,43 @@ export async function getStatsExtras(): Promise<StatsExtras> {
         t = next;
       }
     }
+    // AFK-Phasen über die ganze Laufzeit: je Spieler, je Tag, längste Phase
+    const firstAt = hourly.rows.length ? new Date(hourly.rows[0].h).getTime() : now;
+    const afkSpans = await getAfkSpans(firstAt, now, now);
+    const afkPerDay = new Map<string, number>();
+    const afkPerPlayer = new Map<string, number>();
+    let longestAfk: StatsExtras["afk"]["longest"] = null;
+    for (const [id, spans] of afkSpans) {
+      for (const [a, b] of spans) {
+        afkPerPlayer.set(id, (afkPerPlayer.get(id) ?? 0) + (b - a) / 1000);
+        if (!longestAfk || b - a > longestAfk.seconds * 1000) {
+          longestAfk = { id, name: state.players[id]?.name ?? id, uuid: state.players[id]?.uuid ?? "", seconds: Math.round((b - a) / 1000), from: new Date(a).toISOString(), to: new Date(b).toISOString() };
+        }
+        let t = a;
+        while (t < b) {
+          const d = dayKey(t);
+          const next = Math.min(b, dayStart(shiftDay(d, 1)));
+          afkPerDay.set(d, (afkPerDay.get(d) ?? 0) + (next - t) / 3600_000);
+          t = next;
+        }
+      }
+    }
+    const afkPlayers: StatsExtras["afk"]["perPlayer"] = [...afkPerPlayer]
+      .map(([id, seconds]) => {
+        const onlineSeconds = trackedSec.get(id) ?? 0;
+        return { id, name: state.players[id]?.name ?? id, uuid: state.players[id]?.uuid ?? "", seconds: Math.round(seconds), onlineSeconds: Math.round(onlineSeconds), share: onlineSeconds > 0 ? Math.min(1, seconds / onlineSeconds) : 0 };
+      })
+      .sort((a, b) => b.seconds - a.seconds);
+    const afk: StatsExtras["afk"] = { perPlayer: afkPlayers.slice(0, 10), longest: longestAfk, totalHours: [...afkPerDay.values()].reduce((s, v) => s + v, 0) };
+
+    // Längste Sessions
+    const marathons: StatsExtras["marathons"] = sessions
+      .map((s) => ({ id: s.player, name: state.players[s.player]?.name ?? s.player, uuid: state.players[s.player]?.uuid ?? "", seconds: Math.round(((s.end ? Date.parse(s.end) : now) - Date.parse(s.start)) / 1000), start: s.start, end: s.end }))
+      .sort((a, b) => b.seconds - a.seconds)
+      .slice(0, 8);
+
+    const playHours = hourOfDay.map((h, hour) => ({ hour, hours: Math.round(h * 10) / 10 }));
+
     const deathsDay = new Map(deathsPerDay.map((d) => [d.day, d.value]));
     const allDays = [...new Set([...dayAgg.keys(), ...playersPerDay.keys()])].sort();
     const days: DayRow[] = allDays.map((day) => ({
@@ -440,6 +488,7 @@ export async function getStatsExtras(): Promise<StatsExtras> {
       playerHours: hoursPerDay.get(day) ?? dayAgg.get(day)?.playerHours ?? 0,
       deaths: deathsDay.get(day) ?? 0,
       maxViewers: dayAgg.get(day)?.maxViewers ?? 0,
+      afkHours: afkPerDay.get(day) ?? 0,
     }));
 
     // Tode nach Tagesstunde
@@ -526,7 +575,7 @@ export async function getStatsExtras(): Promise<StatsExtras> {
     };
 
     const totals = { playerHours: [...hoursPerDay.values()].reduce((s, v) => s + v, 0), players: players.length };
-    return { heatmap, days, deathsByHour, deathStreaks: deathStreaks.slice(0, 10), deathRate: deathRate.slice(0, 10), loyalty, availability, fullest: spread(topOnline.rows), mostViewers: spread(topViewers.rows), totals };
+    return { playHours, afk, marathons, heatmap, days, deathsByHour, deathStreaks: deathStreaks.slice(0, 10), deathRate: deathRate.slice(0, 10), loyalty, availability, fullest: spread(topOnline.rows), mostViewers: spread(topViewers.rows), totals };
   });
 }
 

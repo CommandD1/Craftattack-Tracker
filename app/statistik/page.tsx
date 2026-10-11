@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
-import { getBiggestEvents, getBoardTotalsOverTime, getDailyEventSum, getHistoryAll } from "@/lib/store";
+import { getBiggestEvents, getBoardTotalsOverTime, getHistoryAll } from "@/lib/store";
 import { boardValue, dateTime, duration, headUrl, num } from "@/lib/format";
 import { Sparkline, type SparkPoint } from "@/components/Sparkline";
 import { GraphBuilder } from "@/components/GraphBuilder";
@@ -106,11 +106,10 @@ function Record({
 export default async function Page(props: PageProps<"/statistik">) {
   const sp = await props.searchParams;
   const { state, now } = await loadTracker();
-  const [extras, hist, totals, deathsPerDay, bigDiamonds, bigDistance, bigBlocks, bigMobs] = await Promise.all([
+  const [extras, hist, totals, bigDiamonds, bigDistance, bigBlocks, bigMobs] = await Promise.all([
     getStatsExtras(),
     getHistoryAll(),
     getBoardTotalsOverTime(),
-    getDailyEventSum("death"),
     getBiggestEvents("diamonds"),
     getBiggestEvents("distance"),
     getBiggestEvents("blocksBroken"),
@@ -126,14 +125,16 @@ export default async function Page(props: PageProps<"/statistik">) {
   const mostSessions = top(players, (p) => p.sessions);
   const topViewers = top(players.filter((p) => p.peakViewers > 0), (p) => p.peakViewers);
   const mostDeaths = top(players.filter((p) => p.stats.deaths !== undefined), (p) => p.stats.deaths ?? 0);
-  const deadliestDay = top(deathsPerDay, (d) => d.value);
+  const busiestDay = top(extras.days, (d) => d.playerHours);
+  const mostAfk = extras.afk.perPlayer[0] ?? null;
   const peakDay = top(hist.points, (h) => h.onlineCount);
 
   const h = hist.points;
   const series = (k: keyof (typeof h)[number]) => h.map((p) => ({ at: p.at, v: Number(p[k]) }));
   const t = totals.points;
   const tseries = (k: Exclude<keyof (typeof t)[number], "at">) => t.map((p) => ({ at: p.at, v: p[k] }));
-  const dayPoints: SparkPoint[] = deathsPerDay.map((d) => ({ at: `${d.day}T12:00:00+02:00`, v: d.value }));
+  const playPoints: SparkPoint[] = extras.days.map((d) => ({ at: `${d.day}T12:00:00+02:00`, v: Math.round(d.playerHours * 3600) }));
+  const afkPoints: SparkPoint[] = extras.days.map((d) => ({ at: `${d.day}T12:00:00+02:00`, v: Math.round(d.afkHours * 3600) }));
 
   const since = h.length ? h[0].at : state.startedAt;
   const playerOptions = players
@@ -195,8 +196,10 @@ export default async function Page(props: PageProps<"/statistik">) {
             <Record label="Längste Session" tone="sky" value={longest ? duration(longest.longestSession) : "–"} who={who(longest)} uuid={longest?.uuid} />
             <Record label="Meiste Online-Zeit" tone="sky" value={mostTracked ? duration(tracked(mostTracked)) : "–"} who={who(mostTracked)} uuid={mostTracked?.uuid} />
             <Record label="Meiste Sessions" tone="sky" value={mostSessions ? num(mostSessions.sessions) : "–"} who={who(mostSessions)} uuid={mostSessions?.uuid} />
+            <Record label="Aktivster Tag" tone="sky" value={busiestDay ? `${num(busiestDay.playerHours)} Spielerstunden` : "–"} whenLabel={busiestDay ? dayLabel(busiestDay.day) : null} />
+            <Record label="Meiste AFK-Zeit" tone="gold" value={mostAfk ? duration(mostAfk.seconds) : "–"} who={mostAfk ? { id: mostAfk.id, name: mostAfk.name } : null} uuid={mostAfk?.uuid} />
+            <Record label="Längste AFK-Phase" tone="gold" value={extras.afk.longest ? duration(extras.afk.longest.seconds) : "–"} who={extras.afk.longest ? { id: extras.afk.longest.id, name: extras.afk.longest.name } : null} uuid={extras.afk.longest?.uuid} when={extras.afk.longest?.from} />
             <Record label="Meiste Tode" tone="redstone" value={mostDeaths ? num(mostDeaths.stats.deaths ?? 0) : "–"} who={who(mostDeaths)} uuid={mostDeaths?.uuid} />
-            <Record label="Tödlichster Tag" tone="redstone" value={deadliestDay ? `${num(deadliestDay.value)} Tode` : "–"} whenLabel={deadliestDay ? dayLabel(deadliestDay.day) : null} />
             <Record label="Vollster Moment" tone="grass" value={peakDay ? `${num(peakDay.onlineCount)} online` : "–"} when={peakDay?.at} />
             <Record label="Größter Diamanten-Fund" tone="diamond" value={bigDiamonds[0]?.delta ? num(bigDiamonds[0].delta) : "–"} who={bigDiamonds[0]?.player ? { id: bigDiamonds[0].player, name: bigDiamonds[0].playerName ?? bigDiamonds[0].player } : null} uuid={bigDiamonds[0]?.uuid} when={bigDiamonds[0]?.at} />
             <Record label="Weitester Marsch am Stück" tone="pink" value={bigDistance[0]?.delta ? boardValue("distance", bigDistance[0].delta) : "–"} who={bigDistance[0]?.player ? { id: bigDistance[0].player, name: bigDistance[0].playerName ?? bigDistance[0].player } : null} uuid={bigDistance[0]?.uuid} when={bigDistance[0]?.at} />
@@ -223,8 +226,9 @@ export default async function Page(props: PageProps<"/statistik">) {
             <Chart label="Streams live" tone="twitch" points={series("liveCount")} />
             <Chart label="Zuschauer gesamt" tone="twitch" points={series("viewers")} />
             <Chart label="Spielzeit gesamt" tone="sky" points={series("playtimeSeconds")} kind="playtimeSeconds" step sub="Top 10 der API" />
+            <Chart label="Spielzeit pro Tag" tone="sky" points={playPoints} kind="playtimeSeconds" step sub="alle Spieler, laut Tracker" />
+            <Chart label="AFK pro Tag" tone="gold" points={afkPoints} kind="playtimeSeconds" step sub="Teil der Spielzeit" />
             <Chart label="Tode gesamt" tone="redstone" points={series("deaths")} step />
-            <Chart label="Tode pro Tag" tone="redstone" points={dayPoints} step sub={deathsPerDay.length ? `${deathsPerDay.length} Tage` : undefined} />
           </div>
         </div>
       </section>

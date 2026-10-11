@@ -2559,7 +2559,7 @@ a.st-chip-in[data-live="true"] {
 }
 .hbars i {
   display: block;
-  background: var(--redstone);
+  background: var(--bar, var(--redstone));
   box-shadow: inset 0 0 0 1px var(--line);
 }
 .hbars b {

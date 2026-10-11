@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { StatsExtras as Data } from "@/lib/analytics";
-import { dateTime, duration, headUrl, num, time } from "@/lib/format";
+import { dateTime, duration, headUrl, num } from "@/lib/format";
 import { Sparkline } from "./Sparkline";
 
 const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
@@ -59,13 +59,14 @@ function Heatmap({ values }: { values: (number | null)[][] }) {
   );
 }
 
-function HourBars({ values, unit }: { values: { hour: number; rate: number | null; deaths: number; playerHours: number }[]; unit: string }) {
-  const max = Math.max(1, ...values.map((v) => v.rate ?? 0));
+/** 24 Balken, einer je Tagesstunde */
+function HourBars({ values, unit, tone = "redstone" }: { values: { hour: number; v: number | null; title: string }[]; unit: string; tone?: string }) {
+  const max = Math.max(1, ...values.map((v) => v.v ?? 0));
   return (
-    <div className="hbars" role="img" aria-label={unit}>
+    <div className="hbars" role="img" aria-label={unit} style={{ "--bar": `var(--${tone})` } as React.CSSProperties}>
       {values.map((v) => (
-        <span key={v.hour} title={`${String(v.hour).padStart(2, "0")} Uhr: ${v.rate === null ? "zu wenig Daten" : `${num(v.rate)} ${unit} (${num(v.deaths)} Tode in ${num(v.playerHours)} Spielerstunden)`}`}>
-          <i style={{ height: `${v.rate === null ? 0 : Math.max(2, (v.rate / max) * 100)}%` }} />
+        <span key={v.hour} title={`${String(v.hour).padStart(2, "0")} Uhr: ${v.title}`}>
+          <i style={{ height: `${v.v === null ? 0 : Math.max(2, (v.v / max) * 100)}%` }} />
           <b className="num">{v.hour % 3 === 0 ? v.hour : ""}</b>
         </span>
       ))}
@@ -74,7 +75,6 @@ function HourBars({ values, unit }: { values: { hour: number; rate: number | nul
 }
 
 export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number }) {
-  const lastDay = d.days[d.days.length - 1];
   return (
     <>
       <dl className="grid st-figs st-figs--6" style={{ marginBottom: 32 }}>
@@ -98,9 +98,12 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
           <dt>Länger als 1 Tag weg</dt>
           <dd className="num">{num(d.loyalty.groups.d3 + d.loyalty.groups.d7 + d.loyalty.groups.gone)}</dd>
         </div>
-        <div className="box st-fig" data-tone="redstone">
-          <dt>Tode heute</dt>
-          <dd className="num">{lastDay ? num(lastDay.deaths) : "–"}</dd>
+        <div className="box st-fig" data-tone="gold">
+          <dt title="Online, aber ohne Streckenzuwachs für mindestens fünf Minuten">AFK-Stunden</dt>
+          <dd className="num">
+            {num(d.afk.totalHours)}
+            {d.totals.playerHours > 0 && <small className="muted"> {Math.round((d.afk.totalHours / d.totals.playerHours) * 100)} %</small>}
+          </dd>
         </div>
       </dl>
 
@@ -114,6 +117,7 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
                   <th className="num">Spieler</th>
                   <th className="num">Max. online</th>
                   <th className="num">Spielerstunden</th>
+                  <th className="num">AFK</th>
                   <th className="num">Tode</th>
                   <th className="num">Zuschauer-Spitze</th>
                   <th />
@@ -128,6 +132,7 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
                     <td className="num">{num(r.players)}</td>
                     <td className="num">{num(r.maxOnline)}</td>
                     <td className="num">{num(r.playerHours)}</td>
+                    <td className="num">{r.afkHours > 0 ? `${num(r.afkHours)} h` : "–"}</td>
                     <td className="num">{num(r.deaths)}</td>
                     <td className="num">{num(r.maxViewers)}</td>
                     <td>
@@ -169,16 +174,25 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
           </ol>
         </Card>
 
-        <Card title="Gefährlichste Tageszeit" sub="Tode je 100 Spielerstunden nach Uhrzeit" tone="white">
-          <HourBars values={d.deathsByHour} unit="Tode je 100 Spielerstunden" />
+        <Card title="Wann wird gespielt?" sub="Spielerstunden je Tagesstunde (Berliner Zeit), über alle Tage" tone="white">
+          <HourBars values={d.playHours.map((p) => ({ hour: p.hour, v: p.hours, title: `${num(p.hours)} Spielerstunden` }))} unit="Spielerstunden je Tagesstunde" tone="sky" />
         </Card>
 
-        <Card title="Tod-Serien" sub="Mindestens drei Tode eines Spielers innerhalb einer Stunde">
+        <Card title="Marathon-Sessions" sub="Die längsten Sessions am Stück laut Tracker">
           <ol className="plist">
-            {d.deathStreaks.map((s) => (
-              <Person key={`${s.id}${s.from}`} id={s.id} name={s.name} uuid={s.uuid} right={`${num(s.count)} Tode · ${dateTime(s.from)}–${time(s.to)}`} />
+            {d.marathons.map((s) => (
+              <Person key={`${s.id}${s.start}`} id={s.id} name={s.name} uuid={s.uuid} right={`${duration(s.seconds)} · ${dateTime(s.start)}${s.end ? "" : " · läuft"}`} />
             ))}
-            {d.deathStreaks.length === 0 && <li className="muted">Noch keine. Beeindruckend.</li>}
+            {d.marathons.length === 0 && <li className="muted">Noch keine Sessions.</li>}
+          </ol>
+        </Card>
+
+        <Card title="AFK-Zeit" sub="Online, aber mindestens fünf Minuten keine Bewegung – mit Anteil an der Online-Zeit">
+          <ol className="plist">
+            {d.afk.perPlayer.map((r) => (
+              <Person key={r.id} id={r.id} name={r.name} uuid={r.uuid} right={`${duration(r.seconds)} · ${Math.round(r.share * 100)} %`} />
+            ))}
+            {d.afk.perPlayer.length === 0 && <li className="muted">Noch niemand AFK gewesen.</li>}
           </ol>
         </Card>
 
