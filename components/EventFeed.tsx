@@ -20,6 +20,15 @@ export function EventRow({ e, showPlayer = true }: { e: TrackerEvent; showPlayer
   const text = meta.text(e);
   const badge = eventBadge(e);
   const vod = typeof e.meta?.vodUrl === "string" ? e.meta.vodUrl : null;
+  // Laufender Stream: zum Livestream verlinken, sonst (wenn vorhanden) zum VOD
+  const liveUrl = typeof e.meta?.liveUrl === "string" ? e.meta.liveUrl : null;
+  const link = liveUrl
+    ? { href: liveUrl, label: "Live ansehen", title: "Der Stream läuft gerade – auf Twitch ansehen" }
+    : vod
+      ? e.type === "death"
+        ? { href: vod, label: "Im VOD ansehen", title: "Diesen Moment im Twitch-VOD ansehen" }
+        : { href: vod, label: "VOD ansehen", title: "Die Aufzeichnung dieses Streams auf Twitch ansehen" }
+      : null;
   const showHead = Boolean(e.player);
   return (
     <li className="ev" data-tone={meta.tone} data-type={e.type}>
@@ -46,14 +55,14 @@ export function EventRow({ e, showPlayer = true }: { e: TrackerEvent; showPlayer
             text
           )}
         </p>
-        {(sub || vod) && (
+        {(sub || link) && (
           <p className="ev__sub" title={sub ?? undefined}>
-            {vod && (
-              <a className="ev__vod" href={vod} target="_blank" rel="noopener" title="Diesen Moment im Twitch-VOD ansehen">
-                <Icon.twitch aria-hidden="true" /> Im VOD ansehen
+            {link && (
+              <a className="ev__vod" href={link.href} target="_blank" rel="noopener" title={link.title}>
+                {liveUrl ? <span className="dot dot--live" style={{ display: "inline-block", marginRight: 6 }} /> : <Icon.twitch aria-hidden="true" />} {link.label}
               </a>
             )}
-            {vod && sub ? " · " : null}
+            {link && sub ? " · " : null}
             {sub}
           </p>
         )}

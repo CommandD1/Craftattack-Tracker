@@ -77,6 +77,9 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const nameOf = (pid: string) => state.players[pid]?.name ?? pid;
 
   const trackedSeconds = p.trackedSeconds + (p.online && p.sessionStart ? (now - Date.parse(p.sessionStart)) / 1000 : 0);
+  const twitchLogin = p.live?.login ?? p.twitchLogin;
+  const twitchUrl = twitchLogin ? `https://www.twitch.tv/${encodeURIComponent(twitchLogin)}` : null;
+  const streamSeconds = (p.streamOnServerSeconds ?? 0) + (p.streamOffServerSeconds ?? 0);
   const mine = events.filter((e) => e.player === id);
   const sess = sessions(mine, p.online, p.sessionStart, now);
   const recent = [...mine].reverse().slice(0, 150);
@@ -115,9 +118,14 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                     Offline · zuletzt {ago(p.lastSeen)}
                   </span>
                 )}
-                {p.live ? (
-                  <a className="tag" data-tone="ink" href={`https://www.twitch.tv/${encodeURIComponent(p.live.login)}`} target="_blank" rel="noopener">
+                {p.live && twitchUrl ? (
+                  <a className="tag" data-tone="ink" href={twitchUrl} target="_blank" rel="noopener">
                     <span className="dot dot--live" /> Live · {num(p.live.viewers)} Zuschauer
+                    {p.live.onServer === false ? " · nicht auf dem Server" : ""}
+                  </a>
+                ) : twitchUrl ? (
+                  <a className="tag" data-tone="twitch" href={twitchUrl} target="_blank" rel="noopener" title="Twitch-Kanal öffnen (gerade nicht live)">
+                    <Icon.twitch width={14} height={14} aria-hidden="true" /> twitch.tv/{twitchLogin}
                   </a>
                 ) : (
                   <span className="tag" data-tone="paper">
@@ -216,6 +224,16 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                   <dd className="num">{p.longestSession > 0 ? duration(p.longestSession) : "–"}</dd>
                   <dt>Peak-Zuschauer</dt>
                   <dd className="num">{num(p.peakViewers)}</dd>
+                  <dt title="Höchste Zuschauerzahl, während der Spieler gleichzeitig auf dem Server war">Peak auf dem Server</dt>
+                  <dd className="num">{num(p.peakViewersOnServer ?? 0)}</dd>
+                  {streamSeconds > 0 && (
+                    <>
+                      <dt title="Stream-Zeit, während der Spieler gleichzeitig auf dem Server war">Stream auf dem Server</dt>
+                      <dd className="num">{duration(p.streamOnServerSeconds ?? 0)}</dd>
+                      <dt title="Stream-Zeit, während der Spieler nicht auf dem Server war">Stream ohne Server</dt>
+                      <dd className="num">{duration(p.streamOffServerSeconds ?? 0)}</dd>
+                    </>
+                  )}
                   <dt>Ereignisse</dt>
                   <dd className="num">{num(mine.length)}</dd>
                 </dl>

@@ -1,5 +1,6 @@
 import "server-only";
 import { appendEvents, getState, recordPlayerPoints, saveState } from "./store";
+import { fetchLiveStreams, TWITCH_ENABLED, type TwitchStream } from "./twitch";
 import {
   BOARD_KEYS,
   type ApiExtPlayer,
@@ -90,22 +91,26 @@ export async function fetchExtPlayer(login: string): Promise<ExtPlayer | null> {
  * Fragt alle Logins parallel (begrenzt) ab. Ergebnis ist nach Spieler-ID (aus der Antwort) abgelegt.
  * Fehlgeschlagene Spieler fehlen einfach im Ergebnis.
  */
-export async function fetchExtAll(logins: Iterable<string>): Promise<{ players: Map<string, ExtPlayer>; failed: number }> {
+export async function fetchExtAll(logins: Iterable<string>): Promise<{ players: Map<string, ExtPlayer>; loginOf: Map<string, string>; failed: number }> {
   const queue = [...new Set(logins)];
   const players = new Map<string, ExtPlayer>();
+  const loginOf = new Map<string, string>();
   let failed = 0;
   const worker = async () => {
     for (let login = queue.shift(); login !== undefined; login = queue.shift()) {
       try {
         const p = await fetchExtPlayer(login);
-        if (p) players.set(p.id, p);
+        if (p) {
+          players.set(p.id, p);
+          loginOf.set(p.id, login);
+        }
       } catch {
         failed += 1;
       }
     }
   };
   await Promise.all(Array.from({ length: Math.max(1, EXT_CONCURRENCY) }, worker));
-  return { players, failed };
+  return { players, loginOf, failed };
 }
 
 /** Alle Spieler-IDs, die der Tracker kennt oder die im aktuellen Snapshot vorkommen. */
@@ -153,6 +158,9 @@ function ensurePlayer(
       sessions: 0,
       liveSince: null,
       peakViewers: 0,
+      peakViewersOnServer: 0,
+      streamOnServerSeconds: 0,
+      streamOffServerSeconds: 0,
       longestSession: 0,
       ranks: {},
       twitchLogin: null,
@@ -171,6 +179,10 @@ export function diffSnapshot(
   stats: ApiStats,
   nowDate = new Date(),
   ext: Map<string, ExtPlayer> = new Map(),
+  /** Live-Streams laut Twitch (Login → Stream); `null` = nicht abgefragt/fehlgeschlagen, dann zählt die API */
+  twitch: Map<string, TwitchStream> | null = null,
+  /** Twitch-Login je Spieler-ID, mit dem die ext-Abfrage erfolgreich war */
+  extLoginOf: Map<string, string> = new Map(),
 ): TrackerEvent[] {
   const now = nowDate.toISOString();
   const events: TrackerEvent[] = [];
@@ -229,18 +241,50 @@ export function diffSnapshot(
   }
 
   // --- Twitch: Live-Status / Titel / Viewer
+  // Quelle ist bevorzugt Twitch selbst (Helix `streams` für alle gespeicherten Logins); die Haupt-API kennt
+  // nur Streams von Spielern, die gerade auf dem Server sind. Ohne Twitch-Zugangsdaten bleibt die API die Quelle.
   const liveNow = new Map<string, ApiStats["live"][number]>();
-  for (const l of stats.live ?? []) liveNow.set(l.id, l);
+  const apiLive = new Map<string, ApiStats["live"][number]>();
+  for (const l of stats.live ?? []) apiLive.set(l.id, l);
   for (const p of stats.online) {
-    if (p.live && !liveNow.has(p.id)) liveNow.set(p.id, { ...p.live, id: p.id, name: p.name });
+    if (p.live && !apiLive.has(p.id)) apiLive.set(p.id, { ...p.live, id: p.id, name: p.name });
   }
+  // Logins aus der API merken, damit Twitch-Login und Spieler-ID zusammenfinden
+  for (const l of apiLive.values()) {
+    if (l.login) ensurePlayer(state, { id: l.id, name: l.name, uuid: state.players[l.id]?.uuid ?? "" }, now).twitchLogin = l.login;
+  }
+  if (twitch) {
+    const byLogin = new Map<string, PlayerState>();
+    for (const ps of Object.values(state.players)) byLogin.set((ps.twitchLogin ?? ps.id).toLowerCase(), ps);
+    for (const [login, st] of twitch) {
+      const ps = byLogin.get(login);
+      if (!ps) continue;
+      liveNow.set(ps.id, { id: ps.id, name: ps.name, login: st.login, title: st.title, viewers: st.viewers, startedAt: st.startedAt });
+    }
+    // Spieler, deren Login Twitch nicht kannte, aber die API als live meldet
+    for (const l of apiLive.values()) {
+      if (!liveNow.has(l.id) && !twitch.has((state.players[l.id]?.twitchLogin ?? l.login ?? l.id).toLowerCase())) liveNow.set(l.id, l);
+    }
+  } else {
+    for (const l of apiLive.values()) liveNow.set(l.id, l);
+  }
+  for (const l of liveNow.values()) l.onServer = onlineNow.has(l.id);
+
+  // Stream-Zeit seit dem letzten Poll, getrennt nach „auf dem Server“ / „nicht auf dem Server“
+  const sinceLast = state.lastOk ? Math.min(Math.max(0, (nowDate.getTime() - Date.parse(state.lastOk)) / 1000), 300) : 0;
 
   for (const l of liveNow.values()) {
     const ps = ensurePlayer(state, { id: l.id, name: l.name, uuid: state.players[l.id]?.uuid ?? "" }, now);
     const prev = ps.live;
+    const onServer = onlineNow.has(l.id);
     ps.peakViewers = Math.max(ps.peakViewers, l.viewers);
+    if (onServer) ps.peakViewersOnServer = Math.max(ps.peakViewersOnServer ?? 0, l.viewers);
+    if (prev) {
+      if (onServer) ps.streamOnServerSeconds = (ps.streamOnServerSeconds ?? 0) + sinceLast;
+      else ps.streamOffServerSeconds = (ps.streamOffServerSeconds ?? 0) + sinceLast;
+    }
     if (!prev) {
-      ps.liveSince = now;
+      ps.liveSince = l.startedAt && Date.parse(l.startedAt) < nowDate.getTime() ? new Date(l.startedAt).toISOString() : now;
       if (!first) {
         push({
           type: "stream_start",
@@ -249,7 +293,7 @@ export function diffSnapshot(
           uuid: ps.uuid,
           where: "twitch",
           value: l.viewers,
-          meta: { title: l.title, login: l.login },
+          meta: { title: l.title, login: l.login, onServer, startedAt: ps.liveSince },
         });
       }
     } else if (prev.title !== l.title) {
@@ -263,12 +307,13 @@ export function diffSnapshot(
         meta: { title: l.title, previousTitle: prev.title, login: l.login },
       });
     }
-    ps.live = { login: l.login, title: l.title, viewers: l.viewers };
+    ps.live = { login: l.login, title: l.title, viewers: l.viewers, onServer, startedAt: l.startedAt };
     if (l.login) ps.twitchLogin = l.login;
   }
   for (const ps of Object.values(state.players)) {
     if (ps.live && !liveNow.has(ps.id)) {
       const since = ps.liveSince ? Date.parse(ps.liveSince) : nowDate.getTime();
+      const streamSeconds = Math.max(0, Math.round((nowDate.getTime() - since) / 1000));
       push({
         type: "stream_end",
         player: ps.id,
@@ -277,19 +322,30 @@ export function diffSnapshot(
         where: "twitch",
         meta: {
           login: ps.live.login,
-          streamSeconds: Math.max(0, Math.round((nowDate.getTime() - since) / 1000)),
+          streamSeconds,
           peakViewers: ps.peakViewers,
+          peakViewersOnServer: ps.peakViewersOnServer ?? 0,
+          startedAt: ps.liveSince,
         },
       });
       ps.live = null;
       ps.liveSince = null;
     }
   }
+  // Zusammengeführten Live-Stand in den Snapshot schreiben, damit alle Seiten dieselbe Quelle sehen
+  stats.live = [...liveNow.values()];
+  for (const p of stats.online) {
+    const l = liveNow.get(p.id);
+    p.live = l ? { login: l.login, title: l.title, viewers: l.viewers, onServer: true, startedAt: l.startedAt } : null;
+  }
 
   // --- Einzelstatistiken (/api/ext/<login>): Name und Ränge für alle abgefragten Spieler übernehmen
   for (const [id, x] of ext) {
     const ps = ensurePlayer(state, { id, name: x.name, uuid: state.players[id]?.uuid ?? "" }, now);
     ps.ranks = { ...x.ranks };
+    // /api/ext wird per Twitch-Login abgefragt: eine erfolgreiche Antwort bestätigt den Login des Spielers
+    const login = extLoginOf.get(id);
+    if (login && !ps.twitchLogin) ps.twitchLogin = login;
   }
 
   // --- Boards: Zähler-Deltas
@@ -386,11 +442,13 @@ export function diffSnapshot(
   }
 
   // --- Verlauf
-  const viewers = [...liveNow.values()].reduce((s, l) => s + l.viewers, 0);
+  // Globale Zuschauer: nur Streams von Spielern, die gerade auf dem Server sind
+  const liveOnServer = [...liveNow.values()].filter((l) => l.onServer);
+  const viewers = liveOnServer.reduce((s, l) => s + l.viewers, 0);
   state.history.push({
     at: now,
     onlineCount: stats.onlineCount,
-    liveCount: liveNow.size,
+    liveCount: liveOnServer.length,
     viewers,
     playtimeSeconds: stats.totals?.playtimeSeconds ?? 0,
     deaths: stats.totals?.deaths ?? 0,
@@ -408,7 +466,7 @@ export function diffSnapshot(
     }
   };
   bump("peakOnline", stats.onlineCount, "Spieler gleichzeitig online", () => true);
-  bump("peakLive", liveNow.size, "Streams gleichzeitig live", () => true);
+  bump("peakLive", liveOnServer.length, "Streams gleichzeitig live", () => true);
   bump("peakViewers", viewers, "Zuschauer gesamt", (prev) => Math.floor(viewers / 10000) > Math.floor(prev / 10000));
 
   state.latest = stats;
@@ -429,10 +487,20 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
     try {
       const stats = await fetchStats();
       // Einzelstatistiken für alle bekannten Spieler – Fehler hier sind nicht fatal, dann gibt es eben nur die Top 10
-      const ext = await fetchExtAll(extLogins(state, stats, knownPlayerIds(state, stats)));
+      const logins = extLogins(state, stats, knownPlayerIds(state, stats));
+      // Live-Status direkt bei Twitch für alle bekannten Logins; schlägt das fehl, zählt die Haupt-API
+      const [ext, twitch] = await Promise.all([
+        fetchExtAll(logins),
+        TWITCH_ENABLED
+          ? fetchLiveStreams(logins).catch((err: unknown) => {
+              console.warn("[tracker] Twitch-Live-Abfrage fehlgeschlagen:", err instanceof Error ? err.message : err);
+              return null;
+            })
+          : Promise.resolve(null),
+      ]);
       if (ext.failed > 0) console.warn(`[tracker] ${ext.failed} ext-Anfragen fehlgeschlagen`);
       const first = state.latest === null;
-      const events = diffSnapshot(state, stats, now, ext.players);
+      const events = diffSnapshot(state, stats, now, ext.players, twitch, ext.loginOf);
       if (first) {
         events.unshift({
           id: eventId(now.toISOString()),

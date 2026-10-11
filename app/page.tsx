@@ -35,7 +35,8 @@ async function Dashboard() {
   const [histAll, trend, ranksBefore] = await Promise.all([getHistoryAll(), getHistoryRange(72), getBoardRanksBefore(24)]);
   const s = state.latest;
   const liveList = s ? [...(s.live ?? [])].sort((a, b) => b.viewers - a.viewers) : [];
-  const viewers = liveList.reduce((a, l) => a + l.viewers, 0);
+  // Globale Zuschauer: nur Streams von Spielern, die gerade auf dem Server sind
+  const viewers = liveList.filter((l) => l.onServer !== false).reduce((a, l) => a + l.viewers, 0);
   const recent = [...events].reverse().slice(0, 25);
   // Gesamte Laufzeit (gebündelt), nicht nur die letzten Stunden
   const hist = histAll.points.length >= 2 ? histAll.points : state.history;

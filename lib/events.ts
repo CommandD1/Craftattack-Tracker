@@ -61,7 +61,7 @@ export const EVENT_META: Record<EventType, EventMeta> = {
   stream_start: {
     label: "Stream an",
     tone: "twitch",
-    text: () => "ist live gegangen",
+    text: (e) => (e.meta?.onServer === false ? "ist live gegangen (nicht auf dem Server)" : "ist live gegangen"),
     sub: (e) => (e.meta?.title ? String(e.meta.title) : null),
   },
   stream_end: {
@@ -72,8 +72,10 @@ export const EVENT_META: Record<EventType, EventMeta> = {
       const s = Number(e.meta?.streamSeconds ?? 0);
       const peak = Number(e.meta?.peakViewers ?? 0);
       const parts = [];
+      const peakOn = Number(e.meta?.peakViewersOnServer ?? 0);
       if (s > 0) parts.push(`Dauer: ${duration(s)}`);
       if (peak > 0) parts.push(`Peak: ${num(peak)} Zuschauer`);
+      if (peakOn > 0 && peakOn !== peak) parts.push(`auf dem Server: ${num(peakOn)}`);
       return parts.length ? parts.join(" · ") : null;
     },
   },

@@ -21,7 +21,9 @@ async function Live() {
   const { state, events } = await loadTracker();
   const players = Object.values(state.players);
   const live = players.filter((p) => p.live).sort((a, b) => (b.live!.viewers ?? 0) - (a.live!.viewers ?? 0));
-  const viewers = live.reduce((s, p) => s + (p.live?.viewers ?? 0), 0);
+  const viewersAll = live.reduce((s, p) => s + (p.live?.viewers ?? 0), 0);
+  // Zählt global nur, wer dabei auch auf dem Server ist
+  const viewers = live.filter((p) => p.online).reduce((s, p) => s + (p.live?.viewers ?? 0), 0);
   const hist = state.history.slice(-720); // 6 Std
   const peak = hist.reduce((m, h) => Math.max(m, h.viewers), 0);
   const twitchEvents = [...events].reverse().filter((e) => e.where === "twitch").slice(0, 40);
@@ -44,8 +46,12 @@ async function Live() {
               <FigValue>{num(live.length)}</FigValue>
             </div>
             <div className="box st-fig" data-tone="twitch">
-              <dt>Zuschauer</dt>
+              <dt title="Zuschauer der Streamer, die gerade auf dem Server sind">Zuschauer auf dem Server</dt>
               <FigValue>{num(viewers)}</FigValue>
+            </div>
+            <div className="box st-fig" data-tone="amethyst">
+              <dt title="Zuschauer aller Streams, auch ohne Server">Zuschauer gesamt</dt>
+              <FigValue>{num(viewersAll)}</FigValue>
             </div>
             <div className="box st-fig" data-tone="gold">
               <dt>Peak · 6 Std</dt>
@@ -58,7 +64,7 @@ async function Live() {
           </dl>
           <div className="box spark-card" data-tone="white" style={{ marginTop: 24 }}>
             <div className="spark-card__head">
-              <span className="eyebrow">Zuschauer gesamt · letzte 6 Std</span>
+              <span className="eyebrow">Zuschauer auf dem Server · letzte 6 Std</span>
               <span className="num spark-card__val">{num(viewers)}</span>
             </div>
             <Sparkline points={hist.map((h) => ({ at: h.at, v: h.viewers }))} width={900} height={120} label="Zuschauer" />
@@ -73,7 +79,7 @@ async function Live() {
             <p className="muted">Nach Zuschauern sortiert</p>
           </div>
           {live.length === 0 ? (
-            <p className="st-online__empty">Gerade streamt niemand. Oder die API weiß nichts davon.</p>
+            <p className="st-online__empty">Gerade streamt niemand.</p>
           ) : (
             <ul className="grid" style={{ "--min": "340px", "--gap": "16px", listStyle: "none", margin: 0, padding: 0 } as React.CSSProperties}>
               {live.map((p) => (
@@ -89,9 +95,13 @@ async function Live() {
                     <div style={{ minWidth: 0 }}>
                       <p className="stream__name">
                         {p.name}{" "}
-                        {p.online && (
+                        {p.online ? (
                           <span className="tag" data-tone="grass" style={{ fontSize: ".75rem", padding: "1px 6px", verticalAlign: "middle" }}>
                             auf dem Server
+                          </span>
+                        ) : (
+                          <span className="tag" data-tone="paper" style={{ fontSize: ".75rem", padding: "1px 6px", verticalAlign: "middle" }}>
+                            nicht auf dem Server
                           </span>
                         )}
                       </p>
