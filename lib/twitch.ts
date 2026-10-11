@@ -139,9 +139,15 @@ const negative = new Map<string, number>();
  * Bereits aufgelöste Ereignisse werden nicht erneut abgefragt, Treffer landen dauerhaft in der DB.
  * Rückwirkend: der Stream wird über die Stream-an/aus-Ereignisse des Spielers oder direkt über Twitch bestimmt.
  */
-export async function attachVods(events: TrackerEvent[], loginOf: (player: string) => string | null): Promise<void> {
+export async function attachVods(
+  events: TrackerEvent[],
+  loginOf: (player: string) => string | null,
+  /** Laufende Streams ohne Stream-an-Ereignis (Spieler war beim Tracker-Start schon live): player → liveSince */
+  liveNow: { player: string; since: string; login: string }[] = [],
+): Promise<void> {
   if (!TWITCH_ENABLED) return;
-  const todo = events.filter((e) => e.type === "death" && e.player && !e.meta?.unknown && e.meta?.vodUrl === undefined && e.meta?.vod !== false);
+  // `noVod` = Twitch hatte zu einem abgeschlossenen Stream kein VOD; das alte Feld `vod:false` wurde zu großzügig gesetzt und wird ignoriert
+  const todo = events.filter((e) => e.type === "death" && e.player && !e.meta?.unknown && e.meta?.vodUrl === undefined && e.meta?.noVod !== true);
   if (todo.length === 0) return;
 
   // Streams pro Spieler aus den Ereignissen rekonstruieren (für alte Tode ohne live-Markierung)
@@ -165,16 +171,19 @@ export async function attachVods(events: TrackerEvent[], loginOf: (player: strin
     }
   }
 
+  for (const l of liveNow) {
+    const arr = streams.get(l.player) ?? [];
+    if (!arr.some((s) => s.end === Infinity)) arr.push({ start: Date.parse(l.since), end: Infinity, login: l.login });
+    streams.set(l.player, arr);
+  }
+
   const now = Date.now();
   await Promise.all(
     todo.map(async (e) => {
       const at = Date.parse(e.at);
       const wasLive = e.meta?.live === true || (streams.get(e.player!) ?? []).some((s) => at >= s.start - 60_000 && at <= s.end + 60_000);
-      if (!wasLive) {
-        // Nur kürzlich geschehene Tode könnten noch ohne Stream-Ereignis live sein; alte sicher nicht.
-        if (now - at > 2 * 3600_000) await updateEventMeta(e, { vod: false });
-        return;
-      }
+      // Ohne Stream zu diesem Zeitpunkt gibt es nichts zu verlinken (kein API-Aufruf, keine dauerhafte Markierung)
+      if (!wasLive) return;
       const login =
         (typeof e.meta?.twitchLogin === "string" && e.meta.twitchLogin) ||
         (streams.get(e.player!) ?? []).find((s) => at >= s.start - 60_000 && at <= s.end + 60_000)?.login ||
@@ -190,7 +199,7 @@ export async function attachVods(events: TrackerEvent[], loginOf: (player: strin
         } else {
           negative.set(negKey, now);
           // Stream lange vorbei und kein VOD: dauerhaft merken, spart künftige Abfragen.
-          if (now - at > 24 * 3600_000) await updateEventMeta(e, { vod: false });
+          if (now - at > 24 * 3600_000) await updateEventMeta(e, { noVod: true });
         }
       } catch (err) {
         console.warn("[twitch] VOD-Abfrage fehlgeschlagen:", err instanceof Error ? err.message : err);
