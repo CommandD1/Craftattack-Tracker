@@ -2,6 +2,7 @@
 
 import type { PlayerPoint } from "@/lib/types";
 import { boardValue, num } from "@/lib/format";
+import Link from "next/link";
 import { Sparkline } from "./Sparkline";
 
 export type SparkKey = Exclude<keyof PlayerPoint, "at" | "online">;
@@ -34,7 +35,7 @@ function trackedSeries(points: PlayerPoint[]) {
  * Verlaufskurve einer Kennzahl für die Statistik-Kacheln im Profil.
  * Bei zu wenigen Messpunkten bleibt die Fläche leer, damit die Kacheln gleich hoch bleiben.
  */
-export function StatSpark({ points, k, label, height = 56 }: { points: PlayerPoint[]; k: SparkKey; label: string; height?: number }) {
+export function StatSpark({ points, k, label, height = 56, href }: { points: PlayerPoint[]; k: SparkKey; label: string; height?: number; href?: string }) {
   const format = FORMAT[k];
   let data = points.filter((p) => p[k] !== null).map((p) => ({ at: p.at, v: p[k] as number }));
   // Spielzeit gibt es von der API nur für die Top 10 – sonst die Tracker-Online-Zeit zeigen
@@ -48,13 +49,21 @@ export function StatSpark({ points, k, label, height = 56 }: { points: PlayerPoi
   }
   const t0 = Date.parse(data[0].at);
   const t1 = Date.parse(data[data.length - 1].at);
-  return (
-    <div className="st-fig__spark">
+  const body = (
+    <>
       <Sparkline points={data} width={320} height={height} format={format} step={k !== "viewers"} label={label} />
       <div className="chart__axis">
         <span>{t1 - t0 > 36e5 * 20 ? df.format(t0) : tf.format(t0)}</span>
         <span>{tf.format(t1)}</span>
       </div>
-    </div>
+    </>
+  );
+  // Mit href ist der ganze Graph ein Link (z. B. auf den großen Graphen der Statistik-Seite)
+  return href ? (
+    <Link className="st-fig__spark st-fig__spark--link" href={href} title={`${label} im Graphen der Statistik öffnen`}>
+      {body}
+    </Link>
+  ) : (
+    <div className="st-fig__spark">{body}</div>
   );
 }

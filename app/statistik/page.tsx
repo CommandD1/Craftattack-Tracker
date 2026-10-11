@@ -5,7 +5,7 @@ import { getBiggestEvents, getBoardTotalsOverTime, getDailyEventSum, getHistoryA
 import { boardValue, dateTime, duration, headUrl, num } from "@/lib/format";
 import { Sparkline, type SparkPoint } from "@/components/Sparkline";
 import { GraphBuilder } from "@/components/GraphBuilder";
-import { parseGraphQuery } from "@/lib/graphQuery";
+import { parseGraphQuery, toSearch } from "@/lib/graphQuery";
 import { dayKey, getStatsExtras } from "@/lib/analytics";
 import { StatsExtras } from "@/components/StatsExtras";
 
@@ -177,7 +177,8 @@ export default async function Page(props: PageProps<"/statistik">) {
             </h2>
             <p className="muted">Kennzahl, Spieler, Zeitraum und Raster frei wählen. Die Adresse im Browser enthält die Auswahl und lässt sich teilen.</p>
           </div>
-          <GraphBuilder players={playerOptions} initial={parseGraphQuery(sp)} />
+          {/* key: bei neuen Adress-Parametern (z. B. Link vom Profil) die Auswahl neu aufsetzen statt den alten State zu behalten */}
+          <GraphBuilder key={toSearch(parseGraphQuery(sp)).toString()} players={playerOptions} initial={parseGraphQuery(sp)} />
         </div>
       </section>
 

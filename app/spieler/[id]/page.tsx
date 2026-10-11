@@ -189,7 +189,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                   <Link className="pstat__val" href={graphHref(k)} tabIndex={-1} aria-hidden="true">
                     <FigValue>{v !== undefined ? boardValue(k, v) : fromTracker ? duration(trackedSeconds) : "–"}</FigValue>
                   </Link>
-                  <StatSpark points={history} k={k} label={LABEL[k]} />
+                  <StatSpark points={history} k={k} label={LABEL[k]} href={graphHref(k)} />
                 </div>
               );
             })}
@@ -255,7 +255,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                         Zuschauer <span aria-hidden="true">↗</span>
                       </Link>
                     </p>
-                    <StatSpark points={history} k="viewers" label="Zuschauer" height={48} />
+                    <StatSpark points={history} k="viewers" label="Zuschauer" height={48} href={graphHref("viewers")} />
                   </div>
                 )}
               </div>

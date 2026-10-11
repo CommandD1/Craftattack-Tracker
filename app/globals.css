@@ -668,6 +668,12 @@ a.box,
 .st-fig__spark .spark {
   height: 56px;
 }
+.st-fig__spark--link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
 .st-fig__spark--empty {
   display: flex;
   align-items: flex-end;
