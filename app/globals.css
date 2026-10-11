@@ -2168,7 +2168,7 @@ a.st-chip-in[data-live="true"] {
 }
 .gantt__row {
   display: grid;
-  grid-template-columns: minmax(130px, 180px) minmax(360px, 1fr) 80px;
+  grid-template-columns: minmax(130px, 180px) minmax(360px, 1fr) 118px;
   align-items: center;
   gap: 10px;
   min-height: 34px;
@@ -2636,6 +2636,10 @@ a.st-chip-in[data-live="true"] {
   transform: none;
 }
 /* Zeitstrahl: Balken liegen in einer scrollbaren Tabelle, Tooltip daher unter dem Balken, Platz am Ende */
+/* Die Balken müssen absolut bleiben (.tip setzt sonst relative) */
+.gantt__track .tip {
+  position: absolute;
+}
 .gantt .tip:hover::after,
 .gantt .tip:focus-visible::after {
   bottom: auto;
