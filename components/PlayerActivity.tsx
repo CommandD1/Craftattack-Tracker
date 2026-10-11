@@ -1,5 +1,5 @@
 import type { StoredSession } from "@/lib/store";
-import type { RankHistory, RankKey } from "@/lib/analytics";
+import type { RankHistory, RankKey, Span } from "@/lib/analytics";
 import { RANK_KEYS } from "@/lib/analytics";
 import { duration, num } from "@/lib/format";
 import { Sparkline } from "./Sparkline";
@@ -19,13 +19,13 @@ function cellOf(ms: number): [number, number] {
   return [d, h];
 }
 
-/** Online-Minuten je Wochentag × Stunde aus den Sessions (in 10-Minuten-Schritten abgetastet) */
-function heat(sessions: StoredSession[], now: number): number[][] {
+/** Online-Minuten je Wochentag × Stunde aus Zeitspannen (in 10-Minuten-Schritten abgetastet) */
+function heat(spans: { start: string | number; end: string | number | null }[], now: number): number[][] {
   const grid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
   const STEP = 10 * 60_000;
-  for (const s of sessions) {
-    const a = Date.parse(s.start);
-    const b = s.end ? Date.parse(s.end) : now;
+  for (const s of spans) {
+    const a = typeof s.start === "number" ? s.start : Date.parse(s.start);
+    const b = s.end === null ? now : typeof s.end === "number" ? s.end : Date.parse(s.end);
     for (let t = a; t < b; t += STEP) {
       const [d, h] = cellOf(t);
       grid[d][h] += Math.min(STEP, b - t) / 60_000;
@@ -37,15 +37,20 @@ function heat(sessions: StoredSession[], now: number): number[][] {
 export function PlayerActivity({
   id,
   sessions,
+  afk,
   ranks,
   now,
 }: {
   id: string;
   /** Nur die Sessions dieses Spielers */
   sessions: StoredSession[];
+  /** AFK-Phasen dieses Spielers (Teil der Sessions) */
+  afk: Span[];
   ranks: RankHistory;
   now: number;
 }) {
+  const afkGrid = heat(afk.map(([a, b]) => ({ start: a, end: b })), now);
+  const afkTotal = afkGrid.flat().reduce((s, v) => s + v, 0);
   /* ---- Rang-Verlauf ---- */
   const mine = ranks.players[id];
   const rankCharts = RANK_KEYS.map((k) => {
@@ -144,7 +149,8 @@ export function PlayerActivity({
               <>
                 <p className="muted" style={{ fontSize: ".875rem", marginBottom: 12 }}>
                   {typical ? `Meist zwischen ${typical[0]} und ${typical[1] === 0 ? 24 : typical[1]} Uhr` : ""}
-                  {topDay !== null ? `, stärkster Tag ${DAYS[topDay]}` : ""}. Insgesamt {duration(total * 60)} seit Tracker-Start.
+                  {topDay !== null ? `, stärkster Tag ${DAYS[topDay]}` : ""}. Insgesamt {duration(total * 60)} seit Tracker-Start
+                  {afkTotal > 0 ? `, davon ${duration(afkTotal * 60)} AFK` : ""}. Je gelber ein Feld, desto größer der AFK-Anteil.
                 </p>
                 <div className="heat" role="img" aria-label="Online-Zeit nach Wochentag und Uhrzeit">
                   <span />
@@ -156,14 +162,19 @@ export function PlayerActivity({
                   {grid.map((row, d) => (
                     <div key={d} className="heat__row">
                       <span className="heat__d">{DAYS[d]}</span>
-                      {row.map((v, h) => (
-                        <span
-                          key={h}
-                          className="heat__c"
-                          style={{ "--a": v > 0 ? 0.15 + 0.85 * (v / max) : 0 } as React.CSSProperties}
-                          title={`${DAYS[d]} ${h}–${h + 1} Uhr: ${v > 0 ? `${num(v)} Min` : "nie"}`}
-                        />
-                      ))}
+                      {row.map((v, h) => {
+                        const afkMin = Math.min(v, afkGrid[d][h]);
+                        const share = v > 0 ? afkMin / v : 0;
+                        return (
+                          <span
+                            key={h}
+                            className="heat__c tip"
+                            style={{ "--a": v > 0 ? 0.15 + 0.85 * (v / max) : 0, "--afk": share } as React.CSSProperties}
+                            data-tip={`${DAYS[d]} ${String(h).padStart(2, "0")}–${String(h + 1).padStart(2, "0")} Uhr · ${v > 0 ? `${num(Math.round(v))} Min online${afkMin >= 1 ? ` · davon ${num(Math.round(afkMin))} Min AFK` : ""}` : "nie"}`}
+                            tabIndex={0}
+                          />
+                        );
+                      })}
                     </div>
                   ))}
                 </div>

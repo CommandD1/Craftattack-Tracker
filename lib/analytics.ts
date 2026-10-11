@@ -4,7 +4,7 @@ import { getDb } from "./db";
 import { ensureLoaded, getAllSessions, getDailyEventSum, getEvents, getState, type StoredSession } from "./store";
 import { EVENT_META } from "./events";
 import { AFK_MS } from "./tracker";
-import type { BoardKey, TrackerEvent } from "./types";
+import type { BoardKey, TrackerEvent, TrackerState } from "./types";
 import { BOARD_KEYS } from "./types";
 
 /* ============================================================ Tage (Europe/Berlin) */
@@ -99,7 +99,7 @@ async function firstDataAt(): Promise<number | null> {
   });
 }
 
-type Span = [number, number];
+export type Span = [number, number];
 
 function clip(sessions: StoredSession[], from: number, to: number, now: number): Map<string, Span[]> {
   const out = new Map<string, Span[]>();
@@ -144,6 +144,67 @@ async function dayNav(day: string | undefined, now: number): Promise<DayNav> {
 
 /* ============================================================ AFK-Phasen */
 
+type AfkRow = { player: string; at: Date; online: boolean; distance: number | string | null };
+
+/** Kern der AFK-Erkennung über nach Spieler und Zeit sortierte Verlaufspunkte (siehe `getAfkSpans`). */
+function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, state: TrackerState): Map<string, Span[]> {
+  const out = new Map<string, Span[]>();
+  const add = (id: string, a: number, b: number) => {
+    const x = Math.max(from, a);
+    const y = Math.min(to, b);
+    if (y - x <= 0) return;
+    const l = out.get(id) ?? [];
+    l.push([x, y]);
+    out.set(id, l);
+  };
+  let cur: string | null = null;
+  let lastMove = 0;
+  let lastDist: number | null = null;
+  let wasOnline = false;
+  const close = (id: string, t: number) => {
+    if (wasOnline && lastDist !== null && t - lastMove >= AFK_MS) add(id, lastMove, t);
+  };
+  const finish = (id: string) => {
+    const p = state.players[id];
+    if (p?.online) close(id, Math.min(now, to));
+    else if (wasOnline) close(id, Date.parse(p?.lastSeen ?? new Date(now).toISOString()));
+  };
+  for (const r of rows) {
+    const t = new Date(r.at).getTime();
+    const d = r.distance === null ? null : Number(r.distance);
+    if (r.player !== cur) {
+      if (cur) finish(cur);
+      cur = r.player;
+      lastMove = t;
+      lastDist = d;
+      wasOnline = r.online;
+      continue;
+    }
+    if (!r.online) {
+      if (wasOnline) close(cur, t);
+      wasOnline = false;
+      lastMove = t;
+      lastDist = d;
+      continue;
+    }
+    if (!wasOnline) {
+      // Join: Bewegungsuhr neu starten
+      wasOnline = true;
+      lastMove = t;
+      lastDist = d;
+      continue;
+    }
+    if (d !== null && (lastDist === null || d > lastDist)) {
+      close(cur, t);
+      lastMove = t;
+    }
+    if (d !== null) lastDist = d;
+  }
+  if (cur) finish(cur);
+  for (const l of out.values()) l.sort((x, y) => x[0] - y[0]);
+  return out;
+}
+
 /**
  * AFK-Phasen aller Spieler aus dem Spielerverlauf: online, aber die Strecke steigt mindestens AFK_MS lang nicht.
  * Funktioniert damit auch rückwirkend für Tage vor Einführung der AFK-Erkennung. Die Phase beginnt mit der
@@ -155,66 +216,23 @@ export async function getAfkSpans(from: number, to: number, now: number): Promis
     const db = await getDb();
     // Vorlauf, damit die letzte Bewegung vor `from` bekannt ist
     const rows = (
-      await db.query<{ player: string; at: Date; online: boolean; distance: number | string | null }>(
-        `SELECT player, at, online, distance FROM player_history WHERE at >= $1 AND at < $2 ORDER BY player, at`,
-        [new Date(from - 12 * 3600_000), new Date(to)],
-      )
+      await db.query<AfkRow>(`SELECT player, at, online, distance FROM player_history WHERE at >= $1 AND at < $2 ORDER BY player, at`, [
+        new Date(from - 12 * 3600_000),
+        new Date(to),
+      ])
     ).rows;
-    const state = await getState();
-    const out = new Map<string, Span[]>();
-    const add = (id: string, a: number, b: number) => {
-      const x = Math.max(from, a);
-      const y = Math.min(to, b);
-      if (y - x <= 0) return;
-      const l = out.get(id) ?? [];
-      l.push([x, y]);
-      out.set(id, l);
-    };
-    let cur: string | null = null;
-    let lastMove = 0;
-    let lastDist: number | null = null;
-    let wasOnline = false;
-    const close = (id: string, t: number) => {
-      if (wasOnline && lastDist !== null && t - lastMove >= AFK_MS) add(id, lastMove, t);
-    };
-    for (const r of rows) {
-      const t = new Date(r.at).getTime();
-      const d = r.distance === null ? null : Number(r.distance);
-      if (r.player !== cur) {
-        cur = r.player;
-        lastMove = t;
-        lastDist = d;
-        wasOnline = r.online;
-        continue;
-      }
-      if (!r.online) {
-        if (wasOnline) close(cur, t);
-        wasOnline = false;
-        lastMove = t;
-        lastDist = d;
-        continue;
-      }
-      if (!wasOnline) {
-        // Join: Bewegungsuhr neu starten
-        wasOnline = true;
-        lastMove = t;
-        lastDist = d;
-        continue;
-      }
-      if (d !== null && (lastDist === null || d > lastDist)) {
-        close(cur, t);
-        lastMove = t;
-      }
-      if (d !== null) lastDist = d;
-    }
-    // Letzter Spieler: läuft die Phase noch?
-    if (cur) {
-      const p = state.players[cur];
-      if (p?.online) close(cur, Math.min(now, to));
-      else if (wasOnline) close(cur, Date.parse(p?.lastSeen ?? new Date(now).toISOString()));
-    }
-    for (const l of out.values()) l.sort((x, y) => x[0] - y[0]);
-    return out;
+    return afkFromRows(rows, from, to, now, await getState());
+  });
+}
+
+/** AFK-Phasen eines Spielers über die gesamte Laufzeit. */
+export async function getPlayerAfkSpans(id: string): Promise<Span[]> {
+  return cached(`afk:player:${id}`, 60_000, async () => {
+    await ensureLoaded();
+    const db = await getDb();
+    const now = Date.now();
+    const rows = (await db.query<AfkRow>(`SELECT player, at, online, distance FROM player_history WHERE player = $1 ORDER BY at`, [id])).rows;
+    return afkFromRows(rows, 0, now, now, await getState()).get(id) ?? [];
   });
 }
 

@@ -3067,6 +3067,17 @@ a.st-chip-in[data-live="true"] {
 .heat__c {
   aspect-ratio: 1;
   min-height: 10px;
-  background: color-mix(in srgb, var(--grass) calc(var(--a) * 100%), color-mix(in srgb, var(--ink) 8%, transparent));
+  /* Farbton: grün → gold je AFK-Anteil (--afk 0…1), Sättigung nach Online-Minuten (--a) */
+  --tone: color-mix(in srgb, var(--gold) calc(var(--afk, 0) * 100%), var(--grass));
+  background: color-mix(in srgb, var(--tone) calc(var(--a) * 100%), color-mix(in srgb, var(--ink) 8%, transparent));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent);
+}
+.heat__row .tip:nth-child(-n + 7)::after {
+  left: 0;
+  transform: none;
+}
+.heat__row .tip:nth-last-child(-n + 5)::after {
+  left: auto;
+  right: 0;
+  transform: none;
 }

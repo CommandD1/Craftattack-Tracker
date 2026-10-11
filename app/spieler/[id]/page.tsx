@@ -12,7 +12,7 @@ import { getAllSessions, getPlayerHistory } from "@/lib/store";
 import { companionsOf, overlapsFor } from "@/lib/overlap";
 import { TwitchEmbed } from "@/components/TwitchEmbed";
 import { PlayerInsights } from "@/components/PlayerInsights";
-import { getPlayerRates, getRankHistory } from "@/lib/analytics";
+import { getPlayerAfkSpans, getPlayerRates, getRankHistory } from "@/lib/analytics";
 import { PlayerActivity } from "@/components/PlayerActivity";
 
 // Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
@@ -114,7 +114,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const { state, events, now } = await loadTracker();
   const p = state.players[id];
   if (!p) notFound();
-  const [history, allSessions, rates, rankHistory] = await Promise.all([getPlayerHistory(id), getAllSessions(), getPlayerRates(), getRankHistory()]);
+  const [history, allSessions, rates, rankHistory, afkSpans] = await Promise.all([getPlayerHistory(id), getAllSessions(), getPlayerRates(), getRankHistory(), getPlayerAfkSpans(id)]);
   const overlaps = overlapsFor(id, allSessions, now);
   const nameOf = (pid: string) => state.players[pid]?.name ?? pid;
 
@@ -122,7 +122,10 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const twitchLogin = p.live?.login ?? p.twitchLogin;
   const twitchUrl = twitchLogin ? `https://www.twitch.tv/${encodeURIComponent(twitchLogin)}` : null;
   const streamSeconds = (p.streamOnServerSeconds ?? 0) + (p.streamOffServerSeconds ?? 0);
-  const afkSeconds = p.afkSeconds ?? 0;
+  // AFK-Zeit aus dem Spielerverlauf (rückwirkend, gleiche Quelle wie Zeitstrahl und Statistik)
+  const afkSeconds = afkSpans.reduce((s, [a, b]) => s + (b - a) / 1000, 0);
+  const onlineSeconds = trackedSeconds;
+  const activeSeconds = Math.max(0, onlineSeconds - afkSeconds);
   /** Link auf den Graphen der Statistik-Seite für diese Kennzahl und diesen Spieler */
   const graphHref = (metric: string) => `/statistik?metric=${metric}&spieler=${encodeURIComponent(id)}&zeit=alle#graph`;
   const mine = events.filter((e) => e.player === id);
@@ -254,7 +257,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
       </section>
 
       <PlayerInsights p={p} history={history} sessions={allSessions.filter((s) => s.player === id)} events={mine} rates={rates.players[id]} server={rates.server} now={now} />
-      <PlayerActivity id={id} sessions={allSessions.filter((s) => s.player === id)} ranks={rankHistory} now={now} />
+      <PlayerActivity id={id} sessions={allSessions.filter((s) => s.player === id)} afk={afkSpans} ranks={rankHistory} now={now} />
 
       <section className="block" data-tone="paper">
         <div className="wrap">
@@ -277,15 +280,18 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                   <dt>Sessions</dt>
                   <dd className="num">{num(p.sessions)}</dd>
                   <dt>Online-Zeit</dt>
-                  <dd className="num">
-                    {duration(p.trackedSeconds + (p.online && p.sessionStart ? (now - Date.parse(p.sessionStart)) / 1000 : 0))}
-                  </dd>
+                  <dd className="num">{duration(onlineSeconds)}</dd>
+                  <dt title="Online-Zeit abzüglich AFK-Phasen">Aktiv (ohne AFK)</dt>
+                  <dd className="num">{duration(activeSeconds)}</dd>
                   <dt>Tode gesehen</dt>
                   <dd className="num">{num(deaths)}</dd>
                   <dt>Längste Session</dt>
                   <dd className="num">{p.longestSession > 0 ? duration(p.longestSession) : "–"}</dd>
                   <dt title="Online, aber ohne Streckenzuwachs für mindestens fünf Minuten. Zählt zur Online-Zeit dazu.">AFK-Zeit</dt>
-                  <dd className="num">{afkSeconds > 0 ? duration(afkSeconds) : "–"}</dd>
+                  <dd className="num">
+                    {afkSeconds > 0 ? duration(afkSeconds) : "–"}
+                    {afkSeconds > 0 && onlineSeconds > 0 && <small className="muted"> {Math.round((afkSeconds / onlineSeconds) * 100)} %</small>}
+                  </dd>
                   <dt>Peak-Zuschauer</dt>
                   <dd className="num">{num(p.peakViewers)}</dd>
                   <dt title="Höchste Zuschauerzahl, während der Spieler gleichzeitig auf dem Server war">Peak auf dem Server</dt>
