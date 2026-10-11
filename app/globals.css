@@ -804,7 +804,7 @@ a.st-chip-in[data-live="true"] {
   list-style: none;
 }
 .st-board__row {
-  border-top: 2px solid color-mix(in srgb, var(--line) 18%, transparent);
+  border-top: 2px solid color-mix(in srgb, var(--ink) 18%, transparent);
   grid-template-columns: 2rem 28px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
@@ -887,7 +887,7 @@ a.st-chip-in[data-live="true"] {
   gap: 10px;
   align-items: start;
   padding: 6px 0;
-  border-top: 2px dashed color-mix(in srgb, var(--line) 15%, transparent);
+  border-top: 2px dashed color-mix(in srgb, var(--ink) 15%, transparent);
 }
 .feed__day + .feed__min {
   border-top: 0;
@@ -1076,7 +1076,7 @@ a.st-chip-in[data-live="true"] {
   gap: 6px 12px;
   margin: auto 0 0;
   padding-top: 8px;
-  border-top: 2px solid color-mix(in srgb, var(--line) 18%, transparent);
+  border-top: 2px solid color-mix(in srgb, var(--ink) 18%, transparent);
   font-size: 0.9375rem;
 }
 .player-card__stats dt {
@@ -1174,7 +1174,7 @@ a.st-chip-in[data-live="true"] {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   padding: 10px 0;
-  border-top: 2px solid color-mix(in srgb, var(--line) 18%, transparent);
+  border-top: 2px solid color-mix(in srgb, var(--ink) 18%, transparent);
   font-weight: 600;
 }
 .sessions li:first-child {
@@ -2153,7 +2153,7 @@ a.st-chip-in[data-live="true"] {
   align-items: center;
   gap: 10px;
   min-height: 34px;
-  border-top: 2px solid color-mix(in srgb, var(--line) 12%, transparent);
+  border-top: 2px solid color-mix(in srgb, var(--ink) 12%, transparent);
 }
 .gantt__head {
   border-top: 0;
@@ -2187,7 +2187,7 @@ a.st-chip-in[data-live="true"] {
   position: relative;
   height: 24px;
   background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--ink) 8%, transparent) 0 1px, transparent 1px calc(100% / 8));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 12%, transparent);
 }
 .gantt__on,
 .gantt__live,
@@ -2272,7 +2272,7 @@ a.st-chip-in[data-live="true"] {
   height: 44px;
   padding: 2px;
   background: var(--paper);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--line) 20%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 20%, transparent);
   transition: box-shadow 0.15s, filter 0.15s, transform 0.15s;
   filter: grayscale(1) opacity(0.35);
 }
@@ -2303,7 +2303,7 @@ a.st-chip-in[data-live="true"] {
   gap: 4px;
 }
 .zr__log li {
-  border-top: 1px solid color-mix(in srgb, var(--line) 12%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
   padding-top: 4px;
 }
 .zr__log .num {
@@ -2348,7 +2348,7 @@ a.st-chip-in[data-live="true"] {
   align-items: center;
   gap: 4px 6px;
   padding: 6px 0;
-  border-top: 2px solid color-mix(in srgb, var(--line) 12%, transparent);
+  border-top: 2px solid color-mix(in srgb, var(--ink) 12%, transparent);
   font-size: 0.9375rem;
 }
 .netz__list li[data-now]::before {
@@ -2458,7 +2458,7 @@ a.st-chip-in[data-live="true"] {
   justify-content: space-between;
   gap: 4px 10px;
   padding: 6px 0;
-  border-top: 2px solid color-mix(in srgb, var(--line) 12%, transparent);
+  border-top: 2px solid color-mix(in srgb, var(--ink) 12%, transparent);
   font-size: 0.9375rem;
 }
 .plist__who {
@@ -2485,7 +2485,7 @@ a.st-chip-in[data-live="true"] {
 .tbl td {
   padding: 8px 10px;
   text-align: left;
-  border-top: 2px solid color-mix(in srgb, var(--line) 12%, transparent);
+  border-top: 2px solid color-mix(in srgb, var(--ink) 12%, transparent);
   white-space: nowrap;
 }
 .tbl th {
@@ -2520,7 +2520,7 @@ a.st-chip-in[data-live="true"] {
 .hm__cell {
   aspect-ratio: 1;
   background: color-mix(in srgb, var(--grass) calc(var(--a) * 100%), color-mix(in srgb, var(--ink) 7%, transparent));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent);
 }
 .hbars {
   display: grid;
@@ -2647,7 +2647,7 @@ a.st-chip-in[data-live="true"] {
 .clan__stats {
   margin-top: 14px;
   padding-top: 10px;
-  border-top: 2px solid color-mix(in srgb, var(--line) 20%, transparent);
+  border-top: 2px solid color-mix(in srgb, var(--ink) 20%, transparent);
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 4px 12px;
@@ -2803,7 +2803,7 @@ a.st-chip-in[data-live="true"] {
 .windows th,
 .windows td {
   padding: 5px 0;
-  border-top: 2px solid color-mix(in srgb, var(--line) 12%, transparent);
+  border-top: 2px solid color-mix(in srgb, var(--ink) 12%, transparent);
   text-align: right;
 }
 .windows thead th {
@@ -2866,7 +2866,7 @@ a.st-chip-in[data-live="true"] {
 }
 .rankcard {
   padding: 8px 10px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--line) 20%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 20%, transparent);
   border-left: 5px solid var(--bg, var(--gold));
 }
 .rankcard__head {
@@ -2928,5 +2928,5 @@ a.st-chip-in[data-live="true"] {
   aspect-ratio: 1;
   min-height: 10px;
   background: color-mix(in srgb, var(--grass) calc(var(--a) * 100%), color-mix(in srgb, var(--ink) 8%, transparent));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent);
 }
