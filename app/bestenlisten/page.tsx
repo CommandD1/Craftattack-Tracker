@@ -24,7 +24,13 @@ const BOARDS: Record<BoardKey | "tracked", { title: string; sub: string; tone: s
 const KEYS = [...BOARD_KEYS, "tracked"] as const;
 type Key = (typeof KEYS)[number];
 /** Vergleichszeitraum für die ▲/▼-Anzeige */
-const SPANS = { "24h": { hours: 24, label: "24 Stunden" }, "7d": { hours: 168, label: "7 Tagen" } } as const;
+const SPANS = {
+  "1h": { hours: 1, label: "1 Stunde" },
+  "6h": { hours: 6, label: "6 Stunden" },
+  "12h": { hours: 12, label: "12 Stunden" },
+  "24h": { hours: 24, label: "24 Stunden" },
+  "7d": { hours: 168, label: "7 Tagen" },
+} as const;
 type Span = keyof typeof SPANS;
 
 function listHref(key: Key, span: Span) {
@@ -39,7 +45,7 @@ export default async function Page(props: PageProps<"/bestenlisten">) {
   const sp = await props.searchParams;
   const raw = typeof sp.liste === "string" ? sp.liste : "playtimeSeconds";
   const key: Key = (KEYS as readonly string[]).includes(raw) ? (raw as Key) : "playtimeSeconds";
-  const span: Span = sp.seit === "7d" ? "7d" : "24h";
+  const span: Span = typeof sp.seit === "string" && sp.seit in SPANS ? (sp.seit as Span) : "24h";
   const hours = SPANS[span].hours;
   const [{ state, now }, ranksBefore] = await Promise.all([
     loadTracker(),
