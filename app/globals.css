@@ -2558,3 +2558,30 @@ a.st-chip-in[data-live="true"] {
   height: 1.2em;
   opacity: 0.7;
 }
+
+/* Navigation: kompakter, darf umbrechen statt abzuschneiden */
+.site-head__in {
+  flex-wrap: wrap;
+}
+.nav {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px;
+}
+.nav a {
+  padding: 7px 8px;
+  font-size: 0.875rem;
+  letter-spacing: 0.02em;
+}
+@media (width <= 1100px) and (width > 760px) {
+  .nav a {
+    padding: 6px 7px;
+    font-size: 0.8125rem;
+  }
+}
+@media (width <= 760px) {
+  .nav {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+  }
+}
