@@ -44,8 +44,14 @@ function detail(e: TrackerEvent): string | null {
       return "gelaufen";
     case "afk_start":
       return "AFK";
-    case "afk_farm":
-      return e.meta?.kind === "blocks" ? "AFK Blöcke" : "AFK Mobs";
+    case "afk_mobs_start":
+      return "AFK Mobs";
+    case "afk_mobs_end":
+      return "AFK Mobs Ende";
+    case "afk_blocks_start":
+      return "AFK Blöcke";
+    case "afk_blocks_end":
+      return "AFK Blöcke Ende";
     default:
       return null;
   }

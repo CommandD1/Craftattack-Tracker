@@ -43,6 +43,20 @@ function afkFarmDelta(ps: PlayerState): { mobs: number; blocks: number } {
   const d = (now: number | undefined, at: number | null | undefined) => (now === undefined || at === null || at === undefined ? 0 : Math.max(0, now - at));
   return { mobs: d(ps.stats.mobsKilled, ps.afkMobsAt), blocks: d(ps.stats.blocksBroken, ps.afkBlocksAt) };
 }
+/** Ende einer AFK-Farm (mit der AFK-Phase): eigenes Ereignis je Art, mit Dauer und gefarmter Menge */
+function farmEndEvent(ps: PlayerState, afkSeconds: number, byLeave: boolean): Omit<TrackerEvent, "id" | "at"> | null {
+  if (!ps.afkFarm) return null;
+  const farm = afkFarmDelta(ps);
+  return {
+    type: ps.afkFarm === "mobs" ? "afk_mobs_end" : "afk_blocks_end",
+    player: ps.id,
+    playerName: ps.name,
+    uuid: ps.uuid,
+    where: "server",
+    value: ps.afkFarm === "mobs" ? farm.mobs : farm.blocks,
+    meta: { kind: ps.afkFarm, afkSeconds, since: ps.afkSince, byLeave, ...farm },
+  };
+}
 function endAfk(ps: PlayerState) {
   ps.afkSince = null;
   ps.afkFarm = null;
@@ -301,6 +315,8 @@ export function diffSnapshot(
       if (ps.afkSince) {
         const afk = Math.max(0, Math.round((nowDate.getTime() - Date.parse(ps.afkSince)) / 1000));
         ps.afkSeconds = (ps.afkSeconds ?? 0) + sinceLast;
+        const farmEnd = farmEndEvent(ps, afk, true);
+        if (farmEnd) push(farmEnd);
         push({ type: "afk_end", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { afkSeconds: afk, since: ps.afkSince, byLeave: true, farm: ps.afkFarm, ...afkFarmDelta(ps) } });
         endAfk(ps);
       }
@@ -524,6 +540,8 @@ export function diffSnapshot(
         if (idle < AFK_MS) {
           // Bewegung: AFK-Phase ist vorbei
           const afk = Math.max(0, Math.round((nowDate.getTime() - Date.parse(ps.afkSince)) / 1000));
+          const farmEnd = farmEndEvent(ps, afk, false);
+          if (farmEnd) push(farmEnd);
           push({ type: "afk_end", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { afkSeconds: afk, since: ps.afkSince, farm: ps.afkFarm, ...farm } });
           endAfk(ps);
         } else if (!ps.afkFarm) {
@@ -531,7 +549,7 @@ export function diffSnapshot(
           const kind: AfkKind | null = farm.mobs >= AFK_FARM_MIN ? "mobs" : farm.blocks >= AFK_FARM_MIN ? "blocks" : null;
           if (kind) {
             ps.afkFarm = kind;
-            push({ type: "afk_farm", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", value: kind === "mobs" ? farm.mobs : farm.blocks, meta: { kind, since: ps.afkSince, ...farm } });
+            push({ type: kind === "mobs" ? "afk_mobs_start" : "afk_blocks_start", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", value: kind === "mobs" ? farm.mobs : farm.blocks, meta: { kind, since: ps.afkSince, ...farm } });
           }
         }
       } else if (idle >= AFK_MS) {

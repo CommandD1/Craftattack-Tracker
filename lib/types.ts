@@ -92,7 +92,10 @@ export type EventType =
   | "record"
   | "afk_start"
   | "afk_end"
-  | "afk_farm";
+  | "afk_mobs_start"
+  | "afk_mobs_end"
+  | "afk_blocks_start"
+  | "afk_blocks_end";
 
 /** Was ein Spieler während einer AFK-Phase trotzdem tut: Mobs farmen oder Blöcke abbauen */
 export type AfkKind = "mobs" | "blocks";
