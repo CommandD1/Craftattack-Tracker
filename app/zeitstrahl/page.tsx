@@ -1,9 +1,10 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
-import { dayKey, getDayTimeline } from "@/lib/analytics";
+import { dayKey, getDayTimeline, getTimelapse } from "@/lib/analytics";
 import { duration, headUrl, num, time } from "@/lib/format";
 import { DateNav } from "@/components/DateNav";
+import { Timelapse } from "@/components/Timelapse";
 
 export const instant = false;
 export const metadata: Metadata = { title: "Zeitstrahl" };
@@ -15,21 +16,22 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
   const sp = await props.searchParams;
   await loadTracker();
   const tag = typeof sp.tag === "string" ? sp.tag : undefined;
-  const { nav, rows, now } = await getDayTimeline(tag);
+  const [{ nav, rows, now }, lapse] = await Promise.all([getDayTimeline(tag), getTimelapse(tag)]);
   const span = nav.to - nav.from;
   const pct = (t: number) => Math.max(0, Math.min(100, ((t - nav.from) / span) * 100));
   const nowPct = now < nav.to && now > nav.from ? pct(now) : null;
   const total = rows.reduce((s, r) => s + r.seconds, 0);
   const liveCount = rows.filter((r) => r.live.length).length;
+  const peak = lapse.frames.reduce((m, f) => Math.max(m, f.online.length), 0);
 
   return (
     <>
       <section className="block page-head" data-tone="sky">
         <div className="wrap">
-          <p className="eyebrow">Wer war wann da</p>
+          <p className="eyebrow">Ein Tag auf dem Server</p>
           <h1 className="t-1">Zeitstrahl</h1>
           <p>
-            Jede Zeile ein Spieler, jeder Balken eine Session auf dem Server. Lila darunter: live auf Twitch.
+            Oben der Tag als Film im Zeitraffer, darunter jede Session als Balken. Grün heißt auf dem Server, lila heißt live auf Twitch.
             {nav.dataFrom && <> Daten an diesem Tag ab {time(new Date(nav.dataFrom).toISOString())} Uhr.</>}
           </p>
         </div>
@@ -41,13 +43,24 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
             <div>
               <h2 className="t-2">{dayLong.format(nav.from + 12 * 3600_000)}</h2>
               <p className="muted num" style={{ marginTop: 8 }}>
-                {num(rows.length)} Spieler · {duration(total)} Spielzeit zusammen · {num(liveCount)} mit Stream
+                {num(rows.length)} Spieler · {duration(total)} Spielzeit zusammen · {num(liveCount)} mit Stream · Spitze {num(peak)} gleichzeitig
               </p>
             </div>
             <DateNav base="/zeitstrahl" day={nav.day} prev={nav.prev} next={nav.next} max={dayKey(now)} />
           </div>
 
-          <div className="box" data-tone="white">
+          <div className="box" data-tone="white" id="zeitraffer" style={{ marginBottom: 24 }}>
+            <div className="stat-card__head">
+              <h3 className="t-3">Zeitraffer</h3>
+              <p className="muted">Alle fünf Minuten ein Bild. Abspielen oder mit dem Regler durch den Tag ziehen.</p>
+            </div>
+            <Timelapse data={lapse} />
+          </div>
+
+          <div className="box" data-tone="white" id="balken">
+            <div className="stat-card__head">
+              <h3 className="t-3">Wer war wann da</h3>
+            </div>
             <ul className="legend" style={{ marginBottom: 12 }}>
               <li>
                 <i style={{ background: "var(--grass)" }} /> auf dem Server
@@ -101,7 +114,7 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
           </div>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
             Sessions entstehen aus den Join- und Leave-Ereignissen des Trackers, Streams aus den Stream-an/aus-Ereignissen. Genauigkeit: etwa 30
-            Sekunden. Der <Link href={`/zeitraffer?tag=${nav.day}`}>Zeitraffer</Link> zeigt denselben Tag als Film.
+            Sekunden.
           </p>
         </div>
       </section>

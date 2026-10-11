@@ -131,7 +131,7 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
                     <td className="num">{num(r.deaths)}</td>
                     <td className="num">{num(r.maxViewers)}</td>
                     <td>
-                      <Link href={`/zeitstrahl?tag=${r.day}`}>Zeitstrahl</Link> · <Link href={`/zeitraffer?tag=${r.day}`}>Zeitraffer</Link>
+                      <Link href={`/zeitstrahl?tag=${r.day}`}>Zeitstrahl</Link>
                     </td>
                   </tr>
                 ))}
