@@ -32,7 +32,7 @@ function detail(e: TrackerEvent): string | null {
     case "first_join":
       return "Neu";
     case "death":
-      return e.meta?.unknown ? "unbekannt" : null;
+      return e.meta?.unknown ? "unbekannt" : e.meta?.inferred ? "zugeordnet" : null;
     // Zähler: die kleinen Icons sind nicht eindeutig, daher ein Wort dazu
     case "diamonds":
       return "Diamanten";

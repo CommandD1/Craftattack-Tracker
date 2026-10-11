@@ -94,10 +94,14 @@ export async function fetchExtPlayer(login: string): Promise<ExtPlayer | null> {
  * Fragt alle Logins parallel (begrenzt) ab. Ergebnis ist nach Spieler-ID (aus der Antwort) abgelegt.
  * Fehlgeschlagene Spieler fehlen einfach im Ergebnis.
  */
-export async function fetchExtAll(logins: Iterable<string>): Promise<{ players: Map<string, ExtPlayer>; loginOf: Map<string, string>; failed: number }> {
+export async function fetchExtAll(
+  logins: Iterable<string>,
+): Promise<{ players: Map<string, ExtPlayer>; loginOf: Map<string, string>; missing: Set<string>; failed: number }> {
   const queue = [...new Set(logins)];
   const players = new Map<string, ExtPlayer>();
   const loginOf = new Map<string, string>();
+  /** Logins, die die API nicht kennt (im Gegensatz zu Fehlern/Timeouts) */
+  const missing = new Set<string>();
   let failed = 0;
   const worker = async () => {
     for (let login = queue.shift(); login !== undefined; login = queue.shift()) {
@@ -106,14 +110,14 @@ export async function fetchExtAll(logins: Iterable<string>): Promise<{ players: 
         if (p) {
           players.set(p.id, p);
           loginOf.set(p.id, login);
-        }
+        } else missing.add(login);
       } catch {
         failed += 1;
       }
     }
   };
   await Promise.all(Array.from({ length: Math.max(1, EXT_CONCURRENCY) }, worker));
-  return { players, loginOf, failed };
+  return { players, loginOf, missing, failed };
 }
 
 /** Alle Spieler-IDs, die der Tracker kennt oder die im aktuellen Snapshot vorkommen. */
@@ -129,13 +133,24 @@ export function knownPlayerIds(state: TrackerState, stats: ApiStats): Set<string
  * Twitch-Logins für die ext-Abfrage: gespeicherter Login des Spielers, sonst der Login aus dem aktuellen
  * Live-Status, sonst die Spieler-ID (stimmt bei den meisten Spielern mit dem Login überein).
  */
-export function extLogins(state: TrackerState, stats: ApiStats, ids: Iterable<string>): Set<string> {
+export function extLogins(state: TrackerState, stats: ApiStats, ids: Iterable<string>): Map<string, string> {
   const liveLogin = new Map<string, string>();
   for (const l of stats.live ?? []) liveLogin.set(l.id, l.login);
   for (const p of stats.online) if (p.live?.login) liveLogin.set(p.id, p.live.login);
-  const logins = new Set<string>();
-  for (const id of ids) logins.add(state.players[id]?.twitchLogin ?? liveLogin.get(id) ?? KNOWN_LOGINS[id] ?? id);
+  const logins = new Map<string, string>();
+  for (const id of ids) logins.set(id, state.players[id]?.twitchLogin ?? liveLogin.get(id) ?? KNOWN_LOGINS[id] ?? id);
   return logins;
+}
+
+/**
+ * Spieler, denen nicht zuordenbare Tode per Ausschluss zugeschrieben werden könnten: gerade online,
+ * nicht in der Tode-Top-10 und von /api/ext nicht gekannt (nicht bloß ein Timeout). Nur bei genau
+ * einem Kandidaten ist die Zuordnung eindeutig.
+ */
+export function deathCandidates(state: TrackerState, stats: ApiStats, ext: Map<string, ExtPlayer>, extMissing: Set<string>): string[] {
+  const inBoard = new Set((stats.boards?.deaths ?? []).map((e) => e.id));
+  const logins = extLogins(state, stats, stats.online.map((p) => p.id));
+  return stats.online.map((p) => p.id).filter((id) => !ext.has(id) && !inBoard.has(id) && extMissing.has(logins.get(id) ?? id));
 }
 
 /**
@@ -200,6 +215,8 @@ export function diffSnapshot(
   twitch: Map<string, TwitchStream> | null = null,
   /** Twitch-Login je Spieler-ID, mit dem die ext-Abfrage erfolgreich war */
   extLoginOf: Map<string, string> = new Map(),
+  /** Logins, die /api/ext nicht kennt (für die Zuordnung per Ausschluss, siehe `deathCandidates`) */
+  extMissing: Set<string> = new Set(),
 ): TrackerEvent[] {
   const now = nowDate.toISOString();
   const events: TrackerEvent[] = [];
@@ -451,18 +468,39 @@ export function diffSnapshot(
     // bleibt, wird als „unbekannt“ gemeldet.
     const unexplained = (stats.totals?.deaths ?? 0) - prevDeaths - explained;
     state.pendingDeaths = Math.max(0, (state.pendingDeaths ?? 0) + unexplained);
-    if (state.pendingDeaths === 0) state.pendingSince = null;
-    else if (!state.pendingSince) state.pendingSince = now;
-    else if (nowDate.getTime() - Date.parse(state.pendingSince) >= UNKNOWN_DEATH_GRACE_MS) {
-      push({
-        type: "death",
-        where: "server",
-        delta: state.pendingDeaths,
-        value: stats.totals.deaths,
-        meta: { unknown: true },
-      });
+    if (state.pendingDeaths === 0) {
+      state.pendingSince = null;
+      state.pendingCandidates = [];
+    } else if (!state.pendingSince) {
+      state.pendingSince = now;
+      // Wer kommt in Frage? Wird beim Auftauchen des Todes festgehalten, nicht erst nach der Wartezeit.
+      state.pendingCandidates = deathCandidates(state, stats, ext, extMissing);
+    } else if (nowDate.getTime() - Date.parse(state.pendingSince) >= UNKNOWN_DEATH_GRACE_MS) {
+      const candidates = state.pendingCandidates ?? [];
+      const only = candidates.length === 1 ? state.players[candidates[0]] : undefined;
+      if (only) {
+        // Genau ein Spieler ohne Einzelstatistik war online: ihm werden die Tode per Ausschluss zugeordnet
+        push({
+          type: "death",
+          player: only.id,
+          playerName: only.name,
+          uuid: only.uuid,
+          where: "server",
+          delta: state.pendingDeaths,
+          meta: { inferred: true, ...(only.live ? { live: true, twitchLogin: only.live.login, streamStartedAt: only.liveSince } : {}) },
+        });
+      } else {
+        push({
+          type: "death",
+          where: "server",
+          delta: state.pendingDeaths,
+          value: stats.totals.deaths,
+          meta: { unknown: true, candidates: candidates.length },
+        });
+      }
       state.pendingDeaths = 0;
       state.pendingSince = null;
+      state.pendingCandidates = [];
     }
   }
 
@@ -515,9 +553,9 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       const logins = extLogins(state, stats, knownPlayerIds(state, stats));
       // Live-Status direkt bei Twitch für alle bekannten Logins; schlägt das fehl, zählt die Haupt-API
       const [ext, twitch] = await Promise.all([
-        fetchExtAll(logins),
+        fetchExtAll(logins.values()),
         TWITCH_ENABLED
-          ? fetchLiveStreams(logins).catch((err: unknown) => {
+          ? fetchLiveStreams(logins.values()).catch((err: unknown) => {
               console.warn("[tracker] Twitch-Live-Abfrage fehlgeschlagen:", err instanceof Error ? err.message : err);
               return null;
             })
@@ -525,7 +563,7 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       ]);
       if (ext.failed > 0) console.warn(`[tracker] ${ext.failed} ext-Anfragen fehlgeschlagen`);
       const first = state.latest === null;
-      const events = diffSnapshot(state, stats, now, ext.players, twitch, ext.loginOf);
+      const events = diffSnapshot(state, stats, now, ext.players, twitch, ext.loginOf, ext.missing);
       if (first) {
         events.unshift({
           id: eventId(now.toISOString()),

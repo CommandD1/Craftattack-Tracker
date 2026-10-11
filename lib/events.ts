@@ -31,8 +31,16 @@ export const EVENT_META: Record<EventType, EventMeta> = {
           : "ist gestorben",
     sub: (e) =>
       e.meta?.unknown
-        ? "Außerhalb der Top 10 – wer genau, verrät die API nicht."
-        : [e.value !== undefined ? `Insgesamt ${num(e.value)} Tode` : null, e.meta?.live ? "Live auf Twitch" : null].filter(Boolean).join(" · ") || null,
+        ? typeof e.meta.candidates === "number" && e.meta.candidates > 1
+          ? `Außerhalb der Top 10 – ${num(e.meta.candidates)} Spieler ohne Einzelstatistik waren online, daher nicht eindeutig.`
+          : "Außerhalb der Top 10 – wer genau, verrät die API nicht."
+        : [
+            e.meta?.inferred ? "Per Ausschluss zugeordnet: einziger Spieler online, den die Einzelstatistik nicht kennt" : null,
+            e.value !== undefined ? `Insgesamt ${num(e.value)} Tode` : null,
+            e.meta?.live ? "Live auf Twitch" : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || null,
   },
   diamonds: {
     label: "Diamanten",

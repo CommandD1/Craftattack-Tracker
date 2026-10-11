@@ -37,6 +37,7 @@ export function freshState(): TrackerState {
     records: { peakOnline: null, peakViewers: null, peakLive: null },
     pendingDeaths: 0,
     pendingSince: null,
+    pendingCandidates: [],
   };
 }
 
@@ -57,6 +58,7 @@ interface MetaRow {
   records: TrackerRecords | null;
   pending_deaths: number | null;
   pending_since: Date | null;
+  pending_candidates: string[] | null;
 }
 
 interface PlayerRow {
@@ -169,6 +171,7 @@ async function loadFromDb() {
     if (meta.records) state.records = { ...state.records, ...meta.records };
     state.pendingDeaths = meta.pending_deaths ?? 0;
     state.pendingSince = iso(meta.pending_since);
+    state.pendingCandidates = Array.isArray(meta.pending_candidates) ? meta.pending_candidates : [];
   }
 
   const players = (await db.query<PlayerRow>(`SELECT * FROM players`)).rows;
@@ -230,13 +233,13 @@ export async function saveState(state: TrackerState) {
   store.state = state;
 
   await db.query(
-    `INSERT INTO tracker_meta (id, started_at, last_poll, last_ok, last_error, polls, server_online, latest, event_count, records, pending_deaths, pending_since)
-     VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    `INSERT INTO tracker_meta (id, started_at, last_poll, last_ok, last_error, polls, server_online, latest, event_count, records, pending_deaths, pending_since, pending_candidates)
+     VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      ON CONFLICT (id) DO UPDATE SET
        started_at = EXCLUDED.started_at, last_poll = EXCLUDED.last_poll, last_ok = EXCLUDED.last_ok,
        last_error = EXCLUDED.last_error, polls = EXCLUDED.polls, server_online = EXCLUDED.server_online,
        latest = EXCLUDED.latest, event_count = EXCLUDED.event_count, records = EXCLUDED.records,
-       pending_deaths = EXCLUDED.pending_deaths, pending_since = EXCLUDED.pending_since`,
+       pending_deaths = EXCLUDED.pending_deaths, pending_since = EXCLUDED.pending_since, pending_candidates = EXCLUDED.pending_candidates`,
     [
       toDate(state.startedAt),
       toDate(state.lastPoll),
@@ -249,6 +252,7 @@ export async function saveState(state: TrackerState) {
       JSON.stringify(state.records),
       state.pendingDeaths ?? 0,
       toDate(state.pendingSince ?? null),
+      JSON.stringify(state.pendingCandidates ?? []),
     ],
   );
 
