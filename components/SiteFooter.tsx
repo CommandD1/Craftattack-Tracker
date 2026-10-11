@@ -71,6 +71,10 @@ export function SiteFooter() {
             <a href="https://hiorcraft.dev" target="_blank" rel="noopener">
               HiorCraft
             </a>{" "}
+            und{" "}
+            <a href="https://github.com/CommandD1" target="_blank" rel="noopener">
+              CommandD1
+            </a>{" "}
             mit <span className="heart">♥</span> und Unterstützung durch KI (Claude). Nicht mit
             CraftAttack oder den Creatorn verbunden.
           </p>
