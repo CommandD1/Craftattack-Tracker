@@ -2,5 +2,5 @@
 export const SOCIALS = [
   { key: "twitch", label: "Twitch", href: process.env.NEXT_PUBLIC_TWITCH_URL ?? "" },
   { key: "discord", label: "Discord", href: process.env.NEXT_PUBLIC_DISCORD_URL ?? "" },
-  { key: "github", label: "GitHub", href: process.env.NEXT_PUBLIC_GITHUB_URL ?? "" },
+  { key: "github", label: "GitHub", href: process.env.NEXT_PUBLIC_GITHUB_URL ?? "https://github.com/HiorCraft/Craftattack-Tracker" },
 ] as const;
