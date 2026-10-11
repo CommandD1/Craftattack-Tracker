@@ -1010,6 +1010,560 @@ a.st-chip-in[data-live="true"] {
   }
 }
 
+/* ---------- Filter-Leiste ---------- */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+.filters .tag {
+  cursor: pointer;
+}
+.filters .tag[aria-current="true"] {
+  background: var(--ink);
+  color: var(--paper);
+}
+.filters .tag:hover {
+  background: var(--gold);
+  color: var(--on-tone);
+}
+.filters .tag[aria-current="true"]:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* ---------- Spieler ---------- */
+.player-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: calc(100% - var(--px) * 3);
+  padding: 14px;
+}
+.player-card__top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.player-card__top img {
+  width: 48px;
+  height: 48px;
+}
+.player-card__name {
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.player-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  margin: -2px;
+}
+.player-card__tags .tag {
+  font-size: 0.8125rem;
+  padding: 2px 8px;
+}
+.player-card__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+  margin: auto 0 0;
+  padding-top: 8px;
+  border-top: 2px solid color-mix(in srgb, var(--ink) 18%, transparent);
+  font-size: 0.9375rem;
+}
+.player-card__stats dt {
+  opacity: 0.7;
+  font-weight: 600;
+}
+.player-card__stats dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+}
+.player-head {
+  display: flex;
+  align-items: center;
+  gap: clamp(16px, 3vw, 28px);
+  flex-wrap: wrap;
+}
+.player-head .head {
+  width: clamp(72px, 12vw, 112px);
+  height: auto;
+}
+.player-head__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 12px -4px 0;
+}
+.player-head__tags .tag {
+  white-space: normal;
+  line-height: 1.25;
+}
+.player-head__tags .tag .dot {
+  width: 9px;
+  height: 9px;
+}
+
+/* ---------- Spieler-Graphen ---------- */
+.charts {
+  margin-top: 24px;
+}
+.charts__grid {
+  --min: 280px;
+  --gap: 16px;
+}
+.chart {
+  padding: 14px 16px 10px;
+}
+.chart__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.chart__val {
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+.chart__axis {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+.chart__empty {
+  opacity: 0.7;
+  font-size: 0.9375rem;
+  padding: 18px 0;
+}
+.chart .spark {
+  width: 100%;
+  height: 90px;
+  display: block;
+}
+.chart__grid {
+  stroke: var(--ink);
+  stroke-opacity: 0.15;
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+.chart__max {
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+.sessions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sessions li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 2px solid color-mix(in srgb, var(--ink) 18%, transparent);
+  font-weight: 600;
+}
+.sessions li:first-child {
+  border-top: 0;
+}
+
+/* ---------- Sparkline ---------- */
+.spark {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.spark__area {
+  fill: var(--ink);
+  opacity: 0.12;
+}
+.spark__line {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.spark__dot {
+  fill: var(--redstone);
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+.spark-card {
+  padding: 16px;
+}
+.spark-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.spark-card__val {
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+/* ---------- Streams ---------- */
+.stream {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  text-decoration: none;
+  height: calc(100% - var(--px) * 3);
+}
+.stream img {
+  width: 56px;
+  height: 56px;
+}
+.stream__name {
+  font-weight: 700;
+  font-size: 1.125rem;
+  line-height: 1.1;
+}
+.stream__title {
+  opacity: 0.8;
+  font-size: 0.9375rem;
+  margin-top: 4px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.stream__viewers {
+  text-align: right;
+  font-weight: 700;
+  font-size: 1.25rem;
+  white-space: nowrap;
+}
+.stream__viewers small {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+  font-family: var(--font-display);
+}
+.pagination {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 28px;
+}
+
+/* ---------- Event-Karten (wie craftattack.one/events) ---------- */
+.event-card {
+  height: calc(100% - var(--px) * 3);
+  flex-direction: column;
+  gap: 12px;
+  display: flex;
+}
+.event-card__tags {
+  margin: calc(var(--px) * -1);
+  flex-wrap: wrap;
+  gap: 2px;
+  display: flex;
+}
+.event-card__tags .tag {
+  white-space: normal;
+}
+.event-card .t-3 {
+  overflow-wrap: anywhere;
+}
+.event-card__foot {
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 4px;
+  display: flex;
+}
+.event-card__go {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  white-space: nowrap;
+  margin-left: auto;
+  font-weight: 700;
+}
+
+/* ---------- Footer-Social-Links ---------- */
+.site-foot__social {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+.site-foot__social a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 12px 6px 10px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--outline);
+  margin: var(--px);
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 0.1s;
+}
+.site-foot__social a:hover {
+  background: var(--gold);
+  transform: translate(-2px, -2px);
+}
+.site-foot__social svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ---------- Twitch-Embed ---------- */
+.twitch {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+.twitch .box {
+  padding: 0;
+  overflow: hidden;
+  background: var(--ink);
+}
+.twitch__player iframe {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  height: auto;
+  border: 0;
+}
+.twitch__chat iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  border: 0;
+}
+@media (width <= 860px) {
+  .twitch {
+    grid-template-columns: 1fr;
+  }
+  .twitch__chat iframe {
+    height: 420px;
+  }
+}
+.records {
+  display: grid;
+  gap: 10px;
+}
+.records__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.records__row small {
+  grid-column: 1 / -1;
+  opacity: 0.7;
+  font-weight: 500;
+  font-size: 0.8125rem;
+}
+
+/* ---------- Komplette Bestenlisten ---------- */
+.st-board__row--full {
+  grid-template-columns: 2.5rem 28px minmax(0, 1fr) auto auto;
+}
+.st-board__list--full .st-board__row:nth-child(n + 4) .st-board__rank {
+  opacity: 0.8;
+}
+.st-board__meta {
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.65;
+  white-space: nowrap;
+}
+@media (width <= 480px) {
+  .st-board__meta {
+    display: none;
+  }
+  .st-board__row--full {
+    grid-template-columns: 2.5rem 28px minmax(0, 1fr) auto;
+  }
+}
+
+/* ---------- Sparkline-Hover ---------- */
+.spark-wrap {
+  position: relative;
+}
+.spark-wrap .spark {
+  cursor: crosshair;
+  touch-action: none;
+}
+.spark__cursor {
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-dasharray: 3 3;
+  opacity: 0.6;
+}
+.spark__tip {
+  position: absolute;
+  top: -6px;
+  translate: 0 -100%;
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow: 0 0 0 2px var(--ink), 3px 3px 0 0 var(--ink);
+  padding: 4px 8px;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.spark__tip-val {
+  font-weight: 700;
+  font-size: 1rem;
+}
+.spark__tip-time {
+  opacity: 0.8;
+}
+
+.session-with {
+  display: block;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+/* ---------- 3D-Skin im Profil ---------- */
+.player-head .skin {
+  width: clamp(120px, 18vw, 180px);
+  height: auto;
+  image-rendering: pixelated;
+  flex: none;
+  filter: drop-shadow(0 6px 0 color-mix(in srgb, var(--ink) 40%, transparent));
+}
+
+/* ---------- Statistik: Rekorde ---------- */
+.records-grid {
+  --min: 200px;
+  --gap: 16px;
+  margin: 0;
+}
+.record {
+  min-width: 0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.record dt {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  opacity: 0.85;
+}
+.record dd {
+  margin: 0;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+.record__val {
+  font-size: clamp(1.375rem, 2.2vw, 1.75rem);
+  font-weight: 700;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.record__who {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  text-decoration: none;
+  color: inherit;
+}
+.record__who .head {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  box-shadow: 0 0 0 2px var(--ink);
+}
+.record__who span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.record small {
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+.chart--big .spark {
+  height: 110px;
+}
+
+.st-board__name .dot {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* ---------- Profil: Statistik-Kacheln ---------- */
+.pstat {
+  display: grid;
+  gap: 8px;
+}
+.pstat__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.pstat__label svg {
+  flex: none;
+}
+.pstat__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pstat__meta .tag {
+  margin: 0;
+  font-size: 0.75rem;
+  padding: 3px 8px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.pstat__meta .tag .muted {
+  opacity: 0.7;
+}
+
 /* ---------- Ereignisse: Filter & Zusammenfassung ---------- */
 .ev-filters {
   display: grid;
