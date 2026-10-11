@@ -2745,6 +2745,15 @@ a.st-chip-in[data-live="true"] {
   }
 }
 @media (width <= 760px) {
+  /* Spalten-Layout darf nicht umbrechen: ein umbrechender Spalten-Flex gibt der Nav ihre volle
+     Breite ohne Scrollen und macht damit die ganze Seite breiter als das Display */
+  .site-head__in {
+    flex-wrap: nowrap;
+  }
+  .site-head__in > nav {
+    min-width: 0;
+    max-width: 100%;
+  }
   .nav {
     flex-wrap: nowrap;
     justify-content: flex-start;
