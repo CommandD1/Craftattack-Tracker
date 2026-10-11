@@ -48,9 +48,10 @@ function Heatmap({ values }: { values: (number | null)[][] }) {
           {row.map((v, h) => (
             <span
               key={h}
-              className="hm__cell"
+              className="hm__cell tip"
               style={{ "--a": v === null ? 0 : Math.max(0.08, v / max) } as React.CSSProperties}
-              title={`${DAYS[d]} ${String(h).padStart(2, "0")}–${String(h + 1).padStart(2, "0")} Uhr: ${v === null ? "keine Daten" : `Ø ${num(v)} online`}`}
+              data-tip={`${DAYS[d]} ${String(h).padStart(2, "0")}–${String(h + 1).padStart(2, "0")} Uhr · ${v === null ? "keine Daten" : `Ø ${num(v)} online`}`}
+              tabIndex={0}
             />
           ))}
         </div>
@@ -65,7 +66,7 @@ function HourBars({ values, unit, tone = "redstone" }: { values: { hour: number;
   return (
     <div className="hbars" role="img" aria-label={unit} style={{ "--bar": `var(--${tone})` } as React.CSSProperties}>
       {values.map((v) => (
-        <span key={v.hour} title={`${String(v.hour).padStart(2, "0")} Uhr: ${v.title}`}>
+        <span key={v.hour} className="tip" data-tip={`${String(v.hour).padStart(2, "0")}–${String(v.hour + 1).padStart(2, "0")} Uhr · ${v.title}`} tabIndex={0}>
           <i style={{ height: `${v.v === null ? 0 : Math.max(2, (v.v / max) * 100)}%` }} />
           <b className="num">{v.hour % 3 === 0 ? v.hour : ""}</b>
         </span>
