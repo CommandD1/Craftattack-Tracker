@@ -52,6 +52,45 @@ interface Session {
   seconds: number;
 }
 
+/** Ein Eintrag der gemeinsamen Liste: Server-Session oder Twitch-Stream */
+interface Phase extends Session {
+  kind: "server" | "stream";
+  /** Stream: höchste Zuschauerzahl */
+  peak?: number;
+  /** Überschneidung mit der jeweils anderen Art (Sekunden) */
+  overlap: number;
+}
+
+/** Baut aus Stream-an/aus-Ereignissen eine Stream-Liste (laufender Stream: end = null). */
+function streams(events: TrackerEvent[], live: boolean, liveSince: string | null, now: number): (Session & { peak?: number })[] {
+  const out: (Session & { peak?: number })[] = [];
+  let open: string | null = null;
+  for (const e of events) {
+    if (e.type === "stream_start") open = e.at;
+    if (e.type === "stream_end") {
+      const secs = Number(e.meta?.streamSeconds ?? 0);
+      const start = open ?? (typeof e.meta?.startedAt === "string" ? e.meta.startedAt : new Date(Date.parse(e.at) - secs * 1000).toISOString());
+      out.push({ start, end: e.at, seconds: secs || (Date.parse(e.at) - Date.parse(start)) / 1000, peak: Number(e.meta?.peakViewers ?? 0) || undefined });
+      open = null;
+    }
+  }
+  if (live && liveSince) out.push({ start: liveSince, end: null, seconds: (now - Date.parse(liveSince)) / 1000 });
+  return out.reverse();
+}
+
+/** Sekunden, die sich eine Phase mit einer Liste anderer Phasen überschneidet */
+function overlapSeconds(a: Session, others: Session[], now: number): number {
+  const a0 = Date.parse(a.start);
+  const a1 = a.end ? Date.parse(a.end) : now;
+  let sum = 0;
+  for (const o of others) {
+    const b0 = Date.parse(o.start);
+    const b1 = o.end ? Date.parse(o.end) : now;
+    sum += Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
+  }
+  return sum / 1000;
+}
+
 /** Baut aus Join/Leave-Ereignissen eine Session-Liste. */
 function sessions(events: TrackerEvent[], online: boolean, sessionStart: string | null, now: number): Session[] {
   const out: Session[] = [];
@@ -88,6 +127,12 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const graphHref = (metric: string) => `/statistik?metric=${metric}&spieler=${encodeURIComponent(id)}&zeit=alle#graph`;
   const mine = events.filter((e) => e.player === id);
   const sess = sessions(mine, p.online, p.sessionStart, now);
+  const strm = streams(mine, Boolean(p.live), p.liveSince, now);
+  // Sessions und Streams gemeinsam, neueste zuerst; die Überschneidung mit der anderen Art steht dabei
+  const phases: Phase[] = [
+    ...sess.map((s) => ({ ...s, kind: "server" as const, overlap: overlapSeconds(s, strm, now) })),
+    ...strm.map((s) => ({ ...s, kind: "stream" as const, overlap: overlapSeconds(s, sess, now) })),
+  ].sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
   const recent = [...mine].reverse().slice(0, 150);
   const deaths = mine.filter((e) => e.type === "death").reduce((s, e) => s + (e.delta ?? 0), 0);
   // Rang: bevorzugt aus /api/ext/<login> (für alle Spieler), sonst Position in der Top 10 der Haupt-API
@@ -308,20 +353,30 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
               </section>
               <div className="box" data-tone="white">
                 <p className="eyebrow" style={{ marginBottom: 10 }}>
-                  Sessions
+                  Sessions &amp; Streams
                 </p>
-                {sess.length === 0 ? (
+                {phases.length === 0 ? (
                   <p className="muted">Noch keine komplette Session gesehen.</p>
                 ) : (
                   <ul className="sessions">
-                    {sess.slice(0, 12).map((s) => {
-                      const with_ = companionsOf(id, s.start, s.end, allSessions, now);
+                    {phases.slice(0, 16).map((s) => {
+                      const with_ = s.kind === "server" ? companionsOf(id, s.start, s.end, allSessions, now) : [];
                       const shown = with_.slice(0, 4);
+                      const extra =
+                        s.kind === "stream"
+                          ? [s.peak ? `Peak ${num(s.peak)} Zuschauer` : null, s.overlap > 0 ? `davon ${duration(s.overlap)} auf dem Server` : "nicht auf dem Server"].filter(Boolean).join(" · ")
+                          : s.overlap > 0
+                            ? `davon ${duration(s.overlap)} live auf Twitch`
+                            : null;
                       return (
-                        <li key={s.start}>
+                        <li key={`${s.kind}${s.start}`} className={`sessions__${s.kind}`}>
                           <span>
+                            <span className="sessions__kind tag" data-tone={s.kind === "stream" ? "twitch" : "grass"}>
+                              {s.kind === "stream" ? "Stream" : "Server"}
+                            </span>{" "}
                             {dateTime(s.start)}
                             {s.end ? ` – ${dateTime(s.end).split(", ").pop()}` : " – jetzt"}
+                            {extra && <span className="muted session-with">{extra}</span>}
                             {with_.length > 0 && (
                               <span
                                 className="muted session-with"
@@ -338,6 +393,9 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                     })}
                   </ul>
                 )}
+                <p className="muted" style={{ marginTop: 10, fontSize: ".875rem" }}>
+                  Server-Sessions aus Join/Leave, Streams aus Stream-an/aus. Steht bei einem Eintrag „davon …“, überschneidet er sich mit der anderen Art.
+                </p>
               </div>
             </aside>
           </div>

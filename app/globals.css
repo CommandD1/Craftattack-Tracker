@@ -1186,6 +1186,19 @@ a.st-chip-in[data-live="true"] {
 .sessions li:first-child {
   border-top: 0;
 }
+.sessions__kind {
+  font-size: 0.6875rem;
+  padding: 1px 6px;
+  vertical-align: middle;
+}
+.sessions__stream {
+  border-left: 4px solid var(--twitch);
+  padding-left: 10px;
+}
+.sessions__server {
+  border-left: 4px solid var(--grass);
+  padding-left: 10px;
+}
 
 /* ---------- Sparkline ---------- */
 .spark {
