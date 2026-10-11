@@ -580,3 +580,79 @@ export async function getPlayerRates(): Promise<{ players: Record<string, Player
     return { players, server };
   });
 }
+
+
+/* ---------- Spielerprofil: Rang-Verlauf ---------- */
+
+export type RankKey = "deaths" | "diamonds" | "blocksBroken" | "mobsKilled" | "distance";
+export const RANK_KEYS: RankKey[] = ["deaths", "diamonds", "blocksBroken", "mobsKilled", "distance"];
+
+export interface RankHistory {
+  /** Bündel-Zeitpunkte (ms) */
+  buckets: number[];
+  bucketMinutes: number;
+  /** Spieler → Liste → Rang je Bündel (null = damals noch kein Wert) */
+  players: Record<string, Record<RankKey, (number | null)[]>>;
+}
+
+interface RankRow {
+  player: string;
+  bucket: Date;
+  deaths: number | null;
+  diamonds: number | null;
+  blocks_broken: number | null;
+  mobs_killed: number | null;
+  distance: number | string | null;
+}
+
+/**
+ * Rang aller Spieler in den fünf ext-Listen über die Zeit: je Bündel der letzte bekannte Wert pro Spieler,
+ * fortgeschrieben, daraus die Platzierung. Ein Durchlauf für alle Spieler, 10 Minuten gecacht.
+ */
+export async function getRankHistory(): Promise<RankHistory> {
+  return cached("rankHistory", 600_000, async () => {
+    await ensureLoaded();
+    const db = await getDb();
+    const first = (await db.query<{ at: Date | null }>(`SELECT min(at) AS at FROM player_history WHERE deaths IS NOT NULL`)).rows[0]?.at ?? null;
+    if (!first) return { buckets: [], bucketMinutes: 60, players: {} };
+    const spanMin = (Date.now() - new Date(first).getTime()) / 60_000;
+    const steps = [30, 60, 120, 180, 360, 720, 1440];
+    const minutes = steps.find((s) => spanMin / s <= 120) ?? 1440;
+    const rows = (
+      await db.query<RankRow>(
+        `SELECT DISTINCT ON (player, bucket) player, bucket, deaths, diamonds, blocks_broken, mobs_killed, distance
+           FROM (SELECT player, at, deaths, diamonds, blocks_broken, mobs_killed, distance,
+                        to_timestamp(floor(extract(epoch FROM at) / ($1 * 60)) * ($1 * 60)) AS bucket
+                   FROM player_history WHERE deaths IS NOT NULL) x
+          ORDER BY player, bucket, at DESC`,
+        [minutes],
+      )
+    ).rows;
+    rows.sort((a, b) => new Date(a.bucket).getTime() - new Date(b.bucket).getTime());
+    const col: Record<RankKey, keyof RankRow> = { deaths: "deaths", diamonds: "diamonds", blocksBroken: "blocks_broken", mobsKilled: "mobs_killed", distance: "distance" };
+    const buckets: number[] = [];
+    const last = new Map<string, Record<RankKey, number>>();
+    const players: Record<string, Record<RankKey, (number | null)[]>> = {};
+    let i = 0;
+    while (i < rows.length) {
+      const t = new Date(rows[i].bucket).getTime();
+      for (; i < rows.length && new Date(rows[i].bucket).getTime() === t; i++) {
+        const r = rows[i];
+        const prev = last.get(r.player);
+        const cur = Object.fromEntries(RANK_KEYS.map((k) => [k, r[col[k]] === null ? (prev?.[k] ?? 0) : Number(r[col[k]])])) as Record<RankKey, number>;
+        last.set(r.player, cur);
+      }
+      const bi = buckets.length;
+      buckets.push(t);
+      for (const k of RANK_KEYS) {
+        const order = [...last.entries()].sort((a, b) => b[1][k] - a[1][k]);
+        order.forEach(([pid], idx) => {
+          const p = (players[pid] ??= { deaths: [], diamonds: [], blocksBroken: [], mobsKilled: [], distance: [] });
+          while (p[k].length < bi) p[k].push(null);
+          p[k].push(idx + 1);
+        });
+      }
+    }
+    return { buckets, bucketMinutes: minutes, players };
+  });
+}

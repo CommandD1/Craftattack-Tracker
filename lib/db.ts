@@ -92,6 +92,8 @@ async function migrate(db: Db) {
       meta        jsonb
     )`);
   await db.query(`ALTER TABLE tracker_meta ADD COLUMN IF NOT EXISTS records jsonb`);
+  await db.query(`ALTER TABLE tracker_meta ADD COLUMN IF NOT EXISTS pending_deaths integer NOT NULL DEFAULT 0`);
+  await db.query(`ALTER TABLE tracker_meta ADD COLUMN IF NOT EXISTS pending_since timestamptz`);
   await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS longest_session integer NOT NULL DEFAULT 0`);
   await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS ranks jsonb`);
   await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS twitch_login text`);

@@ -2855,3 +2855,76 @@ a.st-chip-in[data-live="true"] {
   background: var(--twitch);
   color: #fff;
 }
+
+/* ---------- Spielerprofil: Rang-Verlauf & Heatmap ---------- */
+.rankgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.rankcard {
+  padding: 8px 10px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 20%, transparent);
+  border-left: 5px solid var(--bg, var(--gold));
+}
+.rankcard__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.rankcard__icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  background: var(--bg, var(--gold));
+  color: var(--fg, var(--ink));
+  box-shadow: 0 0 0 2px var(--ink);
+}
+.rankcard__icon svg {
+  width: 13px;
+  height: 13px;
+}
+.rankcard__label {
+  font-weight: 600;
+  font-size: 0.875rem;
+  flex: 1;
+  opacity: 0.8;
+}
+.rankcard__now {
+  font-weight: 700;
+}
+.rankcard__foot {
+  font-size: 0.75rem;
+  opacity: 0.65;
+  margin-top: 4px;
+}
+.rankcard .spark {
+  width: 100%;
+  height: 56px;
+}
+.heat {
+  display: grid;
+  grid-template-columns: 2rem repeat(24, minmax(0, 1fr));
+  gap: 2px;
+  font-size: 0.6875rem;
+  font-family: var(--font-display);
+}
+.heat__row {
+  display: contents;
+}
+.heat__h,
+.heat__d {
+  opacity: 0.6;
+  line-height: 14px;
+}
+.heat__h {
+  text-align: left;
+}
+.heat__c {
+  aspect-ratio: 1;
+  min-height: 10px;
+  background: color-mix(in srgb, var(--grass) calc(var(--a) * 100%), color-mix(in srgb, var(--ink) 8%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent);
+}

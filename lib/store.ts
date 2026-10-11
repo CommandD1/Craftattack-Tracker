@@ -35,6 +35,8 @@ export function freshState(): TrackerState {
     history: [],
     eventCount: 0,
     records: { peakOnline: null, peakViewers: null, peakLive: null },
+    pendingDeaths: 0,
+    pendingSince: null,
   };
 }
 
@@ -53,6 +55,8 @@ interface MetaRow {
   latest: TrackerState["latest"];
   event_count: number;
   records: TrackerRecords | null;
+  pending_deaths: number | null;
+  pending_since: Date | null;
 }
 
 interface PlayerRow {
@@ -163,6 +167,8 @@ async function loadFromDb() {
     state.latest = meta.latest;
     state.eventCount = meta.event_count;
     if (meta.records) state.records = { ...state.records, ...meta.records };
+    state.pendingDeaths = meta.pending_deaths ?? 0;
+    state.pendingSince = iso(meta.pending_since);
   }
 
   const players = (await db.query<PlayerRow>(`SELECT * FROM players`)).rows;
@@ -224,12 +230,13 @@ export async function saveState(state: TrackerState) {
   store.state = state;
 
   await db.query(
-    `INSERT INTO tracker_meta (id, started_at, last_poll, last_ok, last_error, polls, server_online, latest, event_count, records)
-     VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO tracker_meta (id, started_at, last_poll, last_ok, last_error, polls, server_online, latest, event_count, records, pending_deaths, pending_since)
+     VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      ON CONFLICT (id) DO UPDATE SET
        started_at = EXCLUDED.started_at, last_poll = EXCLUDED.last_poll, last_ok = EXCLUDED.last_ok,
        last_error = EXCLUDED.last_error, polls = EXCLUDED.polls, server_online = EXCLUDED.server_online,
-       latest = EXCLUDED.latest, event_count = EXCLUDED.event_count, records = EXCLUDED.records`,
+       latest = EXCLUDED.latest, event_count = EXCLUDED.event_count, records = EXCLUDED.records,
+       pending_deaths = EXCLUDED.pending_deaths, pending_since = EXCLUDED.pending_since`,
     [
       toDate(state.startedAt),
       toDate(state.lastPoll),
@@ -240,6 +247,8 @@ export async function saveState(state: TrackerState) {
       state.latest ? JSON.stringify(state.latest) : null,
       state.eventCount,
       JSON.stringify(state.records),
+      state.pendingDeaths ?? 0,
+      toDate(state.pendingSince ?? null),
     ],
   );
 

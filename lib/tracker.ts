@@ -32,6 +32,9 @@ const COUNTER_EVENTS: Partial<Record<BoardKey, EventType>> = {
   distance: "distance",
 };
 
+/** Wartezeit, bevor nicht zuordenbare Tode als „unbekannt“ gemeldet werden */
+const UNKNOWN_DEATH_GRACE_MS = Number(process.env.CA_UNKNOWN_DEATH_GRACE_MS ?? 10 * 60_000);
+
 /** Mindest-Delta, ab dem ein Zähler-Ereignis entsteht (sonst zu viel Rauschen) */
 const MIN_DELTA: Partial<Record<BoardKey, number>> = {
   distance: 500, // Meter
@@ -429,15 +432,23 @@ export function diffSnapshot(
   if (!first && state.latest) {
     const prevDeaths = state.latest.totals?.deaths ?? 0;
     const explained = events.filter((e) => e.type === "death").reduce((s, e) => s + (e.delta ?? 0), 0);
+    // Nicht sofort melden: oft liefert /api/ext den Tod erst einen Poll später (Timeout, Reihenfolge).
+    // Offene Tode werden gesammelt und mit später erklärten verrechnet; erst was nach der Wartezeit übrig
+    // bleibt, wird als „unbekannt“ gemeldet.
     const unexplained = (stats.totals?.deaths ?? 0) - prevDeaths - explained;
-    if (unexplained > 0) {
+    state.pendingDeaths = Math.max(0, (state.pendingDeaths ?? 0) + unexplained);
+    if (state.pendingDeaths === 0) state.pendingSince = null;
+    else if (!state.pendingSince) state.pendingSince = now;
+    else if (nowDate.getTime() - Date.parse(state.pendingSince) >= UNKNOWN_DEATH_GRACE_MS) {
       push({
         type: "death",
         where: "server",
-        delta: unexplained,
+        delta: state.pendingDeaths,
         value: stats.totals.deaths,
         meta: { unknown: true },
       });
+      state.pendingDeaths = 0;
+      state.pendingSince = null;
     }
   }
 

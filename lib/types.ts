@@ -188,4 +188,7 @@ export interface TrackerState {
   history: TotalsPoint[];
   eventCount: number;
   records: TrackerRecords;
+  /** Tode laut Gesamtzähler, die noch keinem Spieler zugeordnet werden konnten (werden erst nach Wartezeit gemeldet) */
+  pendingDeaths: number;
+  pendingSince: string | null;
 }

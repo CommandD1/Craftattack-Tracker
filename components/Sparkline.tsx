@@ -29,6 +29,7 @@ export function Sparkline({
   format,
   kind = "num",
   step = false,
+  invert = false,
   label,
 }: {
   points: SparkPoint[];
@@ -37,11 +38,13 @@ export function Sparkline({
   /** Nur aus Client-Komponenten nutzbar (Funktionen sind nicht serialisierbar) */
   format?: (v: number) => string;
   /** Für Server-Komponenten: Formatierung per Schlüssel */
-  kind?: "num" | "playtimeSeconds" | "distance";
+  kind?: "num" | "playtimeSeconds" | "distance" | "rank";
   step?: boolean;
+  /** Kleine Werte oben zeichnen (z. B. Rang: Platz 1 ist oben) */
+  invert?: boolean;
   label?: string;
 }) {
-  const fmt = format ?? (kind === "num" ? num : (v: number) => boardValue(kind, v));
+  const fmt = format ?? (kind === "num" ? num : kind === "rank" ? (v: number) => `Platz ${num(v)}` : (v: number) => boardValue(kind, v));
   const ref = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
 
@@ -62,7 +65,7 @@ export function Sparkline({
   const range = Math.max(1, max - min);
   const pad = 4;
   const x = (t: number) => ((t - t0) / span) * width;
-  const y = (v: number) => pad + (1 - (v - min) / range) * (height - pad * 2);
+  const y = (v: number) => pad + (invert ? (v - min) / range : 1 - (v - min) / range) * (height - pad * 2);
   const xs = points.map((p) => x(Date.parse(p.at)));
   const ys = points.map((p) => y(p.v));
 
