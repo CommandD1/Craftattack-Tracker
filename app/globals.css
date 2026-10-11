@@ -2317,9 +2317,30 @@ a.st-chip-in[data-live="true"] {
   box-shadow: 0 0 0 2px var(--line);
   transform: translateY(-2px);
 }
+/* AFK: auf dem Server, aber ohne Bewegung – gelb gestreifter Kern */
+.zr__heads li[data-afk] {
+  background: repeating-linear-gradient(135deg, var(--gold) 0 3px, color-mix(in srgb, var(--gold) 35%, var(--paper)) 3px 6px);
+}
+/* Live: lila Ring. Der Kern bleibt grün/gelb (auf dem Server) oder grau (nur Stream). */
 .zr__heads li[data-live] {
-  background: var(--twitch);
+  filter: none;
   box-shadow: 0 0 0 2px var(--line), 0 0 0 4px var(--twitch);
+}
+.zr__heads li[data-live]:not([data-on]) {
+  background: color-mix(in srgb, var(--ink) 25%, var(--paper));
+}
+.zr__heads li[data-live]:not([data-on]) img {
+  filter: grayscale(1) opacity(0.7);
+}
+.zr__legend {
+  margin: 0 0 12px;
+}
+.zr__legend-live {
+  background: var(--grass);
+  box-shadow: 0 0 0 2px var(--twitch);
+}
+.zr__legend-live--off {
+  background: color-mix(in srgb, var(--ink) 25%, var(--paper));
 }
 .zr__heads a {
   display: block;

@@ -12,7 +12,10 @@ const SPEEDS = [
   { label: "8×", ms: 60 },
 ];
 
-/** Der Tag im Schnelldurchlauf: Köpfe leuchten auf, wenn der Spieler online (grün) oder live (lila) ist. */
+/**
+ * Der Tag im Schnelldurchlauf. Köpfe: grün = auf dem Server, gelb gestreift = auf dem Server, aber AFK,
+ * lila Ring = live auf Twitch (mit grünem/gelbem Kern: dabei auf dem Server; mit grauem Kern: nur Stream).
+ */
 export function Timelapse({ data }: { data: TimelapseData }) {
   const { frames, players } = data;
   const firstActive = Math.max(
@@ -47,6 +50,8 @@ export function Timelapse({ data }: { data: TimelapseData }) {
   const f = frames[i];
   const online = useMemo(() => new Set(f?.online ?? []), [f]);
   const live = useMemo(() => new Set(f?.live ?? []), [f]);
+  const afk = useMemo(() => new Set(f?.afk ?? []), [f]);
+  const liveOnServer = f ? f.live.filter((k) => online.has(k)).length : 0;
 
   if (!frames.length) return <p className="st-online__empty">Für diesen Tag liegen keine Daten vor.</p>;
 
@@ -66,8 +71,13 @@ export function Timelapse({ data }: { data: TimelapseData }) {
         <span className="tag" data-tone="grass">
           {num(f.online.length)} online
         </span>
-        <span className="tag" data-tone="twitch">
-          {num(f.live.length)} live
+        {f.afk.length > 0 && (
+          <span className="tag" data-tone="gold" title="Auf dem Server, aber seit mindestens fünf Minuten keine Bewegung">
+            {num(f.afk.length)} AFK
+          </span>
+        )}
+        <span className="tag" data-tone="twitch" title="Live auf Twitch · davon auf dem Server">
+          {num(f.live.length)} live{f.live.length > 0 ? ` · ${num(liveOnServer)} auf dem Server` : ""}
         </span>
         <span className="tag" data-tone="amethyst">
           {f.viewers !== null ? `${num(f.viewers)} Zuschauer` : "– Zuschauer"}
@@ -109,15 +119,37 @@ export function Timelapse({ data }: { data: TimelapseData }) {
       {players.length === 0 ? (
         <p className="st-online__empty">An diesem Tag war niemand online.</p>
       ) : (
-        <ul className="zr__heads" aria-label="Spieler">
-          {players.map((p, k) => (
-            <li key={p.id} data-on={online.has(k) ? "true" : undefined} data-live={live.has(k) ? "true" : undefined}>
-              <Link href={`/spieler/${encodeURIComponent(p.id)}`} title={`${p.name}${live.has(k) ? " · live" : online.has(k) ? " · online" : ""}`}>
-                <img src={headUrl(p.uuid, 40, p.id)} alt={p.name} width={40} height={40} loading="lazy" decoding="async" />
-              </Link>
+        <>
+          <ul className="legend zr__legend" aria-label="Legende">
+            <li>
+              <i style={{ background: "var(--grass)" }} /> auf dem Server
             </li>
-          ))}
-        </ul>
+            <li>
+              <i className="legend__afk" /> auf dem Server, AFK
+            </li>
+            <li>
+              <i className="zr__legend-live" /> live, auf dem Server
+            </li>
+            <li>
+              <i className="zr__legend-live zr__legend-live--off" /> live, nicht auf dem Server
+            </li>
+          </ul>
+          <ul className="zr__heads" aria-label="Spieler">
+            {players.map((p, k) => {
+              const isOn = online.has(k);
+              const isLive = live.has(k);
+              const isAfk = afk.has(k);
+              const state = isLive && isOn ? (isAfk ? "live, auf dem Server, AFK" : "live, auf dem Server") : isLive ? "live, nicht auf dem Server" : isAfk ? "auf dem Server, AFK" : isOn ? "auf dem Server" : "";
+              return (
+                <li key={p.id} data-on={isOn ? "true" : undefined} data-afk={isAfk ? "true" : undefined} data-live={isLive ? "true" : undefined}>
+                  <Link href={`/spieler/${encodeURIComponent(p.id)}`} title={`${p.name}${state ? ` · ${state}` : ""}`}>
+                    <img src={headUrl(p.uuid, 40, p.id)} alt={p.name} width={40} height={40} loading="lazy" decoding="async" />
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
       <ol className="zr__log" aria-live="polite" aria-label="Meldungen">
         {log.length === 0 && !playing && f.messages.length > 0

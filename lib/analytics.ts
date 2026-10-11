@@ -265,6 +265,8 @@ export interface TimelapseFrame {
   /** Indizes in `players` */
   online: number[];
   live: number[];
+  /** Indizes der Spieler, die online, aber AFK sind */
+  afk: number[];
   deaths: number | null;
   viewers: number | null;
   messages: string[];
@@ -284,7 +286,7 @@ export async function getTimelapse(day?: string): Promise<Timelapse> {
   const nav = await dayNav(day, now);
   const step = 5;
   const stepMs = step * 60_000;
-  const [sessions, lives, state, events] = await Promise.all([getAllSessions(), getLiveSessions(), getState(), getEvents()]);
+  const [sessions, lives, state, events, afkSpans] = await Promise.all([getAllSessions(), getLiveSessions(), getState(), getEvents(), getAfkSpans(nav.from, nav.to, now)]);
   await ensureLoaded();
   const db = await getDb();
   const hist = (
@@ -320,10 +322,13 @@ export async function getTimelapse(day?: string): Promise<Timelapse> {
   for (let t = nav.from; t <= end; t += stepMs) {
     const online: number[] = [];
     const live: number[] = [];
+    const afk: number[] = [];
     for (const id of ids) {
       const i = index.get(id)!;
-      if (covers(on.get(id), t)) online.push(i);
+      const isOn = covers(on.get(id), t);
+      if (isOn) online.push(i);
       if (covers(li.get(id), t)) live.push(i);
+      if (isOn && covers(afkSpans.get(id), t)) afk.push(i);
     }
     const h = histAt.get(t);
     if (h) lastDeaths = Number(h.deaths);
@@ -332,7 +337,7 @@ export async function getTimelapse(day?: string): Promise<Timelapse> {
       if (Date.parse(sorted[ei].at) > t - stepMs) messages.push(text(sorted[ei]));
       ei++;
     }
-    frames.push({ at: t, online, live, deaths: h ? Number(h.deaths) : lastDeaths, viewers: h ? Number(h.viewers) : null, messages: messages.slice(0, 6) });
+    frames.push({ at: t, online, live, afk, deaths: h ? Number(h.deaths) : lastDeaths, viewers: h ? Number(h.viewers) : null, messages: messages.slice(0, 6) });
   }
   return { nav, stepMinutes: step, players, frames };
 }
