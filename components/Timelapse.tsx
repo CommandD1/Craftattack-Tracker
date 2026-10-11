@@ -144,6 +144,11 @@ export function Timelapse({ data }: { data: TimelapseData }) {
                 <li key={p.id} data-on={isOn ? "true" : undefined} data-afk={isAfk ? "true" : undefined} data-live={isLive ? "true" : undefined}>
                   <Link href={`/spieler/${encodeURIComponent(p.id)}`} title={`${p.name}${state ? ` · ${state}` : ""}`}>
                     <img src={headUrl(p.uuid, 40, p.id)} alt={p.name} width={40} height={40} loading="lazy" decoding="async" />
+                    {isAfk && (
+                      <span className="zr__afk" aria-hidden="true">
+                        AFK
+                      </span>
+                    )}
                   </Link>
                 </li>
               );

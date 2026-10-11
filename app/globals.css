@@ -2344,6 +2344,25 @@ a.st-chip-in[data-live="true"] {
 }
 .zr__heads a {
   display: block;
+  position: relative;
+}
+/* AFK: das Gesicht wird abgedunkelt und mit „AFK“ überdeckt */
+.zr__heads li[data-afk] img {
+  filter: grayscale(0.7) brightness(0.45);
+}
+.zr__afk {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--gold);
+  text-shadow: 0 0 2px #000, 0 0 2px #000;
+  pointer-events: none;
 }
 .zr__heads img {
   width: 40px;
