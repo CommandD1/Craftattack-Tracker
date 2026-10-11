@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ThemeToggle } from "./ThemeToggle";
 
 const LINKS = [
   { href: "/", label: "Übersicht" },
@@ -31,6 +32,9 @@ function List({ path }: { path: string | null }) {
         <a className="nav__ext" href="https://craftattack.one/stats/" target="_blank" rel="noopener">
           Original
         </a>
+      </li>
+      <li className="nav__theme">
+        <ThemeToggle />
       </li>
     </ul>
   );

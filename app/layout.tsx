@@ -4,6 +4,7 @@ import "./globals.css";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { AutoRefresh } from "@/components/AutoRefresh";
+import { ThemeScript } from "@/components/ThemeToggle";
 
 const monocraft = localFont({
   src: "../public/fonts/monocraft-bold.woff2",
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
     >
       <body>
+        <ThemeScript />
         <a className="skip" href="#inhalt">
           Zum Inhalt
         </a>
