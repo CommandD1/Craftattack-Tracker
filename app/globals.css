@@ -2723,3 +2723,16 @@ a.st-chip-in[data-live="true"] {
   text-decoration: underline;
   text-decoration-thickness: 3px;
 }
+
+/* Rang/Meilenstein: Icon der Bestenliste statt Name */
+.tile__board {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  opacity: 0.8;
+}
+.tile__board svg {
+  width: 16px;
+  height: 16px;
+}

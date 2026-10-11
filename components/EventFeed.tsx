@@ -1,8 +1,8 @@
 import Link from "next/link";
-import type { EventType, TrackerEvent } from "@/lib/types";
+import { BOARD_KEYS, type BoardKey, type EventType, type TrackerEvent } from "@/lib/types";
 import { EVENT_META, eventBadge } from "@/lib/events";
 import { headUrl, time } from "@/lib/format";
-import { EVENT_ICON, Icon } from "./Icons";
+import { BOARD_ICON, EVENT_ICON, Icon } from "./Icons";
 
 const dayFmt = new Intl.DateTimeFormat("de-DE", {
   weekday: "long",
@@ -21,9 +21,6 @@ function detail(e: TrackerEvent): string | null {
     case "stream_start":
     case "stream_title":
       return e.meta?.title ? String(e.meta.title) : null;
-    case "rank":
-    case "milestone":
-      return e.meta?.label ? String(e.meta.label) : null;
     case "record":
       return e.meta?.label ? String(e.meta.label) : null;
     case "server_online":
@@ -55,6 +52,9 @@ export function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlaye
   const link = liveUrl ? { href: liveUrl, title: "Läuft gerade – Stream auf Twitch ansehen", live: true } : vod ? { href: vod, title: e.type === "death" ? "Diesen Moment im VOD ansehen" : "Aufzeichnung auf Twitch ansehen", live: false } : null;
   const withHead = Boolean(e.player) && !SERVER_TYPES.has(e.type);
   const offServer = e.type === "stream_start" && e.meta?.onServer === false;
+  // Rang / Meilenstein: statt des Listennamens nur das Icon der Liste (Name steht im Tooltip)
+  const board = (e.type === "rank" || e.type === "milestone") && BOARD_KEYS.includes(e.meta?.board as BoardKey) ? (e.meta!.board as BoardKey) : null;
+  const BoardIcon = board ? Icon[BOARD_ICON[board]] : null;
 
   return (
     <li className="tile" data-tone={meta.tone} data-type={e.type} title={`${time(e.at)} · ${sentence}`}>
@@ -68,6 +68,11 @@ export function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlaye
       </Link>
       {badge && <span className="tile__val num">{badge}</span>}
       {info && <span className="tile__info">{info}</span>}
+      {BoardIcon && (
+        <span className="tile__board" title={e.meta?.label ? String(e.meta.label) : undefined}>
+          <BoardIcon aria-hidden="true" />
+        </span>
+      )}
       {offServer && (
         <span className="tile__flag" title="Nicht auf dem Server">
           ⌂
