@@ -550,3 +550,38 @@ export async function getBoardRanksBefore(hoursAgo = 24): Promise<Partial<Record
     return out;
   });
 }
+
+/* ============================================================ Gruppen im Netz (Label Propagation) */
+
+/**
+ * Teilt die Knoten anhand der gewichteten Kanten in Gruppen ein (gewichtete Label-Propagation, deterministisch).
+ * Liefert Gruppen mit mindestens zwei Mitgliedern, größte zuerst.
+ */
+export function detectGroups(nodes: PresenceNode[], edges: PresenceEdge[]): string[][] {
+  const w = (e: PresenceEdge) => e.lift * Math.log1p(e.seconds / 60);
+  const adj = new Map<string, { to: string; w: number }[]>();
+  for (const n of nodes) adj.set(n.id, []);
+  for (const e of edges) {
+    adj.get(e.a)?.push({ to: e.b, w: w(e) });
+    adj.get(e.b)?.push({ to: e.a, w: w(e) });
+  }
+  const ids = nodes.map((n) => n.id).sort();
+  const label = new Map(ids.map((id) => [id, id]));
+  for (let round = 0; round < 30; round++) {
+    let changed = false;
+    for (const id of ids) {
+      const score = new Map<string, number>();
+      for (const { to, w: ww } of adj.get(id) ?? []) score.set(label.get(to)!, (score.get(label.get(to)!) ?? 0) + ww);
+      if (!score.size) continue;
+      const best = [...score.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0][0];
+      if (best !== label.get(id)) {
+        label.set(id, best);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  const groups = new Map<string, string[]>();
+  for (const id of ids) (groups.get(label.get(id)!) ?? groups.set(label.get(id)!, []).get(label.get(id)!)!).push(id);
+  return [...groups.values()].filter((g) => g.length >= 2).sort((a, b) => b.length - a.length);
+}
