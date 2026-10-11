@@ -61,7 +61,7 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
           <p className="eyebrow">Ein Tag auf dem Server</p>
           <h1 className="t-1">Zeitstrahl</h1>
           <p>
-            Oben der Tag als Film im Zeitraffer, darunter jede Session als Balken. Grün heißt auf dem Server, gestreift heißt AFK (rot bzw. blau gestreift: AFK-Farm), lila heißt live auf Twitch.
+            Oben der Tag als Film im Zeitraffer, darunter jede Session als Balken. Grün heißt auf dem Server, gelb heißt AFK, rot heißt AFK an einer Mob-Farm, türkis AFK beim Blöcke-Abbau, lila heißt live auf Twitch.
             {nav.dataFrom && <> Daten an diesem Tag ab {time(new Date(nav.dataFrom).toISOString())} Uhr.</>}
           </p>
         </div>

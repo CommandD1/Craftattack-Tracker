@@ -13,7 +13,7 @@ const SPEEDS = [
 ];
 
 /**
- * Der Tag im Schnelldurchlauf. Köpfe: grün = auf dem Server, gelb gestreift = auf dem Server, aber AFK,
+ * Der Tag im Schnelldurchlauf. Köpfe: grün = auf dem Server, gelb = auf dem Server, aber AFK (rot: Mob-Farm, türkis: Block-Farm),
  * lila Ring = live auf Twitch (mit grünem/gelbem Kern: dabei auf dem Server; mit grauem Kern: nur Stream).
  */
 export function Timelapse({ data }: { data: TimelapseData }) {
