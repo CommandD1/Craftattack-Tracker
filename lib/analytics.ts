@@ -333,6 +333,8 @@ export interface TimelineRow {
   /** AFK-Phasen (Teil der Online-Zeit) */
   afk: Span[];
   afkSeconds: number;
+  /** Live-Zeit auf Twitch an diesem Tag (Sekunden) */
+  liveSeconds: number;
 }
 
 export async function getDayTimeline(day?: string): Promise<{ nav: DayNav; rows: TimelineRow[]; now: number }> {
@@ -346,15 +348,17 @@ export async function getDayTimeline(day?: string): Promise<{ nav: DayNav; rows:
     const p = state.players[id];
     const o = on.get(id) ?? [];
     const a = afk.get(id) ?? [];
+    const l = li.get(id) ?? [];
     return {
       id,
       name: p?.name ?? id,
       uuid: p?.uuid ?? "",
       online: o,
-      live: li.get(id) ?? [],
+      live: l,
       afk: a,
       seconds: o.reduce((s, [x, y]) => s + (y - x) / 1000, 0),
       afkSeconds: a.reduce((s, [x, y]) => s + (y - x) / 1000, 0),
+      liveSeconds: l.reduce((s, [x, y]) => s + (y - x) / 1000, 0),
     };
   });
   rows.sort((a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name, "de"));

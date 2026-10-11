@@ -12,11 +12,32 @@ export const metadata: Metadata = { title: "Zeitstrahl" };
 const dayLong = new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Berlin" });
 const HOURS = [0, 3, 6, 9, 12, 15, 18, 21];
 
+/** Sortierung der Gantt-Liste (?sortieren=…) */
+const SORTS = [
+  { key: "spielzeit", label: "Spielzeit", hint: "Online-Zeit an diesem Tag, inklusive AFK" },
+  { key: "aktiv", label: "Aktiv auf dem Server", hint: "Online-Zeit ohne AFK" },
+  { key: "afk", label: "AFK-Zeit", hint: "Online, aber mindestens fünf Minuten keine Bewegung" },
+  { key: "live", label: "Live auf Twitch", hint: "Stream-Dauer an diesem Tag" },
+] as const;
+type SortKey = (typeof SORTS)[number]["key"];
+const sortValue = (r: { seconds: number; afkSeconds: number; liveSeconds: number }, key: SortKey) =>
+  key === "aktiv" ? r.seconds - r.afkSeconds : key === "afk" ? r.afkSeconds : key === "live" ? r.liveSeconds : r.seconds;
+
 export default async function Page(props: PageProps<"/zeitstrahl">) {
   const sp = await props.searchParams;
   await loadTracker();
   const tag = typeof sp.tag === "string" ? sp.tag : undefined;
-  const [{ nav, rows, now }, lapse] = await Promise.all([getDayTimeline(tag), getTimelapse(tag)]);
+  const sort: SortKey = SORTS.find((s) => s.key === sp.sortieren)?.key ?? "spielzeit";
+  const [{ nav, rows: unsorted, now }, lapse] = await Promise.all([getDayTimeline(tag), getTimelapse(tag)]);
+  // Nach gewähltem Wert sortieren, Gleichstand nach Spielzeit, dann Name
+  const rows = [...unsorted].sort((a, b) => sortValue(b, sort) - sortValue(a, sort) || b.seconds - a.seconds || a.name.localeCompare(b.name, "de"));
+  const sortHref = (key: SortKey) => {
+    const q = new URLSearchParams();
+    if (tag) q.set("tag", tag);
+    if (key !== "spielzeit") q.set("sortieren", key);
+    const s = q.toString();
+    return `/zeitstrahl${s ? `?${s}` : ""}#balken`;
+  };
   const span = nav.to - nav.from;
   const pct = (t: number) => Math.max(0, Math.min(100, ((t - nav.from) / span) * 100));
   const nowPct = now < nav.to && now > nav.from ? pct(now) : null;
@@ -65,7 +86,17 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
           <div className="box" data-tone="white" id="balken">
             <div className="stat-card__head">
               <h3 className="t-3">Wer war wann da</h3>
+              <p className="muted">Sortiert nach {SORTS.find((s) => s.key === sort)!.label.toLowerCase()}, die Summenspalte zeigt den Wert.</p>
             </div>
+            <ul className="filters" aria-label="Sortieren nach" style={{ marginBottom: 12 }}>
+              {SORTS.map((s) => (
+                <li key={s.key}>
+                  <Link className="tag" aria-current={sort === s.key ? "true" : undefined} href={sortHref(s.key)} title={s.hint}>
+                    {s.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
             <ul className="legend" style={{ marginBottom: 12 }}>
               <li>
                 <i style={{ background: "var(--grass)" }} /> auf dem Server
@@ -95,7 +126,7 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
                       </span>
                     ))}
                   </div>
-                  <span className="gantt__sum muted">Summe</span>
+                  <span className="gantt__sum muted">{sort === "spielzeit" ? "Summe" : SORTS.find((s) => s.key === sort)!.label}</span>
                 </div>
                 {rows.map((r) => (
                   <div className="gantt__row" role="row" key={r.id}>
@@ -115,9 +146,22 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
                       ))}
                       {nowPct !== null && <span className="gantt__now" style={{ left: `${nowPct}%` }} />}
                     </div>
-                    <span className="gantt__sum num" role="cell" title={r.afkSeconds > 0 ? `davon ${duration(r.afkSeconds)} AFK` : undefined}>
-                      {duration(r.seconds)}
-                      {r.afkSeconds > 0 && <small className="gantt__afk-sum">{duration(r.afkSeconds)} AFK</small>}
+                    <span
+                      className="gantt__sum num"
+                      role="cell"
+                      title={`${duration(r.seconds)} online${r.afkSeconds > 0 ? ` · davon ${duration(r.afkSeconds)} AFK` : ""}${r.liveSeconds > 0 ? ` · ${duration(r.liveSeconds)} live` : ""}`}
+                    >
+                      {sort === "spielzeit" ? (
+                        <>
+                          {duration(r.seconds)}
+                          {r.afkSeconds > 0 && <small className="gantt__afk-sum">{duration(r.afkSeconds)} AFK</small>}
+                        </>
+                      ) : (
+                        <>
+                          {sortValue(r, sort) > 0 ? duration(sortValue(r, sort)) : "–"}
+                          <small className="gantt__afk-sum">{duration(r.seconds)} online</small>
+                        </>
+                      )}
                     </span>
                   </div>
                 ))}
