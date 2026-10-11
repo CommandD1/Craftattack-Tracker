@@ -1,8 +1,8 @@
 # CraftAttack 14 Tracker
 
-Live unter **https://craftattack.hiorcraft.dev**
+Live unter **https://craftattack.hiorcraft.tv**
 
-> **Hinweis:** Dieses Repo ist der Quellcode des Trackers, der auf craftattack.hiorcraft.dev läuft.
+> **Hinweis:** Dieses Repo ist der Quellcode des Trackers, der auf craftattack.hiorcraft.tv läuft.
 > Es ist nicht als Self-Hosting-Paket gedacht und es gibt dafür keinen Support. Nutz einfach die Live-Seite.
 > Für neue Features, Bugfixes oder Ideen sind Pull Requests und Issues aber sehr willkommen.
 
