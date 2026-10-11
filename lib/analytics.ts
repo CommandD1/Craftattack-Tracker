@@ -459,7 +459,7 @@ export interface DayRow {
 }
 export interface StatsExtras {
   /** Spielerstunden je Tagesstunde (Berliner Zeit) */
-  playHours: { hour: number; hours: number }[];
+  playHours: { hour: number; hours: number; afkHours: number }[];
   afk: {
     perPlayer: { id: string; name: string; uuid: string; seconds: number; onlineSeconds: number; share: number }[];
     longest: { id: string; name: string; uuid: string; seconds: number; from: string; to: string } | null;
@@ -468,6 +468,8 @@ export interface StatsExtras {
   /** Längste Sessions */
   marathons: { id: string; name: string; uuid: string; seconds: number; start: string; end: string | null }[];
   heatmap: (number | null)[][]; // [7][24] Ø online
+  /** AFK-Anteil an den Spielerstunden je Wochentag × Stunde (0…1, null ohne Daten) */
+  heatmapAfk: (number | null)[][];
   days: DayRow[];
   deathsByHour: { hour: number; deaths: number; playerHours: number; rate: number | null }[];
   deathStreaks: { id: string; name: string; uuid: string; count: number; from: string; to: string }[];
@@ -585,7 +587,22 @@ export async function getStatsExtras(): Promise<StatsExtras> {
       .sort((a, b) => b.seconds - a.seconds)
       .slice(0, 8);
 
-    const playHours = hourOfDay.map((h, hour) => ({ hour, hours: Math.round(h * 10) / 10 }));
+    // AFK-Spielerstunden je Wochentag × Stunde und je Tagesstunde (aus den AFK-Phasen, in 10-Minuten-Schritten)
+    const afkSlot = Array.from({ length: 7 }, () => Array(24).fill(0) as number[]);
+    const afkHour = Array(24).fill(0) as number[];
+    for (const spansOf of afkSpans.values()) {
+      for (const [a, b] of spansOf) {
+        for (let t = a; t < b; t += 600_000) {
+          const part = Math.min(600_000, b - t) / 3600_000;
+          const { dow, hour } = berlinSlot(t);
+          afkSlot[dow][hour] += part;
+          afkHour[hour] += part;
+        }
+      }
+    }
+    // sum[d][h] = Σ Ø online über alle beobachteten Stunden dieses Slots ≈ Spielerstunden im Slot
+    const heatmapAfk = sum.map((row, d) => row.map((v, h) => (cnt[d][h] && v > 0 ? Math.min(1, afkSlot[d][h] / v) : null)));
+    const playHours = hourOfDay.map((h, hour) => ({ hour, hours: Math.round(h * 10) / 10, afkHours: Math.round(Math.min(h, afkHour[hour]) * 10) / 10 }));
 
     const deathsDay = new Map(deathsPerDay.map((d) => [d.day, d.value]));
     const allDays = [...new Set([...dayAgg.keys(), ...playersPerDay.keys()])].sort();
@@ -683,7 +700,7 @@ export async function getStatsExtras(): Promise<StatsExtras> {
     };
 
     const totals = { playerHours: [...hoursPerDay.values()].reduce((s, v) => s + v, 0), players: players.length };
-    return { playHours, afk, marathons, heatmap, days, deathsByHour, deathStreaks: deathStreaks.slice(0, 10), deathRate: deathRate.slice(0, 10), loyalty, availability, fullest: spread(topOnline.rows), mostViewers: spread(topViewers.rows), totals };
+    return { playHours, afk, marathons, heatmap, heatmapAfk, days, deathsByHour, deathStreaks: deathStreaks.slice(0, 10), deathRate: deathRate.slice(0, 10), loyalty, availability, fullest: spread(topOnline.rows), mostViewers: spread(topViewers.rows), totals };
   });
 }
 

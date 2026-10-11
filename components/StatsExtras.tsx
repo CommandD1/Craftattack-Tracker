@@ -32,7 +32,7 @@ function Person({ id, name, uuid, right }: { id: string; name: string; uuid: str
 }
 
 /** Heatmap Wochentag × Stunde */
-function Heatmap({ values }: { values: (number | null)[][] }) {
+function Heatmap({ values, afk }: { values: (number | null)[][]; afk: (number | null)[][] }) {
   const flat = values.flat().filter((v): v is number => v !== null);
   if (!flat.length) return <p className="muted">Noch keine Daten.</p>;
   const max = Math.max(1, ...flat);
@@ -49,8 +49,8 @@ function Heatmap({ values }: { values: (number | null)[][] }) {
             <span
               key={h}
               className="hm__cell tip"
-              style={{ "--a": v === null ? 0 : Math.max(0.08, v / max) } as React.CSSProperties}
-              data-tip={`${DAYS[d]} ${String(h).padStart(2, "0")}–${String(h + 1).padStart(2, "0")} Uhr · ${v === null ? "keine Daten" : `Ø ${num(v)} online`}`}
+              style={{ "--a": v === null ? 0 : Math.max(0.08, v / max), "--afk": afk[d]?.[h] ?? 0 } as React.CSSProperties}
+              data-tip={`${DAYS[d]} ${String(h).padStart(2, "0")}–${String(h + 1).padStart(2, "0")} Uhr · ${v === null ? "keine Daten" : `Ø ${num(v)} online${afk[d]?.[h] ? ` · ${Math.round(afk[d][h]! * 100)} % AFK` : ""}`}`}
               tabIndex={0}
             />
           ))}
@@ -61,13 +61,15 @@ function Heatmap({ values }: { values: (number | null)[][] }) {
 }
 
 /** 24 Balken, einer je Tagesstunde */
-function HourBars({ values, unit, tone = "redstone" }: { values: { hour: number; v: number | null; title: string }[]; unit: string; tone?: string }) {
+function HourBars({ values, unit, tone = "redstone" }: { values: { hour: number; v: number | null; afk?: number; title: string }[]; unit: string; tone?: string }) {
   const max = Math.max(1, ...values.map((v) => v.v ?? 0));
   return (
     <div className="hbars" role="img" aria-label={unit} style={{ "--bar": `var(--${tone})` } as React.CSSProperties}>
       {values.map((v) => (
         <span key={v.hour} className="tip" data-tip={`${String(v.hour).padStart(2, "0")}–${String(v.hour + 1).padStart(2, "0")} Uhr · ${v.title}`} tabIndex={0}>
-          <i style={{ height: `${v.v === null ? 0 : Math.max(2, (v.v / max) * 100)}%` }} />
+          <i style={{ height: `${v.v === null ? 0 : Math.max(2, (v.v / max) * 100)}%` }}>
+            {v.afk && v.v ? <em style={{ height: `${Math.min(100, (v.afk / v.v) * 100)}%` }} /> : null}
+          </i>
           <b className="num">{v.hour % 3 === 0 ? v.hour : ""}</b>
         </span>
       ))}
@@ -146,8 +148,8 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
           </div>
         </Card>
 
-        <Card title="Wann ist der Server voll?" sub="Ø Spieler online je Wochentag und Stunde (Berliner Zeit)">
-          <Heatmap values={d.heatmap} />
+        <Card title="Wann ist der Server voll?" sub="Ø Spieler online je Wochentag und Stunde (Berliner Zeit) – je gelber, desto mehr davon AFK">
+          <Heatmap values={d.heatmap} afk={d.heatmapAfk} />
         </Card>
 
         <Card title="Vollste Momente" sub="Mindestens zwei Stunden auseinander">
@@ -175,8 +177,8 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
           </ol>
         </Card>
 
-        <Card title="Wann wird gespielt?" sub="Spielerstunden je Tagesstunde (Berliner Zeit), über alle Tage" tone="white">
-          <HourBars values={d.playHours.map((p) => ({ hour: p.hour, v: p.hours, title: `${num(p.hours)} Spielerstunden` }))} unit="Spielerstunden je Tagesstunde" tone="sky" />
+        <Card title="Wann wird gespielt?" sub="Spielerstunden je Tagesstunde (Berliner Zeit), über alle Tage – der goldene Teil ist AFK" tone="white">
+          <HourBars values={d.playHours.map((p) => ({ hour: p.hour, v: p.hours, afk: p.afkHours, title: `${num(p.hours)} Spielerstunden${p.afkHours > 0 ? ` · davon ${num(p.afkHours)} AFK` : ""}` }))} unit="Spielerstunden je Tagesstunde, AFK-Anteil in Gold" tone="sky" />
         </Card>
 
         <Card title="Marathon-Sessions" sub="Die längsten Sessions am Stück laut Tracker">
