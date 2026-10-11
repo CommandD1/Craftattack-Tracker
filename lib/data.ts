@@ -2,7 +2,7 @@ import "server-only";
 import { connection } from "next/server";
 import { getEvents, getState } from "./store";
 import { startPolling } from "./tracker";
-import { attachVods } from "./twitch";
+import { attachVods, withLiveLinks } from "./twitch";
 import type { TrackerEvent, TrackerState } from "./types";
 
 /** Markiert die Seite als dynamisch, stellt sicher, dass der Poller läuft, und liefert die Daten. */
@@ -16,5 +16,5 @@ export async function loadTracker(): Promise<{ state: TrackerState; events: Trac
     .filter((p) => p.live && p.liveSince)
     .map((p) => ({ player: p.id, since: p.liveSince!, login: p.live!.login }));
   await attachVods(events, (id) => state.players[id]?.twitchLogin ?? state.players[id]?.live?.login ?? null, liveNow).catch(() => {});
-  return { state, events, now: Date.now() };
+  return { state, events: withLiveLinks(events, liveNow), now: Date.now() };
 }

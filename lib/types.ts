@@ -19,6 +19,10 @@ export interface LiveInfo {
   login: string;
   title: string;
   viewers: number;
+  /** Streamt gerade und ist dabei auf dem Server (nur bei vom Tracker zusammengeführten Live-Daten gesetzt) */
+  onServer?: boolean;
+  /** Streambeginn laut Twitch (ISO), falls bekannt */
+  startedAt?: string;
 }
 
 export interface ApiPlayer {
@@ -130,6 +134,12 @@ export interface PlayerState {
   sessions: number;
   liveSince: string | null;
   peakViewers: number;
+  /** Höchste Zuschauerzahl, während der Spieler gleichzeitig auf dem Server war */
+  peakViewersOnServer: number;
+  /** Vom Tracker gemessene Stream-Zeit (Sekunden), während der Spieler auf dem Server war */
+  streamOnServerSeconds: number;
+  /** Vom Tracker gemessene Stream-Zeit (Sekunden), während der Spieler nicht auf dem Server war */
+  streamOffServerSeconds: number;
   /** Längste vom Tracker gemessene Session in Sekunden */
   longestSession: number;
 }

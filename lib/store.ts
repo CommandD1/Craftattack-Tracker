@@ -72,6 +72,9 @@ interface PlayerRow {
   live_since: Date | null;
   peak_viewers: number;
   longest_session: number;
+  peak_viewers_on_server: number | null;
+  stream_on_server_seconds: number | null;
+  stream_off_server_seconds: number | null;
 }
 
 interface EventRow {
@@ -113,6 +116,9 @@ function rowToPlayer(r: PlayerRow): PlayerState {
     sessions: r.sessions,
     liveSince: iso(r.live_since),
     peakViewers: r.peak_viewers,
+    peakViewersOnServer: r.peak_viewers_on_server ?? 0,
+    streamOnServerSeconds: r.stream_on_server_seconds ?? 0,
+    streamOffServerSeconds: r.stream_off_server_seconds ?? 0,
     longestSession: r.longest_session ?? 0,
   };
 }
@@ -241,15 +247,17 @@ export async function saveState(state: TrackerState) {
   for (const p of Object.values(state.players)) {
     await db.query(
       `INSERT INTO players (id, name, uuid, online, live, stats, first_seen, last_seen, session_start,
-                            tracked_seconds, sessions, live_since, peak_viewers, longest_session, ranks, twitch_login)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                            tracked_seconds, sessions, live_since, peak_viewers, longest_session, ranks, twitch_login,
+                            peak_viewers_on_server, stream_on_server_seconds, stream_off_server_seconds)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name, uuid = EXCLUDED.uuid, online = EXCLUDED.online, live = EXCLUDED.live,
          stats = EXCLUDED.stats, first_seen = EXCLUDED.first_seen, last_seen = EXCLUDED.last_seen,
          session_start = EXCLUDED.session_start, tracked_seconds = EXCLUDED.tracked_seconds,
          sessions = EXCLUDED.sessions, live_since = EXCLUDED.live_since, peak_viewers = EXCLUDED.peak_viewers,
          longest_session = EXCLUDED.longest_session, ranks = EXCLUDED.ranks,
-         twitch_login = EXCLUDED.twitch_login`,
+         twitch_login = EXCLUDED.twitch_login, peak_viewers_on_server = EXCLUDED.peak_viewers_on_server,
+         stream_on_server_seconds = EXCLUDED.stream_on_server_seconds, stream_off_server_seconds = EXCLUDED.stream_off_server_seconds`,
       [
         p.id,
         p.name,
@@ -267,6 +275,9 @@ export async function saveState(state: TrackerState) {
         p.longestSession,
         JSON.stringify(p.ranks ?? {}),
         p.twitchLogin ?? null,
+        p.peakViewersOnServer,
+        Math.round(p.streamOnServerSeconds),
+        Math.round(p.streamOffServerSeconds),
       ],
     );
   }

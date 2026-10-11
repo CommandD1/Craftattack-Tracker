@@ -2671,3 +2671,23 @@ a.st-chip-in[data-live="true"] {
   font-size: 0.8125rem;
   letter-spacing: 0.04em;
 }
+
+/* Bewegung in der kompletten Bestenliste */
+.st-board__row--full:has(.st-board__mv) {
+  grid-template-columns: 2.5rem 28px minmax(0, 1fr) auto auto 2.4rem;
+}
+@media (width <= 480px) {
+  .st-board__row--full:has(.st-board__mv) {
+    grid-template-columns: 2.5rem 28px minmax(0, 1fr) auto 2.4rem;
+  }
+}
+
+/* Bewegung in der kompletten Bestenliste */
+.st-board__row--full:has(.st-board__mv) {
+  grid-template-columns: 2.5rem 28px minmax(0, 1fr) auto auto 2.4rem;
+}
+@media (width <= 480px) {
+  .st-board__row--full:has(.st-board__mv) {
+    grid-template-columns: 2.5rem 28px minmax(0, 1fr) auto 2.4rem;
+  }
+}

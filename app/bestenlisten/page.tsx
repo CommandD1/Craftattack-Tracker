@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { getFullBoard } from "@/lib/store";
+import { getBoardRanksBefore, getTrackedRanksBefore } from "@/lib/analytics";
 import { BOARD_KEYS, type BoardKey } from "@/lib/types";
 import { ago, boardValue, duration, headUrl, num } from "@/lib/format";
 import { BOARD_ICON, Icon } from "@/components/Icons";
@@ -22,12 +23,28 @@ const BOARDS: Record<BoardKey | "tracked", { title: string; sub: string; tone: s
 };
 const KEYS = [...BOARD_KEYS, "tracked"] as const;
 type Key = (typeof KEYS)[number];
+/** Vergleichszeitraum für die ▲/▼-Anzeige */
+const SPANS = { "24h": { hours: 24, label: "24 Stunden" }, "7d": { hours: 168, label: "7 Tagen" } } as const;
+type Span = keyof typeof SPANS;
+
+function listHref(key: Key, span: Span) {
+  const q = new URLSearchParams();
+  if (key !== "playtimeSeconds") q.set("liste", key);
+  if (span !== "24h") q.set("seit", span);
+  const qs = q.toString();
+  return qs ? `/bestenlisten?${qs}` : "/bestenlisten";
+}
 
 export default async function Page(props: PageProps<"/bestenlisten">) {
   const sp = await props.searchParams;
   const raw = typeof sp.liste === "string" ? sp.liste : "playtimeSeconds";
   const key: Key = (KEYS as readonly string[]).includes(raw) ? (raw as Key) : "playtimeSeconds";
-  const { state, now } = await loadTracker();
+  const span: Span = sp.seit === "7d" ? "7d" : "24h";
+  const hours = SPANS[span].hours;
+  const [{ state, now }, ranksBefore] = await Promise.all([
+    loadTracker(),
+    key === "tracked" ? getTrackedRanksBefore(hours) : getBoardRanksBefore(hours).then((r) => r[key] ?? {}),
+  ]);
   const b = BOARDS[key];
 
   let rows: { id: string; name: string; uuid: string; value: number; at: string | null; online: boolean }[];
@@ -68,8 +85,17 @@ export default async function Page(props: PageProps<"/bestenlisten">) {
           <ul className="filters" aria-label="Liste wählen">
             {KEYS.map((k) => (
               <li key={k}>
-                <Link className="tag" data-tone={k === key ? undefined : BOARDS[k].tone} aria-current={k === key ? "true" : undefined} href={k === "playtimeSeconds" ? "/bestenlisten" : `/bestenlisten?liste=${k}`}>
+                <Link className="tag" data-tone={k === key ? undefined : BOARDS[k].tone} aria-current={k === key ? "true" : undefined} href={listHref(k, span)}>
                   {BOARDS[k].title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <ul className="filters" aria-label="Vergleichszeitraum" style={{ marginTop: 8 }}>
+            {(Object.keys(SPANS) as Span[]).map((sKey) => (
+              <li key={sKey}>
+                <Link className="tag" data-tone={sKey === span ? undefined : "white"} aria-current={sKey === span ? "true" : undefined} href={listHref(key, sKey)}>
+                  ▲▼ vs. {SPANS[sKey].label}
                 </Link>
               </li>
             ))}
@@ -91,7 +117,11 @@ export default async function Page(props: PageProps<"/bestenlisten">) {
               {rows.length === 0 ? (
                 <li className="st-board__note">Noch keiner. Die Liste füllt sich, sobald Spieler in der API auftauchen.</li>
               ) : (
-                rows.map((e, i) => (
+                rows.map((e, i) => {
+                  const before = ranksBefore[e.id];
+                  const diff = before === undefined ? null : before - (i + 1);
+                  const title = `Vor ${SPANS[span].label} Platz ${before}`;
+                  return (
                   <li key={e.id}>
                     <Link className="st-board__row st-board__row--full" href={`/spieler/${encodeURIComponent(e.id)}`}>
                       <span className="st-board__rank num">{i + 1}</span>
@@ -104,15 +134,32 @@ export default async function Page(props: PageProps<"/bestenlisten">) {
                         {key === "tracked" ? (e.online ? "läuft" : "") : inApi.has(e.id) ? "aktuell" : e.at ? `Stand ${ago(e.at, now)}` : ""}
                       </span>
                       <span className="st-board__val num">{fmt(e.value)}</span>
+                      {diff === null ? (
+                        <span className="st-board__mv st-board__mv--new" title={`Vor ${SPANS[span].label} noch nicht erfasst`}>
+                          neu
+                        </span>
+                      ) : diff > 0 ? (
+                        <span className="st-board__mv st-board__mv--up num" title={title}>
+                          ▲{diff}
+                        </span>
+                      ) : diff < 0 ? (
+                        <span className="st-board__mv st-board__mv--down num" title={title}>
+                          ▼{-diff}
+                        </span>
+                      ) : (
+                        <span className="st-board__mv" aria-hidden="true" />
+                      )}
                     </Link>
                   </li>
-                ))
+                  );
+                })
               )}
             </ol>
           </section>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem", maxWidth: 760 }}>
             „Aktuell“ heißt: steht gerade in der Top 10 der API. Bei allen anderen ist der Wert der letzte, den der
-            Tracker gesehen hat, der echte Wert kann inzwischen höher sein. „Dauergäste“ misst der Tracker selbst, für alle.
+            Tracker gesehen hat, der echte Wert kann inzwischen höher sein. „Dauergäste“ misst der Tracker selbst, für alle. ▲▼ zeigt die
+            Bewegung gegenüber dem Stand vor {SPANS[span].label}, „neu“ heißt: damals noch nicht in der Liste.
           </p>
         </div>
       </section>

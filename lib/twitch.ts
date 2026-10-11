@@ -109,6 +109,47 @@ async function fetchVideos(key: string): Promise<Vod[]> {
   return list;
 }
 
+/** Laufender Stream laut Twitch Helix `streams` */
+export interface TwitchStream {
+  login: string;
+  title: string;
+  viewers: number;
+  startedAt: string;
+}
+
+export const streamUrl = (login: string) => `https://www.twitch.tv/${encodeURIComponent(login)}`;
+export const videoUrl = (vodId: string) => `https://www.twitch.tv/videos/${encodeURIComponent(vodId)}`;
+
+/**
+ * Fragt für alle Logins ab, wer gerade live ist (bis zu 100 Logins pro Anfrage).
+ * Ergebnis ist nach Login in Kleinbuchstaben abgelegt. Wirft bei Fehlern, damit der Aufrufer
+ * weiß, dass er den Live-Status aus der Haupt-API nehmen muss.
+ */
+export async function fetchLiveStreams(logins: Iterable<string>): Promise<Map<string, TwitchStream>> {
+  const out = new Map<string, TwitchStream>();
+  if (!TWITCH_ENABLED) return out;
+  const all = [...new Set([...logins].map((l) => l.toLowerCase()).filter((l) => /^[a-z0-9_]{3,25}$/.test(l)))];
+  for (let i = 0; i < all.length; i += 100) {
+    const chunk = all.slice(i, i + 100);
+    const q = new URLSearchParams();
+    q.set("first", "100");
+    for (const l of chunk) q.append("user_login", l);
+    const res = await fetch(`https://api.twitch.tv/helix/streams?${q}`, {
+      headers: { "Client-Id": CLIENT_ID, Authorization: `Bearer ${await token()}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.status === 401) g().token = null;
+    if (!res.ok) throw new Error(`Twitch streams HTTP ${res.status}`);
+    const data = ((await res.json()) as { data: { user_login: string; user_name: string; title: string; viewer_count: number; started_at: string; type: string }[] }).data;
+    for (const s of data) {
+      if (s.type !== "live") continue;
+      out.set(s.user_login.toLowerCase(), { login: s.user_login, title: s.title, viewers: s.viewer_count, startedAt: s.started_at });
+    }
+  }
+  return out;
+}
+
 export function vodLink(vodId: string, offsetSec: number) {
   const o = Math.max(0, Math.floor(offsetSec));
   const h = Math.floor(o / 3600);
@@ -148,7 +189,16 @@ export async function attachVods(
   if (!TWITCH_ENABLED) return;
   // `noVod` = Twitch hatte zu einem abgeschlossenen Stream kein VOD; das alte Feld `vod:false` wurde zu großzügig gesetzt und wird ignoriert
   const todo = events.filter((e) => e.type === "death" && e.player && !e.meta?.unknown && e.meta?.vodUrl === undefined && e.meta?.noVod !== true);
-  if (todo.length === 0) return;
+  // Stream-an/aus: das VOD des Streams verlinken. Läuft der Stream noch, gibt es stattdessen den Live-Link (siehe `withLiveLinks`).
+  const streamTodo = events.filter(
+    (e) =>
+      (e.type === "stream_start" || e.type === "stream_end") &&
+      e.player &&
+      e.meta?.vodUrl === undefined &&
+      e.meta?.noVod !== true &&
+      !(e.type === "stream_start" && liveNow.some((l) => l.player === e.player && Date.parse(e.at) >= Date.parse(l.since) - 60_000)),
+  );
+  if (todo.length === 0 && streamTodo.length === 0) return;
 
   // Streams pro Spieler aus den Ereignissen rekonstruieren (für alte Tode ohne live-Markierung)
   const streams = new Map<string, { start: number; end: number; login: string | null }[]>();
@@ -179,6 +229,29 @@ export async function attachVods(
 
   const now = Date.now();
   await Promise.all(
+    streamTodo.map(async (e) => {
+      // Zeitpunkt knapp nach Streambeginn: dort muss das Archiv-VOD anfangen
+      const start = e.type === "stream_start" ? Date.parse(e.at) : Date.parse(e.at) - Number(e.meta?.streamSeconds ?? 0) * 1000;
+      const at = start + 30_000;
+      const login = (typeof e.meta?.login === "string" && e.meta.login) || loginOf(e.player!);
+      if (!login) return;
+      const negKey = `${login}|${e.id}`;
+      const neg = negative.get(negKey);
+      if (neg && now - neg < NEG_CACHE_MS) return;
+      try {
+        const hit = await findVod(login, at);
+        if (hit) await updateEventMeta(e, { vodUrl: videoUrl(hit.vodId), vodId: hit.vodId });
+        else {
+          negative.set(negKey, now);
+          if (now - Date.parse(e.at) > 24 * 3600_000) await updateEventMeta(e, { noVod: true });
+        }
+      } catch (err) {
+        console.warn("[twitch] VOD-Abfrage (Stream) fehlgeschlagen:", err instanceof Error ? err.message : err);
+        negative.set(negKey, now);
+      }
+    }),
+  );
+  await Promise.all(
     todo.map(async (e) => {
       const at = Date.parse(e.at);
       const wasLive = e.meta?.live === true || (streams.get(e.player!) ?? []).some((s) => at >= s.start - 60_000 && at <= s.end + 60_000);
@@ -207,4 +280,20 @@ export async function attachVods(
       }
     }),
   );
+}
+
+/**
+ * Hängt an „Stream an“-Ereignisse des gerade laufenden Streams einen Live-Link (`meta.liveUrl`).
+ * Nur für die Anzeige: die Ereignisse werden kopiert, nichts landet in der DB. Nach Stream-Ende
+ * übernimmt `attachVods` mit dem VOD-Link.
+ */
+export function withLiveLinks(events: TrackerEvent[], liveNow: { player: string; since: string; login: string }[]): TrackerEvent[] {
+  if (liveNow.length === 0) return events;
+  const since = new Map(liveNow.map((l) => [l.player, l]));
+  return events.map((e) => {
+    if (e.type !== "stream_start" || !e.player) return e;
+    const l = since.get(e.player);
+    if (!l || Date.parse(e.at) < Date.parse(l.since) - 60_000) return e;
+    return { ...e, meta: { ...e.meta, liveUrl: streamUrl(l.login) } };
+  });
 }

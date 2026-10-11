@@ -487,3 +487,31 @@ export async function getBoardRanksBefore(hoursAgo = 24): Promise<Partial<Record
     return out;
   });
 }
+
+/**
+ * Rang je Spieler vor `hoursAgo` Stunden in der Dauergäste-Liste (Online-Zeit laut Tracker).
+ * Rückgerechnet aus den Sessions: aktuelle Tracker-Sekunden minus Online-Zeit innerhalb des Zeitfensters.
+ */
+export async function getTrackedRanksBefore(hoursAgo = 24): Promise<Record<string, number>> {
+  return cached(`trackedRanksBefore:${hoursAgo}`, 300_000, async () => {
+    const [state, sessions] = await Promise.all([getState(), getAllSessions()]);
+    const now = Date.now();
+    const cutoff = now - hoursAgo * 3600_000;
+    const recent = new Map<string, number>();
+    for (const s of sessions) {
+      const start = Date.parse(s.start);
+      const end = s.end ? Date.parse(s.end) : now;
+      const overlap = Math.min(end, now) - Math.max(start, cutoff);
+      if (overlap > 0) recent.set(s.player, (recent.get(s.player) ?? 0) + overlap / 1000);
+    }
+    const rows: { id: string; value: number }[] = [];
+    for (const p of Object.values(state.players)) {
+      const nowSecs = p.trackedSeconds + (p.online && p.sessionStart ? (now - Date.parse(p.sessionStart)) / 1000 : 0);
+      const before = nowSecs - (recent.get(p.id) ?? 0);
+      // Nur wer damals schon Online-Zeit hatte (und vor dem Zeitpunkt überhaupt bekannt war), hatte einen Platz
+      if (before > 0 && Date.parse(p.firstSeen) <= cutoff) rows.push({ id: p.id, value: before });
+    }
+    rows.sort((a, b) => b.value - a.value);
+    return Object.fromEntries(rows.map((r, i) => [r.id, i + 1]));
+  });
+}
