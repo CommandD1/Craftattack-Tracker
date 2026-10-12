@@ -83,6 +83,7 @@ export type EventType =
   | "stream_start"
   | "stream_end"
   | "stream_title"
+  | "subscription"
   | "server_online"
   | "server_offline"
   | "tracker_start"

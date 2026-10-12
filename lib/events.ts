@@ -145,6 +145,25 @@ export const EVENT_META: Record<EventType, EventMeta> = {
     text: () => "hat den Streamtitel geändert",
     sub: (e) => (e.meta?.title ? String(e.meta.title) : null),
   },
+  subscription: {
+    label: "Abo",
+    tone: "twitch",
+    text: (e) => e.player ? "hat ein Twitch-Abo erhalten" : `${e.meta?.channel ?? "Ein Streamer"} hat ein Twitch-Abo erhalten`,
+    sub: (e) =>
+      [
+        e.meta?.channel ? `#${e.meta.channel}` : null,
+        e.meta?.subscriber ? String(e.meta.subscriber) : null,
+        e.meta?.kind ? String(e.meta.kind) : null,
+        Number(e.meta?.months) > 0 ? `${num(Number(e.meta?.months))} Monate` : null,
+        Number(e.meta?.giftCount) > 0 ? `${num(Number(e.meta?.giftCount))} Geschenk-Abos` : null,
+        Number(e.meta?.giftMonths) > 0 ? `${num(Number(e.meta?.giftMonths))} Monate Geschenk` : null,
+        e.meta?.recipient ? `für ${e.meta.recipient}` : null,
+        e.meta?.planName ? String(e.meta.planName) : e.meta?.plan ? `Plan ${e.meta.plan}` : null,
+        e.meta?.message ? `„${e.meta.message}“` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || null,
+  },
   server_online: { label: "Server", tone: "grass", text: () => "Der Server ist wieder online" },
   server_offline: { label: "Server", tone: "redstone", text: () => "Der Server ist offline gegangen" },
   first_join: {
@@ -204,7 +223,7 @@ export const EVENT_GROUPS: { key: string; label: string; tone: string; types: Ev
   { key: "server", label: "Server", tone: "grass", types: ["join", "leave", "afk_start", "afk_mobs_start", "afk_mobs_end", "afk_blocks_start", "afk_blocks_end", "afk_end", "server_online", "server_offline", "tracker_start"] },
   { key: "death", label: "Tode", tone: "redstone", types: ["death"] },
   { key: "loot", label: "Loot & Arbeit", tone: "gold", types: ["diamonds", "blocksBroken", "mobsKilled", "distance"] },
-  { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title"] },
+  { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title", "subscription"] },
   { key: "highlights", label: "Highlights", tone: "amethyst", types: ["first_join", "rank", "milestone", "record"] },
 ];
 
@@ -277,6 +296,7 @@ export const EVENT_TYPES: EventType[] = [
   "stream_start",
   "stream_end",
   "stream_title",
+  "subscription",
   "rank",
   "milestone",
   "record",

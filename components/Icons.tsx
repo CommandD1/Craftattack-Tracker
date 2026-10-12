@@ -142,6 +142,7 @@ export const EVENT_ICON: Record<EventType, keyof typeof Icon> = {
   stream_start: "twitch",
   stream_end: "twitch",
   stream_title: "tag",
+  subscription: "twitch",
   server_online: "server",
   server_offline: "server",
   tracker_start: "bolt",

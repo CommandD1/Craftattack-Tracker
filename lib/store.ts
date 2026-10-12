@@ -352,6 +352,20 @@ export async function appendEvents(events: TrackerEvent[]) {
   for (const e of events) await insertEventRow(db, e);
 }
 
+/** Speichert ein von einer Live-Quelle geliefertes Ereignis und aktualisiert den Ereigniszähler. */
+export async function appendLiveEvent(event: TrackerEvent): Promise<boolean> {
+  await ensureLoaded();
+  const store = g();
+  const db = await getDb();
+  if (!(await insertEventRow(db, event))) return false;
+  store.events.push(event);
+  if (store.events.length > MAX_EVENTS_IN_MEMORY) {
+    store.events = store.events.slice(-MAX_EVENTS_IN_MEMORY);
+  }
+  if (store.state) store.state.eventCount += 1;
+  return true;
+}
+
 /** Fügt ein Ereignis in die DB ein; false, wenn es die ID schon gab. */
 async function insertEventRow(db: Db, e: TrackerEvent): Promise<boolean> {
   const r = await db.query(
