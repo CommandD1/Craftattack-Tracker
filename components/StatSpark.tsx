@@ -15,6 +15,7 @@ const FORMAT: Record<SparkKey, (v: number) => string> = {
   blocksBroken: num,
   mobsKilled: num,
   distance: (v) => boardValue("distance", v),
+  twitchSubs: num,
 };
 
 const tf = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });

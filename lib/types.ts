@@ -191,6 +191,8 @@ export interface PlayerPoint {
   blocksBroken: number | null;
   mobsKilled: number | null;
   distance: number | null;
+  /** Vom Tracker gezählte Twitch-Abos; separate Ereignis-Zeitreihe kann dieses Feld ergänzen */
+  twitchSubs?: number | null;
 }
 
 export interface TotalsPoint {

@@ -45,7 +45,8 @@ Alle Seiten werden komplett serverseitig gerendert (SSR, `instant = false`), kei
 | Tod, Diamanten, Blöcke, Mobs, Strecke | Anstieg in `/api/ext/<id>` bzw. den Top-10-Boards | Server |
 | Tode, die keinem bekannten Spieler zuzuordnen sind | `totals.deaths` | Server (ohne Spieler) |
 | Stream an / aus / Titel geändert, Peak-Zuschauer | `live[]` | Twitch |
-| Twitch-Abos (inkl. Resubs und Geschenk-Abos, pro Streamer und Minute summiert; ab 10 Subs angezeigt) | Twitch IRC `USERNOTICE` | Twitch |
+| Twitch-Abos (inkl. Resubs und Geschenk-Abos, pro Streamer und Minute summiert; ab 10 Subs angezeigt; nur wenn auf dem Spielserver online) | Twitch IRC `USERNOTICE` | Twitch |
+| Twitch-Subs gesamt, Tagesverlauf und aktuelle Streamsumme | gespeicherte IRC-Abo-Ereignisse | Twitch |
 | Server online / offline | `serverOnline` | Server |
 | Erster Auftritt eines Spielers (seit Tracker-Start) | `online[]` | Server |
 | Rang-Aufstieg in die Top 3 einer Bestenliste | Boards | Server |
@@ -62,6 +63,7 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 - `/spieler` und `/spieler/<id>` alle erfassten Spieler mit Verlauf, Sessions, Graphen und bei Live-Streamern Twitch-Player plus Chat
 - `/events` offizielle Termine von craftattack.one (stündlich abgeglichen)
 - `/live` Twitch-Übersicht, Zuschauerkurve und Stream-Chronik
+- `/bestenlisten?liste=twitchSubs` Twitch-Abo-Bestenliste; Profile zeigen Gesamtzahl, Tagesgraph und – wenn live – Subs im aktuellen Stream
 - `/api/tracker?limit=200&player=<id>&type=<typ>` JSON-Export, `/api/tracker/poll` löst eine Abfrage manuell aus
 
 ## Konfiguration
@@ -72,4 +74,5 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 - `CA_EXT_CONCURRENCY` gleichzeitige ext-Anfragen pro Poll (Standard 8)
 - `CA_POLL_INTERVAL_MS` Abfrageintervall (Standard 30000)
 - `TWITCH_IRC_NICK` und `TWITCH_IRC_TOKEN` optional für Twitch-IRC mit `chat:read`; alle bekannten Kanäle werden mit höchstens 20 JOINs in 10 Sekunden (einer alle 500 ms) abonniert. Es werden nur bekannte Sub-`USERNOTICE`s gespeichert.
+- Twitch-Subzahlen werden ab Beginn der IRC-Erfassung gezählt und nur erfasst, wenn der Streamer bei Eingang der Meldung auf dem Spielserver online ist (AFK zählt als online); historische Abos vor diesem Zeitpunkt sind nicht verfügbar.
 - `NEXT_PUBLIC_TWITCH_URL`, `NEXT_PUBLIC_DISCORD_URL`, `NEXT_PUBLIC_GITHUB_URL` optionale Footer-Links (werden beim Build eingebettet)

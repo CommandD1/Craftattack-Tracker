@@ -73,6 +73,7 @@ export interface ChannelOwner {
   id: string;
   name: string;
   uuid: string;
+  streamStartedAt: string | null;
 }
 
 interface IrcState {
@@ -143,15 +144,22 @@ function mappedChannels(players: Record<string, PlayerState>): Map<string, Chann
   const ordered = Object.values(players).sort((a, b) => Number(Boolean(b.live)) - Number(Boolean(a.live)));
   for (const player of ordered) {
     const login = safeChannel(player.twitchLogin ?? player.id);
-    if (login && !channels.has(login)) channels.set(login, { id: player.id, name: player.name, uuid: player.uuid });
+    if (login && !channels.has(login)) {
+      channels.set(login, {
+        id: player.id,
+        name: player.name,
+        uuid: player.uuid,
+        streamStartedAt: player.live ? player.liveSince ?? player.live.startedAt ?? null : null,
+      });
+    }
   }
   for (const [id, twitchLogin] of Object.entries(KNOWN_LOGINS)) {
     const login = safeChannel(twitchLogin);
     if (login && !channels.has(login)) {
       const player = players[id];
       channels.set(login, player
-        ? { id, name: player.name, uuid: player.uuid }
-        : { id, name: id, uuid: "" });
+        ? { id, name: player.name, uuid: player.uuid, streamStartedAt: player.live ? player.liveSince ?? player.live.startedAt ?? null : null }
+        : { id, name: id, uuid: "", streamStartedAt: null });
     }
   }
   return channels;
@@ -328,19 +336,29 @@ async function handleLine(irc: IrcState, socket: WebSocket, line: string) {
     reconcileChannels(irc);
     return;
   }
-  const event = subscriptionEventFromNotice(message, irc.desired.get(safeChannel(message.params[0] ?? "") ?? ""));
-  if (!event || irc.seenIds.has(event.id)) return;
   const channel = safeChannel(message.params[0] ?? "");
+  const owner = channel ? irc.desired.get(channel) : undefined;
+  const event = subscriptionEventFromNotice(message, owner);
+  if (!event || irc.seenIds.has(event.id)) return;
   if (!channel) return;
+  const currentState = await getState();
+  const player = event.player ? currentState.players[event.player] : undefined;
+  if (!player?.online) {
+    rememberEventId(irc, event.id);
+    return;
+  }
+  const streamStartedAt = player
+    ? player.live ? player.liveSince ?? player.live.startedAt ?? null : null
+    : owner?.streamStartedAt ?? null;
   const minute = Math.floor(Date.parse(event.at) / 60_000) * 60_000;
   const count = event.delta ?? 1;
   await incrementLiveSubscriptionEvent({
     ...event,
-    id: `twitch-subs-${channel}-${minute}`,
+    id: `twitch-subs-online-${channel}-${streamStartedAt ?? "unknown"}-${minute}`,
     at: new Date(minute).toISOString(),
     delta: count,
     value: count,
-    meta: { channel, bucket: "minute" },
+    meta: { channel, bucket: "minute", streamStartedAt, serverOnline: true },
   });
   rememberEventId(irc, event.id);
 }
