@@ -6,6 +6,7 @@ import type { BoardKey, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, Tra
 
 const MAX_EVENTS_IN_MEMORY = 20000;
 const MAX_HISTORY_POINTS = 2880; // 24 h bei 30 s
+const MIN_VISIBLE_SUBSCRIPTION_COUNT = 10;
 
 type Globals = typeof globalThis & {
   __acTracker?: {
@@ -237,7 +238,9 @@ export async function getState(): Promise<TrackerState> {
 
 export async function getEvents(): Promise<TrackerEvent[]> {
   await ensureLoaded();
-  return g().events;
+  return g().events.filter(
+    (event) => event.type !== "subscription" || (event.value ?? 0) >= MIN_VISIBLE_SUBSCRIPTION_COUNT,
+  );
 }
 
 /* ---------- Speichern ---------- */
@@ -364,6 +367,52 @@ export async function appendLiveEvent(event: TrackerEvent): Promise<boolean> {
   }
   if (store.state) store.state.eventCount += 1;
   return true;
+}
+
+/** Erhöht das minutenweise Twitch-Abo-Ereignis atomar und aktualisiert den aktuellen Feed-Eintrag. */
+export async function incrementLiveSubscriptionEvent(event: TrackerEvent): Promise<void> {
+  if (event.type !== "subscription" || !event.value || event.value < 1) {
+    throw new Error("Ungültiges Twitch-Abo-Ereignis.");
+  }
+  await ensureLoaded();
+  const store = g();
+  const db = await getDb();
+  const result = await db.query<{ value: number; delta: number; inserted: boolean }>(
+    `INSERT INTO events (id, at, type, player, player_name, uuid, "where", delta, value, meta)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9)
+     ON CONFLICT (id) DO UPDATE SET
+       delta = COALESCE(events.delta, 0) + EXCLUDED.delta,
+       value = COALESCE(events.value, 0) + EXCLUDED.value
+     RETURNING value, delta, (xmax = 0) AS inserted`,
+    [
+      event.id,
+      toDate(event.at),
+      event.type,
+      event.player ?? null,
+      event.playerName ?? null,
+      event.uuid ?? null,
+      event.where,
+      event.value,
+      event.meta ? JSON.stringify(event.meta) : null,
+    ],
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error("Twitch-Abo-Ereignis konnte nicht gespeichert werden.");
+
+  const existing = store.events.find((item) => item.id === event.id);
+  if (existing) {
+    existing.value = Number(row.value);
+    existing.delta = Number(row.delta);
+  } else {
+    event.value = Number(row.value);
+    event.delta = Number(row.delta);
+    store.events.push(event);
+    store.events.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.id.localeCompare(b.id));
+    if (store.events.length > MAX_EVENTS_IN_MEMORY) {
+      store.events = store.events.slice(-MAX_EVENTS_IN_MEMORY);
+    }
+  }
+  if (row.inserted && store.state) store.state.eventCount += 1;
 }
 
 /** Fügt ein Ereignis in die DB ein; false, wenn es die ID schon gab. */

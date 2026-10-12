@@ -147,22 +147,9 @@ export const EVENT_META: Record<EventType, EventMeta> = {
   },
   subscription: {
     label: "Abo",
-    tone: "twitch",
-    text: (e) => e.player ? "hat ein Twitch-Abo erhalten" : `${e.meta?.channel ?? "Ein Streamer"} hat ein Twitch-Abo erhalten`,
-    sub: (e) =>
-      [
-        e.meta?.channel ? `#${e.meta.channel}` : null,
-        e.meta?.subscriber ? String(e.meta.subscriber) : null,
-        e.meta?.kind ? String(e.meta.kind) : null,
-        Number(e.meta?.months) > 0 ? `${num(Number(e.meta?.months))} Monate` : null,
-        Number(e.meta?.giftCount) > 0 ? `${num(Number(e.meta?.giftCount))} Geschenk-Abos` : null,
-        Number(e.meta?.giftMonths) > 0 ? `${num(Number(e.meta?.giftMonths))} Monate Geschenk` : null,
-        e.meta?.recipient ? `für ${e.meta.recipient}` : null,
-        e.meta?.planName ? String(e.meta.planName) : e.meta?.plan ? `Plan ${e.meta.plan}` : null,
-        e.meta?.message ? `„${e.meta.message}“` : null,
-      ]
-        .filter(Boolean)
-        .join(" · ") || null,
+    tone: "pink",
+    text: (e) => e.player ? "hat in dieser Minute Subs erhalten" : `${e.meta?.channel ?? "Ein Streamer"} hat in dieser Minute Subs erhalten`,
+    sub: () => "Minutensumme",
   },
   server_online: { label: "Server", tone: "grass", text: () => "Der Server ist wieder online" },
   server_offline: { label: "Server", tone: "redstone", text: () => "Der Server ist offline gegangen" },
@@ -250,6 +237,8 @@ export function eventBadge(e: TrackerEvent): string | null {
     case "stream_start":
     case "stream_title":
       return e.value !== undefined ? `${num(e.value)} Zuschauer` : null;
+    case "subscription":
+      return `${num(e.value ?? 0)} Subs`;
     case "stream_end": {
       const s = Number(e.meta?.streamSeconds ?? 0);
       return s > 0 ? duration(s) : null;

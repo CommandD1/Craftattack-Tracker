@@ -45,7 +45,7 @@ Alle Seiten werden komplett serverseitig gerendert (SSR, `instant = false`), kei
 | Tod, Diamanten, Blöcke, Mobs, Strecke | Anstieg in `/api/ext/<id>` bzw. den Top-10-Boards | Server |
 | Tode, die keinem bekannten Spieler zuzuordnen sind | `totals.deaths` | Server (ohne Spieler) |
 | Stream an / aus / Titel geändert, Peak-Zuschauer | `live[]` | Twitch |
-| Twitch-Abos (inkl. Resubs und Geschenk-Abos) | Twitch IRC `USERNOTICE` | Twitch |
+| Twitch-Abos (inkl. Resubs und Geschenk-Abos, pro Streamer und Minute summiert; ab 10 Subs angezeigt) | Twitch IRC `USERNOTICE` | Twitch |
 | Server online / offline | `serverOnline` | Server |
 | Erster Auftritt eines Spielers (seit Tracker-Start) | `online[]` | Server |
 | Rang-Aufstieg in die Top 3 einer Bestenliste | Boards | Server |

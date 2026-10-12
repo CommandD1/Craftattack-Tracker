@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { appendLiveEvent, getEvents, getState } from "./store";
+import { getEvents, getState, incrementLiveSubscriptionEvent } from "./store";
 import { KNOWN_LOGINS } from "./tracker";
 import type { PlayerState, TrackerEvent } from "./types";
 
@@ -292,6 +292,9 @@ export function subscriptionEventFromNotice(message: TwitchIrcMessage, owner?: C
   if (message.trailing) meta.message = message.trailing;
 
   const event: TrackerEvent = { id, at, type: "subscription", where: "twitch", meta };
+  event.delta = Number.isFinite(Number(meta.giftCount)) && Number(meta.giftCount) > 0
+    ? Number(meta.giftCount)
+    : 1;
   if (owner) {
     event.player = owner.id;
     event.playerName = owner.name;
@@ -327,7 +330,19 @@ async function handleLine(irc: IrcState, socket: WebSocket, line: string) {
   }
   const event = subscriptionEventFromNotice(message, irc.desired.get(safeChannel(message.params[0] ?? "") ?? ""));
   if (!event || irc.seenIds.has(event.id)) return;
-  if (await appendLiveEvent(event)) rememberEventId(irc, event.id);
+  const channel = safeChannel(message.params[0] ?? "");
+  if (!channel) return;
+  const minute = Math.floor(Date.parse(event.at) / 60_000) * 60_000;
+  const count = event.delta ?? 1;
+  await incrementLiveSubscriptionEvent({
+    ...event,
+    id: `twitch-subs-${channel}-${minute}`,
+    at: new Date(minute).toISOString(),
+    delta: count,
+    value: count,
+    meta: { channel, bucket: "minute" },
+  });
+  rememberEventId(irc, event.id);
 }
 
 async function syncChannels(irc: IrcState) {
