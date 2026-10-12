@@ -240,8 +240,10 @@ export async function getEvents(): Promise<TrackerEvent[]> {
   await ensureLoaded();
   return g().events.filter(
     (event) =>
-      event.type !== "subscription" ||
-      (event.meta?.serverOnline === true && (event.value ?? 0) >= MIN_VISIBLE_SUBSCRIPTION_COUNT),
+      event.type === "subscription_gift"
+        ? event.meta?.serverOnline === true
+        : event.type !== "subscription" ||
+          (event.meta?.serverOnline === true && (event.value ?? 0) >= MIN_VISIBLE_SUBSCRIPTION_COUNT),
   );
 }
 
@@ -439,7 +441,7 @@ export async function getTwitchSubscriptionProfile(
     db.query<{ at: Date; count: number | string }>(
       `SELECT date_trunc('day', at) AS at, SUM(delta) AS count
          FROM events
-        WHERE type = 'subscription' AND player = $1 AND meta->>'serverOnline' = 'true'
+        WHERE type IN ('subscription', 'subscription_gift') AND player = $1 AND meta->>'serverOnline' = 'true'
         GROUP BY date_trunc('day', at)
         ORDER BY date_trunc('day', at)`,
       [player],
@@ -448,7 +450,7 @@ export async function getTwitchSubscriptionProfile(
       ? db.query<{ count: number | string }>(
           `SELECT COALESCE(SUM(delta), 0) AS count
              FROM events
-            WHERE type = 'subscription' AND player = $1 AND meta->>'streamStartedAt' = $2
+            WHERE type IN ('subscription', 'subscription_gift') AND player = $1 AND meta->>'streamStartedAt' = $2
               AND meta->>'serverOnline' = 'true'`,
           [player, streamStartedAt],
         )
@@ -477,7 +479,7 @@ export async function getTwitchLiveSubscriptionCounts(
        FROM events e
        JOIN (VALUES ${values}) AS active(player, stream_started_at)
          ON e.player = active.player AND e.meta->>'streamStartedAt' = active.stream_started_at
-      WHERE e.type = 'subscription' AND e.meta->>'serverOnline' = 'true'
+      WHERE e.type IN ('subscription', 'subscription_gift') AND e.meta->>'serverOnline' = 'true'
       GROUP BY e.player, e.meta->>'streamStartedAt'`,
     params,
   );
@@ -497,7 +499,7 @@ export async function getTwitchSubscriptionBoard(): Promise<FullBoardEntry[]> {
   }>(
     `SELECT player, MAX(player_name) AS name, MAX(uuid) AS uuid, SUM(delta) AS value, MAX(at) AS at
        FROM events
-      WHERE type = 'subscription' AND player IS NOT NULL AND meta->>'serverOnline' = 'true'
+      WHERE type IN ('subscription', 'subscription_gift') AND player IS NOT NULL AND meta->>'serverOnline' = 'true'
       GROUP BY player
       HAVING SUM(delta) > 0
       ORDER BY SUM(delta) DESC, MAX(player_name)`,
@@ -525,12 +527,12 @@ export async function getTwitchSubscriptionMinuteRecord(): Promise<TwitchSubscri
   const db = await getDb();
   const row = (
     await db.query<{ player: string; name: string; uuid: string; value: number | string; at: Date }>(
-      `SELECT player, MAX(player_name) AS name, MAX(uuid) AS uuid, MAX(value) AS value, MAX(at) AS at
+      `SELECT player, MAX(player_name) AS name, MAX(uuid) AS uuid, SUM(delta) AS value, MAX(at) AS at
          FROM events
-        WHERE type = 'subscription' AND player IS NOT NULL
+        WHERE type IN ('subscription', 'subscription_gift') AND player IS NOT NULL
           AND meta->>'serverOnline' = 'true' AND meta->>'bucket' = 'minute'
         GROUP BY player, meta->>'channel', meta->>'streamStartedAt', date_trunc('minute', at)
-        ORDER BY MAX(value) DESC, MAX(at) ASC
+        ORDER BY SUM(delta) DESC, MAX(at) ASC
         LIMIT 1`,
     )
   ).rows[0];
@@ -1007,7 +1009,7 @@ export async function getSeries(q: SeriesQuery): Promise<{ series: SeriesLine[];
 
   const firstRow = (await db.query<{ at: Date | null }>(
     q.metric === "twitchSubs"
-      ? `SELECT min(at) AS at FROM events WHERE type = 'subscription' AND meta->>'serverOnline' = 'true'`
+      ? `SELECT min(at) AS at FROM events WHERE type IN ('subscription', 'subscription_gift') AND meta->>'serverOnline' = 'true'`
       : `SELECT min(at) AS at FROM ${table}`,
   )).rows[0];
   const firstAt = firstRow?.at ? new Date(firstRow.at) : null;
@@ -1028,7 +1030,7 @@ export async function getSeries(q: SeriesQuery): Promise<{ series: SeriesLine[];
           `WITH buckets AS (
              SELECT player, ${bucket} AS at, SUM(delta) AS delta
                FROM events
-              WHERE type = 'subscription' AND meta->>'serverOnline' = 'true'
+              WHERE type IN ('subscription', 'subscription_gift') AND meta->>'serverOnline' = 'true'
                 AND at <= $3 AND player IN (${placeholders})
               GROUP BY player, 2
            ), cumulative AS (
@@ -1058,7 +1060,7 @@ export async function getSeries(q: SeriesQuery): Promise<{ series: SeriesLine[];
         `WITH buckets AS (
            SELECT ${bucket} AS at, SUM(delta) AS delta
              FROM events
-            WHERE type = 'subscription' AND meta->>'serverOnline' = 'true' AND at <= $3
+            WHERE type IN ('subscription', 'subscription_gift') AND meta->>'serverOnline' = 'true' AND at <= $3
             GROUP BY 1
          ), cumulative AS (
            SELECT at, SUM(delta) OVER (ORDER BY at) AS v FROM buckets

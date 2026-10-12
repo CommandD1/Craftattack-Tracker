@@ -84,6 +84,7 @@ export type EventType =
   | "stream_end"
   | "stream_title"
   | "subscription"
+  | "subscription_gift"
   | "server_online"
   | "server_offline"
   | "tracker_start"

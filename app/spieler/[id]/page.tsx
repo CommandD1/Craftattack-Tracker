@@ -225,7 +225,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
       <section className="block block--tight" data-tone="ink">
         <div className="wrap">
           <h2 className="sr-only">Statistiken</h2>
-          <dl className="grid st-figs st-figs--6">
+          <dl className="grid st-figs">
             {profileStatKeys.map((k) => {
               if (k === "twitchSubs") {
                 return (

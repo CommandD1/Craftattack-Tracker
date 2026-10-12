@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { getEvents, getState, incrementLiveSubscriptionEvent } from "./store";
+import { appendLiveEvent, getEvents, getState, incrementLiveSubscriptionEvent } from "./store";
 import { KNOWN_LOGINS } from "./tracker";
 import type { PlayerState, TrackerEvent } from "./types";
 
@@ -26,6 +26,16 @@ const SUB_NOTICE_TYPES: Record<string, string> = {
   standardpayforward: "Weitergegebenes Geschenk-Abo",
   communitypayforward: "Weitergegebene Community-Geschenke",
 };
+const GIFT_NOTICE_IDS = new Set([
+  "subgift",
+  "anonsubgift",
+  "anon-subgift",
+  "submysterygift",
+  "anonsubmysterygift",
+  "anon-submysterygift",
+  "standardpayforward",
+  "communitypayforward",
+]);
 
 export interface TwitchIrcMessage {
   tags: Record<string, string>;
@@ -165,6 +175,15 @@ function mappedChannels(players: Record<string, PlayerState>): Map<string, Chann
   return channels;
 }
 
+function playerForTwitchLogin(players: Record<string, PlayerState>, login: string): PlayerState | undefined {
+  const normalized = safeChannel(login);
+  if (!normalized) return undefined;
+  return Object.values(players).find((player) =>
+    [player.twitchLogin, KNOWN_LOGINS[player.id], player.id]
+      .some((candidate) => candidate && safeChannel(candidate) === normalized),
+  );
+}
+
 export function nextJoinDelay(joinTimes: number[], now: number): number {
   while (joinTimes.length > 0 && joinTimes[0] <= now - JOIN_WINDOW_MS) joinTimes.shift();
   const windowDelay = joinTimes.length >= MAX_JOINS_PER_WINDOW
@@ -286,6 +305,11 @@ export function subscriptionEventFromNotice(message: TwitchIrcMessage, owner?: C
     subscriber,
     msgId,
   };
+  if (GIFT_NOTICE_IDS.has(msgId)) {
+    meta.giftNotice = true;
+    if (message.tags.login) meta.giftGiverLogin = message.tags.login.toLowerCase();
+    if (subscriber) meta.giftGiverName = subscriber;
+  }
   if (Number.isFinite(months) && months > 0) meta.months = months;
   const plan = message.tags["msg-param-sub-plan"];
   if (plan) meta.plan = plan;
@@ -352,6 +376,32 @@ async function handleLine(irc: IrcState, socket: WebSocket, line: string) {
     : owner?.streamStartedAt ?? null;
   const minute = Math.floor(Date.parse(event.at) / 60_000) * 60_000;
   const count = event.delta ?? 1;
+  const giftGiver = event.meta?.giftNotice && typeof event.meta.giftGiverLogin === "string"
+    ? playerForTwitchLogin(currentState.players, event.meta.giftGiverLogin)
+    : undefined;
+  if (giftGiver && giftGiver.id !== player.id) {
+    await appendLiveEvent({
+      ...event,
+      type: "subscription_gift",
+      player: player.id,
+      playerName: player.name,
+      uuid: player.uuid,
+      delta: count,
+      value: count,
+      meta: {
+        channel,
+        bucket: "minute",
+        streamStartedAt,
+        serverOnline: true,
+        giftGiverPlayerId: giftGiver.id,
+        giftGiverName: giftGiver.name,
+        giftGiverUuid: giftGiver.uuid,
+        giftCount: count,
+      },
+    });
+    rememberEventId(irc, event.id);
+    return;
+  }
   await incrementLiveSubscriptionEvent({
     ...event,
     id: `twitch-subs-online-${channel}-${streamStartedAt ?? "unknown"}-${minute}`,
