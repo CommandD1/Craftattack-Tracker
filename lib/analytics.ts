@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import { getDb } from "./db";
 import { ensureLoaded, getAllSessions, getDailyEventSum, getEvents, getState, type StoredSession } from "./store";
 import { EVENT_META } from "./events";
-import { AFK_MS, AFK_FARM_MIN } from "./tracker";
+import { AFK_MS, AFK_FARM_WINDOW_MS, POLL_INTERVAL_MS, farmKindOf } from "./tracker";
 import type { BoardKey, TrackerEvent, TrackerState, AfkKind } from "./types";
 import { BOARD_KEYS } from "./types";
 
@@ -99,18 +99,23 @@ async function firstDataAt(): Promise<number | null> {
   });
 }
 
-/** Einzelheiten einer AFK-Farm innerhalb einer AFK-Phase (für den rückwirkenden Nachtrag der Farm-Ereignisse) */
+/** Einzelheiten eines AFK-Farm-Abschnitts innerhalb einer AFK-Phase (für den rückwirkenden Nachtrag der Farm-Ereignisse) */
 export interface AfkFarmInfo {
-  /** Zeitpunkt (ms), an dem die Schwelle AFK_FARM_MIN erstmals erreicht war */
+  /** Beginn der Farm (ms) = Beginn des ersten Abschnitts mit ausreichender Rate */
   at: number;
-  /** Gefarmte Menge der Art zu diesem Zeitpunkt */
+  /** Gefarmte Menge der Art im ersten Abschnitt und dessen Länge (Sekunden) */
   atValue: number;
-  /** Gefarmte Menge der Art am Ende der Phase */
+  windowSeconds: number;
+  /** Gefarmte Menge der Art über die ganze Farm */
   value: number;
   mobs: number;
   blocks: number;
-  /** Phase endete mit dem Leave (oder dem letzten Gesehen-Zeitpunkt) statt mit Bewegung */
+  /** Beginn der umgebenden AFK-Phase (ms) */
+  afkSince: number;
+  /** Farm endete mit dem Leave (oder dem letzten Gesehen-Zeitpunkt) statt mit Bewegung */
   byLeave: boolean;
+  /** Farm endete, aber die AFK-Phase lief weiter (Rate unter AFK_FARM_MIN pro Minute) */
+  stillAfk: boolean;
 }
 
 /** Zeitspanne [von, bis] in ms; AFK-Phasen tragen optional die Art (AFK-Farm) und deren Einzelheiten */
@@ -177,8 +182,37 @@ export function spanSeconds(spans: Span[], kind?: AfkKind | "none"): number {
 }
 
 /**
+ * Zählerstand zu einem beliebigen Zeitpunkt aus den Verlaufspunkten einer Stillstandsphase. Der Verlauf schreibt
+ * einen Punkt bei jeder Abfrage mit Änderung (sonst spätestens alle 5 Min). Zwischen zwei Punkten stand der Zähler
+ * also bis kurz vor dem späteren Punkt still; der Zuwachs fällt in die letzte Abfrage davor und wird dort linear verteilt.
+ * Unbekannte Werte (null) gelten als unverändert.
+ */
+function counterAt(list: { t: number; mobs: number | null; blocks: number | null }[], key: "mobs" | "blocks"): (x: number) => number {
+  const vals: number[] = [];
+  let prev = list.find((p) => p[key] !== null)?.[key] ?? 0;
+  for (const p of list) {
+    const v = p[key];
+    prev = v === null ? prev : Math.max(prev, v);
+    vals.push(prev);
+  }
+  let i = 0;
+  return (x: number) => {
+    // Aufrufe kommen in aufsteigender Zeit: Zeiger nur vorwärts bewegen
+    while (i < list.length - 1 && list[i + 1].t <= x) i++;
+    if (i >= list.length - 1 || x <= list[i].t) return vals[i];
+    const p = list[i];
+    const q = list[i + 1];
+    const ramp = Math.max(p.t, q.t - POLL_INTERVAL_MS);
+    if (x <= ramp) return vals[i];
+    return vals[i] + ((vals[i + 1] - vals[i]) * (x - ramp)) / (q.t - ramp);
+  };
+}
+
+/**
  * Kern der AFK-Erkennung über nach Spieler und Zeit sortierte Verlaufspunkte (siehe `getAfkSpans`).
- * Steigen Mobs bzw. Blöcke innerhalb einer Phase um ≥ AFK_FARM_MIN, bekommt sie die Art „mobs“ bzw. „blocks“ (AFK-Farm).
+ * Jede Phase wird ab ihrem Beginn in einzelne Minuten zerlegt: Steigen Mobs bzw. Blöcke in einer Minute um
+ * mindestens AFK_FARM_MIN, ist diese Minute AFK-Farm („mobs“ bzw. „blocks“), sonst normales AFK. Nichts wird über
+ * die ganze Phase aufsummiert. Aufeinanderfolgende Minuten gleicher Art werden zu einer Spanne zusammengefasst.
  */
 function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, state: TrackerState): Map<string, Span[]> {
   const out = new Map<string, Span[]>();
@@ -194,24 +228,58 @@ function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, stat
   let lastMove = 0;
   let lastDist: number | null = null;
   let wasOnline = false;
-  // Zähler zuletzt gesehen bzw. bei der letzten Bewegung
+  // Zähler zuletzt gesehen
   let lastMobs: number | null = null;
   let lastBlocks: number | null = null;
-  let moveMobs: number | null = null;
-  let moveBlocks: number | null = null;
-  // Erstes Erreichen der Farm-Schwelle innerhalb der laufenden Stillstandsphase
-  let farmAt: { at: number; value: number } | null = null;
-  const gained = (now: number | null, at: number | null) => (now === null || at === null ? 0 : Math.max(0, now - at));
-  const kindOf = (mobs: number | null, blocks: number | null): AfkKind | undefined =>
-    mobs !== null && moveMobs !== null && mobs - moveMobs >= AFK_FARM_MIN ? "mobs" : blocks !== null && moveBlocks !== null && blocks - moveBlocks >= AFK_FARM_MIN ? "blocks" : undefined;
+  // Zählerstände der laufenden Stillstandsphase (ab der letzten Bewegung), Grundlage der Farm-Abschnitte
+  let pts: { t: number; mobs: number | null; blocks: number | null }[] = [];
   const close = (id: string, t: number, byLeave = false, mobs = lastMobs, blocks = lastBlocks) => {
     if (!(wasOnline && lastDist !== null && t - lastMove >= AFK_MS)) return;
-    const kind = kindOf(mobs, blocks);
-    if (!kind) return add(id, lastMove, t, undefined);
-    const m = gained(mobs, moveMobs);
-    const b = gained(blocks, moveBlocks);
-    const value = kind === "mobs" ? m : b;
-    add(id, lastMove, t, kind, { at: farmAt?.at ?? t, atValue: farmAt?.value ?? value, value, mobs: m, blocks: b, byLeave });
+    const list = pts.filter((p) => p.t < t);
+    list.push({ t, mobs, blocks });
+    // Jede Minute ab Beginn der Phase einzeln bewerten und gleiche Arten zusammenfassen
+    const mobsAt = counterAt(list, "mobs");
+    const blocksAt = counterAt(list, "blocks");
+    type Seg = { a: number; b: number; kind: AfkKind | undefined; m: number; bl: number; first: number; firstMs: number };
+    const segs: Seg[] = [];
+    let m0 = mobsAt(lastMove);
+    let b0 = blocksAt(lastMove);
+    for (let x = lastMove; x < t; x += AFK_FARM_WINDOW_MS) {
+      const y = Math.min(t, x + AFK_FARM_WINDOW_MS);
+      const ms = y - x;
+      const m1 = mobsAt(y);
+      const b1 = blocksAt(y);
+      const m = Math.max(0, m1 - m0);
+      const bl = Math.max(0, b1 - b0);
+      m0 = m1;
+      b0 = b1;
+      const last = segs[segs.length - 1];
+      // Angebrochene Schlussminute (z. B. das Stück bis „jetzt“) sagt über die Rate kaum etwas: Art vom Vorgänger
+      const kind = ms < AFK_FARM_WINDOW_MS && last ? last.kind : (farmKindOf(m, bl, ms) ?? undefined);
+      if (last && last.kind === kind) {
+        last.b = y;
+        last.m += m;
+        last.bl += bl;
+      } else {
+        segs.push({ a: x, b: y, kind, m, bl, first: kind === "mobs" ? m : bl, firstMs: ms });
+      }
+    }
+    if (segs.length === 0) return add(id, lastMove, t, undefined);
+    segs.forEach((s, i) => {
+      if (!s.kind) return add(id, s.a, s.b, undefined);
+      const lastSeg = i === segs.length - 1;
+      add(id, s.a, s.b, s.kind, {
+        at: s.a,
+        atValue: s.first,
+        windowSeconds: Math.round(s.firstMs / 1000),
+        value: s.kind === "mobs" ? s.m : s.bl,
+        mobs: s.m,
+        blocks: s.bl,
+        afkSince: lastMove,
+        byLeave: byLeave && lastSeg,
+        stillAfk: !lastSeg,
+      });
+    });
   };
   const finish = (id: string) => {
     const p = state.players[id];
@@ -223,9 +291,7 @@ function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, stat
   const restart = (t: number, d: number | null) => {
     lastMove = t;
     lastDist = d;
-    moveMobs = lastMobs;
-    moveBlocks = lastBlocks;
-    farmAt = null;
+    pts = [{ t, mobs: lastMobs, blocks: lastBlocks }];
   };
   let lastAt = 0;
   for (const r of rows) {
@@ -274,10 +340,9 @@ function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, stat
       // (Sonst würde jede Tracker-Pause ≥ AFK_MS, z. B. ein Deploy, bei laufenden Spielern eine AFK-Phase erzeugen.)
       close(cur, prevAt, false, prevMobs, prevBlocks);
       restart(t, d);
-    } else if (farmAt === null && lastDist !== null && t - lastMove >= AFK_MS) {
-      // Steht weiter still: Farm-Schwelle erstmals erreicht? (Zeitpunkt für das Start-Ereignis der AFK-Farm)
-      const k = kindOf(lastMobs, lastBlocks);
-      if (k) farmAt = { at: t, value: k === "mobs" ? gained(lastMobs, moveMobs) : gained(lastBlocks, moveBlocks) };
+    } else if (r.mobs !== null && r.blocks !== null) {
+      // Steht weiter still: Zählerstand für die Farm-Abschnitte merken (Punkte ohne Zähler verlängern nur den Abschnitt)
+      pts.push({ t, mobs: lastMobs, blocks: lastBlocks });
     }
     if (d !== null) lastDist = d;
   }

@@ -36,26 +36,42 @@ const COUNTER_EVENTS: Partial<Record<BoardKey, EventType>> = {
 
 /** Ab wann ein Spieler ohne Streckenzuwachs als AFK gilt */
 export const AFK_MS = Number(process.env.CA_AFK_MINUTES ?? 5) * 60_000;
-/** Ab so vielen Mobs bzw. Blöcken innerhalb einer AFK-Phase gilt sie als AFK-Farm */
+/** Ab so vielen Mobs bzw. Blöcken pro Minute (während AFK) gilt ein Abschnitt als AFK-Farm */
 export const AFK_FARM_MIN = Number(process.env.CA_AFK_FARM_MIN ?? 10);
+/** Mindestlänge eines Prüffensters für die Farm-Rate (kürzer wäre bei 30-s-Polls zu zufällig) */
+export const AFK_FARM_WINDOW_MS = 60_000;
 
+/** Farm-Art eines Zeitabschnitts: mindestens AFK_FARM_MIN Mobs bzw. Blöcke pro Minute (Mobs haben Vorrang) */
+export function farmKindOf(mobs: number, blocks: number, ms: number): AfkKind | null {
+  const need = (AFK_FARM_MIN * ms) / 60_000;
+  return mobs > 0 && mobs >= need ? "mobs" : blocks > 0 && blocks >= need ? "blocks" : null;
+}
+
+const gainedSince = (now: number | undefined, at: number | null | undefined) => (now === undefined || at === null || at === undefined ? 0 : Math.max(0, now - at));
 /** Was der Spieler seit Beginn der laufenden AFK-Phase trotzdem gemacht hat */
 function afkFarmDelta(ps: PlayerState): { mobs: number; blocks: number } {
-  const d = (now: number | undefined, at: number | null | undefined) => (now === undefined || at === null || at === undefined ? 0 : Math.max(0, now - at));
-  return { mobs: d(ps.stats.mobsKilled, ps.afkMobsAt), blocks: d(ps.stats.blocksBroken, ps.afkBlocksAt) };
+  return { mobs: gainedSince(ps.stats.mobsKilled, ps.afkMobsAt), blocks: gainedSince(ps.stats.blocksBroken, ps.afkBlocksAt) };
 }
-/** Ende einer AFK-Farm (mit der AFK-Phase): eigenes Ereignis je Art, mit Dauer und gefarmter Menge */
-function farmEndEvent(ps: PlayerState, afkSeconds: number, byLeave: boolean): Omit<TrackerEvent, "id" | "at"> | null {
+/** Neues Prüffenster ab jetzt mit den aktuellen Zählern (Farm-Beginn bleibt erhalten) */
+function checkWindow(ps: PlayerState, now: string): NonNullable<PlayerState["afkCheck"]> {
+  return { at: now, mobs: ps.stats.mobsKilled ?? null, blocks: ps.stats.blocksBroken ?? null, farmSince: ps.afkCheck?.farmSince ?? null, farmAt: ps.afkCheck?.farmAt ?? null };
+}
+/** Ende einer AFK-Farm: eigenes Ereignis je Art, mit Dauer und gefarmter Menge der Farm (nicht der ganzen AFK-Phase) */
+function farmEndEvent(ps: PlayerState, endMs: number, byLeave: boolean, stillAfk = false): Omit<TrackerEvent, "id" | "at"> | null {
   if (!ps.afkFarm) return null;
-  const farm = afkFarmDelta(ps);
+  const since = ps.afkCheck?.farmSince ?? ps.afkSince;
+  const cur = ps.afkFarm === "mobs" ? ps.stats.mobsKilled : ps.stats.blocksBroken;
+  const start = ps.afkCheck?.farmAt ?? (ps.afkFarm === "mobs" ? ps.afkMobsAt : ps.afkBlocksAt);
+  const value = gainedSince(cur, start);
+  const seconds = since ? Math.max(0, Math.round((endMs - Date.parse(since)) / 1000)) : 0;
   return {
     type: ps.afkFarm === "mobs" ? "afk_mobs_end" : "afk_blocks_end",
     player: ps.id,
     playerName: ps.name,
     uuid: ps.uuid,
     where: "server",
-    value: ps.afkFarm === "mobs" ? farm.mobs : farm.blocks,
-    meta: { kind: ps.afkFarm, afkSeconds, since: ps.afkSince, byLeave, ...farm },
+    value,
+    meta: { kind: ps.afkFarm, afkSeconds: seconds, since, afkSince: ps.afkSince, byLeave, ...(stillAfk ? { stillAfk: true } : {}), [ps.afkFarm]: value },
   };
 }
 function endAfk(ps: PlayerState) {
@@ -63,6 +79,7 @@ function endAfk(ps: PlayerState) {
   ps.afkFarm = null;
   ps.afkMobsAt = null;
   ps.afkBlocksAt = null;
+  ps.afkCheck = null;
 }
 
 /** Wartezeit, bevor nicht zuordenbare Tode als „unbekannt“ gemeldet werden */
@@ -239,6 +256,7 @@ function ensurePlayer(
       afkFarm: null,
       afkMobsAt: null,
       afkBlocksAt: null,
+      afkCheck: null,
       ranks: {},
       twitchLogin: null,
     };
@@ -317,7 +335,7 @@ export function diffSnapshot(
       if (ps.afkSince) {
         const afk = Math.max(0, Math.round((nowDate.getTime() - Date.parse(ps.afkSince)) / 1000));
         ps.afkSeconds = (ps.afkSeconds ?? 0) + sinceLast;
-        const farmEnd = farmEndEvent(ps, afk, true);
+        const farmEnd = farmEndEvent(ps, nowDate.getTime(), true);
         if (farmEnd) push(farmEnd);
         push({ type: "afk_end", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { afkSeconds: afk, since: ps.afkSince, byLeave: true, farm: ps.afkFarm, ...afkFarmDelta(ps) } });
         endAfk(ps);
@@ -544,16 +562,42 @@ export function diffSnapshot(
         if (idle < AFK_MS) {
           // Bewegung: AFK-Phase ist vorbei
           const afk = Math.max(0, Math.round((nowDate.getTime() - Date.parse(ps.afkSince)) / 1000));
-          const farmEnd = farmEndEvent(ps, afk, false);
+          const farmEnd = farmEndEvent(ps, nowDate.getTime(), false);
           if (farmEnd) push(farmEnd);
           push({ type: "afk_end", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { afkSeconds: afk, since: ps.afkSince, farm: ps.afkFarm, ...farm } });
           endAfk(ps);
-        } else if (!ps.afkFarm) {
-          // Steht still, aber Mobs/Blöcke steigen: AFK-Farm (die erste erreichte Schwelle zählt)
-          const kind: AfkKind | null = farm.mobs >= AFK_FARM_MIN ? "mobs" : farm.blocks >= AFK_FARM_MIN ? "blocks" : null;
-          if (kind) {
-            ps.afkFarm = kind;
-            push({ type: kind === "mobs" ? "afk_mobs_start" : "afk_blocks_start", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", value: kind === "mobs" ? farm.mobs : farm.blocks, meta: { kind, since: ps.afkSince, ...farm } });
+        } else {
+          // Steht still: Farm-Rate fensterweise prüfen. Nur Abschnitte mit ≥ AFK_FARM_MIN pro Minute sind Farm,
+          // der Rest der Phase ist normales AFK (ohne neues AFK-Start-Ereignis).
+          const check = ps.afkCheck ?? (ps.afkCheck = checkWindow(ps, now));
+          const windowMs = nowDate.getTime() - Date.parse(check.at);
+          const fresh = freshStats.get(ps.id);
+          // Ohne frische Zähler würde die Rate zu niedrig ausfallen: Fenster einfach weiterlaufen lassen
+          if (windowMs >= AFK_FARM_WINDOW_MS && fresh?.has("mobsKilled") && fresh.has("blocksBroken")) {
+            const m = gainedSince(ps.stats.mobsKilled, check.mobs);
+            const b = gainedSince(ps.stats.blocksBroken, check.blocks);
+            const kind = farmKindOf(m, b, windowMs);
+            if (kind !== ps.afkFarm) {
+              // Die alte Farm endete mit Beginn dieses Fensters (dort fiel die Rate unter die Schwelle)
+              const farmEnd = farmEndEvent(ps, Date.parse(check.at), false, true);
+              if (farmEnd) push(farmEnd);
+              ps.afkFarm = kind;
+              check.farmSince = kind ? check.at : null;
+              check.farmAt = kind ? (kind === "mobs" ? check.mobs : check.blocks) : null;
+              if (kind) {
+                const value = kind === "mobs" ? m : b;
+                push({
+                  type: kind === "mobs" ? "afk_mobs_start" : "afk_blocks_start",
+                  player: ps.id,
+                  playerName: ps.name,
+                  uuid: ps.uuid,
+                  where: "server",
+                  value,
+                  meta: { kind, since: check.at, afkSince: ps.afkSince, windowSeconds: Math.round(windowMs / 1000), [kind]: value },
+                });
+              }
+            }
+            ps.afkCheck = checkWindow(ps, now);
           }
         }
       } else if (idle >= AFK_MS) {
@@ -563,6 +607,8 @@ export function diffSnapshot(
         ps.afkFarm = null;
         ps.afkMobsAt = ps.stats.mobsKilled ?? null;
         ps.afkBlocksAt = ps.stats.blocksBroken ?? null;
+        ps.afkCheck = null; // erst leeren, damit kein alter Farm-Beginn übernommen wird
+        ps.afkCheck = checkWindow(ps, now);
         push({ type: "afk_start", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { since: ps.afkSince } });
       }
     }

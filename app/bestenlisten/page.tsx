@@ -22,8 +22,8 @@ const BOARDS: Record<BoardKey | "twitchSubs" | "tracked" | "afk" | "afkmobs" | "
   twitchSubs: { title: "Sub-Stars", sub: "Twitch-Abos auf dem Server seit Beginn der IRC-Erfassung", tone: "amethyst" },
   tracked: { title: "Dauergäste", sub: "Online-Zeit laut Tracker, alle Spieler", tone: "lava" },
   afk: { title: "Standbilder", sub: "AFK-Zeit laut Tracker: online, aber ≥ 5 Min keine Bewegung", tone: "gold" },
-  afkmobs: { title: "Mob-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Mobs gestorben sind (AFK-Mobfarm)", tone: "gold" },
-  afkblocks: { title: "Block-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke abgebaut wurden (AFK-Blockfarm)", tone: "gold" },
+  afkmobs: { title: "Mob-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Mobs pro Minute gestorben sind (AFK-Mobfarm)", tone: "gold" },
+  afkblocks: { title: "Block-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke pro Minute abgebaut wurden (AFK-Blockfarm)", tone: "gold" },
 };
 const KEYS = [...BOARD_KEYS, "twitchSubs", "tracked", "afk", "afkmobs", "afkblocks"] as const;
 const AFK_KEYS = ["afk", "afkmobs", "afkblocks"] as const;

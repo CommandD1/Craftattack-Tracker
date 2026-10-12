@@ -2,7 +2,7 @@ import "server-only";
 import { connection } from "next/server";
 import { getDb, type Db } from "./db";
 import { playtimeOf } from "./playtime";
-import type { BoardKey, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind } from "./types";
+import type { BoardKey, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind, AfkCheck } from "./types";
 
 const MAX_EVENTS_IN_MEMORY = 20000;
 const MAX_HISTORY_POINTS = 2880; // 24 h bei 30 s
@@ -89,6 +89,7 @@ interface PlayerRow {
   afk_farm: AfkKind | null;
   afk_mobs_at: number | null;
   afk_blocks_at: number | null;
+  afk_check: AfkCheck | null;
   playtime_tracked: number | null;
 }
 
@@ -142,6 +143,7 @@ function rowToPlayer(r: PlayerRow): PlayerState {
     afkFarm: r.afk_farm ?? null,
     afkMobsAt: r.afk_mobs_at ?? null,
     afkBlocksAt: r.afk_blocks_at ?? null,
+    afkCheck: r.afk_check ?? null,
   };
 }
 
@@ -291,8 +293,8 @@ export async function saveState(state: TrackerState) {
       `INSERT INTO players (id, name, uuid, online, live, stats, first_seen, last_seen, session_start,
                             tracked_seconds, sessions, live_since, peak_viewers, longest_session, ranks, twitch_login,
                             peak_viewers_on_server, stream_on_server_seconds, stream_off_server_seconds,
-                            last_move_at, afk_since, afk_seconds, afk_farm, afk_mobs_at, afk_blocks_at, playtime_tracked)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+                            last_move_at, afk_since, afk_seconds, afk_farm, afk_mobs_at, afk_blocks_at, playtime_tracked, afk_check)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name, uuid = EXCLUDED.uuid, online = EXCLUDED.online, live = EXCLUDED.live,
          stats = EXCLUDED.stats, first_seen = EXCLUDED.first_seen, last_seen = EXCLUDED.last_seen,
@@ -303,7 +305,7 @@ export async function saveState(state: TrackerState) {
          stream_on_server_seconds = EXCLUDED.stream_on_server_seconds, stream_off_server_seconds = EXCLUDED.stream_off_server_seconds,
          last_move_at = EXCLUDED.last_move_at, afk_since = EXCLUDED.afk_since, afk_seconds = EXCLUDED.afk_seconds,
          afk_farm = EXCLUDED.afk_farm, afk_mobs_at = EXCLUDED.afk_mobs_at, afk_blocks_at = EXCLUDED.afk_blocks_at,
-         playtime_tracked = EXCLUDED.playtime_tracked`,
+         playtime_tracked = EXCLUDED.playtime_tracked, afk_check = EXCLUDED.afk_check`,
       [
         p.id,
         p.name,
@@ -331,6 +333,7 @@ export async function saveState(state: TrackerState) {
         p.afkMobsAt ?? null,
         p.afkBlocksAt ?? null,
         p.playtimeTracked === null || p.playtimeTracked === undefined ? null : Math.round(p.playtimeTracked),
+        p.afkCheck ? JSON.stringify(p.afkCheck) : null,
       ],
     );
   }
@@ -597,6 +600,22 @@ export async function deleteBackfilledEvents(): Promise<number> {
     if (store.state) store.state.eventCount = Math.max(0, store.state.eventCount - gone);
   }
   return gone;
+}
+
+/** Löscht alle Ereignisse der genannten Typen außer den IDs in `keep` – in DB und Speicher. */
+export async function deleteEvents(types: string[], keep: string[] = []): Promise<number> {
+  await ensureLoaded();
+  const store = g();
+  const db = await getDb();
+  const ids = (
+    await db.query<{ id: string }>(`DELETE FROM events WHERE type = ANY($1::text[]) AND NOT (id = ANY($2::text[])) RETURNING id`, [types, keep])
+  ).rows.map((r) => r.id);
+  if (ids.length > 0) {
+    const gone = new Set(ids);
+    store.events = store.events.filter((e) => !gone.has(e.id));
+    if (store.state) store.state.eventCount = Math.max(0, store.state.eventCount - ids.length);
+  }
+  return ids.length;
 }
 
 /** Ordnet ein bisher spielerloses Ereignis (z. B. unbekannter Tod) nachträglich einem Spieler zu – in DB und Speicher. */

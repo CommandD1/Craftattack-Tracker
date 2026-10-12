@@ -199,7 +199,7 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
           </ol>
         </Card>
 
-        <Card title="AFK-Farmen" sub="AFK-Phasen, in denen trotzdem Mobs starben oder Blöcke fielen (ab zehn Stück) – wer steht am längsten an der Farm?" tone="white">
+        <Card title="AFK-Farmen" sub="AFK-Zeit, in der trotzdem Mobs starben oder Blöcke fielen (ab zehn pro Minute) – wer steht am längsten an der Farm?" tone="white">
           <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
             {(["mobs", "blocks"] as const).map((kind) => (
               <div key={kind}>
