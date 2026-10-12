@@ -7,6 +7,9 @@ import type { PlayerState, TrackerEvent } from "./types";
 const IRC_URL = "wss://irc-ws.chat.twitch.tv:443";
 const SYNC_INTERVAL_MS = 30_000;
 const RECONNECT_DELAY_MS = 5_000;
+const JOIN_INTERVAL_MS = 500;
+const JOIN_WINDOW_MS = 10_000;
+const MAX_JOINS_PER_WINDOW = 20;
 const MAX_SEEN_IDS = 10_000;
 const SUB_NOTICE_TYPES: Record<string, string> = {
   sub: "Neues Abo",
@@ -79,10 +82,11 @@ interface IrcState {
   desired: Map<string, ChannelOwner>;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   syncTimer: ReturnType<typeof setInterval> | null;
+  joinTimer: ReturnType<typeof setTimeout> | null;
+  joinTimes: number[];
   processing: Promise<void>;
   seenIds: Set<string>;
   seenOrder: string[];
-  warnedChannelCount: number;
 }
 
 type Globals = typeof globalThis & { __acTwitchIrc?: IrcState };
@@ -97,10 +101,11 @@ function state(): IrcState {
       desired: new Map(),
       reconnectTimer: null,
       syncTimer: null,
+      joinTimer: null,
+      joinTimes: [],
       processing: Promise.resolve(),
       seenIds: new Set(),
       seenOrder: [],
-      warnedChannelCount: 0,
     };
   }
   return gl.__acTwitchIrc;
@@ -152,25 +157,50 @@ function mappedChannels(players: Record<string, PlayerState>): Map<string, Chann
   return channels;
 }
 
-function reconcileChannels(irc: IrcState) {
-  const credentials = ircCredentials();
-  const maxChannels = credentials.nick ? 100 : 20;
-  const candidates = [...irc.desired.keys()];
-  const selected = new Set(candidates.slice(0, maxChannels));
-  if (candidates.length > maxChannels && irc.warnedChannelCount !== candidates.length) {
-    console.warn(`[twitch-irc] ${candidates.length} Kanäle bekannt, aber nur ${maxChannels} abonnierbar; OAuth erhöht das Limit.`);
-    irc.warnedChannelCount = candidates.length;
-  }
+export function nextJoinDelay(joinTimes: number[], now: number): number {
+  while (joinTimes.length > 0 && joinTimes[0] <= now - JOIN_WINDOW_MS) joinTimes.shift();
+  const windowDelay = joinTimes.length >= MAX_JOINS_PER_WINDOW
+    ? joinTimes[0] + JOIN_WINDOW_MS - now
+    : 0;
+  const spacingDelay = joinTimes.length > 0
+    ? Math.max(0, joinTimes[joinTimes.length - 1] + JOIN_INTERVAL_MS - now)
+    : 0;
+  return Math.max(windowDelay, spacingDelay);
+}
+
+function pumpJoins(irc: IrcState) {
   const socket = irc.socket;
-  if (!socket || !irc.registered || socket.readyState !== WebSocket.OPEN) return;
+  if (!socket || !irc.registered || socket.readyState !== WebSocket.OPEN || irc.joinTimer) return;
 
   for (const channel of irc.joined) {
-    if (!selected.has(channel)) socket.send(`PART #${channel}\r\n`);
+    if (!irc.desired.has(channel)) {
+      socket.send(`PART #${channel}\r\n`);
+      irc.joined.delete(channel);
+    }
   }
-  for (const channel of selected) {
-    if (!irc.joined.has(channel)) socket.send(`JOIN #${channel}\r\n`);
+  const channel = [...irc.desired.keys()].find((candidate) => !irc.joined.has(candidate));
+  if (!channel) return;
+
+  const delay = nextJoinDelay(irc.joinTimes, Date.now());
+  if (delay > 0) {
+    irc.joinTimer = setTimeout(() => {
+      irc.joinTimer = null;
+      pumpJoins(irc);
+    }, delay);
+    return;
   }
-  irc.joined = selected;
+
+  socket.send(`JOIN #${channel}\r\n`);
+  irc.joined.add(channel);
+  irc.joinTimes.push(Date.now());
+  irc.joinTimer = setTimeout(() => {
+    irc.joinTimer = null;
+    pumpJoins(irc);
+  }, JOIN_INTERVAL_MS);
+}
+
+function reconcileChannels(irc: IrcState) {
+  pumpJoins(irc);
 }
 
 function scheduleReconnect(irc: IrcState) {
@@ -212,6 +242,8 @@ function connect(irc: IrcState) {
       if (irc.socket === socket) irc.socket = null;
       irc.registered = false;
       irc.joined.clear();
+      if (irc.joinTimer) clearTimeout(irc.joinTimer);
+      irc.joinTimer = null;
       scheduleReconnect(irc);
     });
     socket.addEventListener("error", () => {
