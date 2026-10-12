@@ -100,6 +100,20 @@ export type EventType =
 /** Was ein Spieler während einer AFK-Phase trotzdem tut: Mobs farmen oder Blöcke abbauen */
 export type AfkKind = "mobs" | "blocks";
 
+/**
+ * Laufende Farm-Prüfung einer AFK-Phase: Die Rate wird fensterweise (≥ 1 Minute) gemessen. Nur wer in jedem
+ * Fenster mindestens AFK_FARM_MIN Mobs bzw. Blöcke pro Minute schafft, farmt; sonst ist es normales AFK.
+ */
+export interface AfkCheck {
+  /** Beginn des laufenden Prüffensters (ISO) und Zählerstände zu diesem Zeitpunkt */
+  at: string;
+  mobs: number | null;
+  blocks: number | null;
+  /** Beginn der laufenden Farm (ISO) und Zählerstand ihrer Art zu diesem Zeitpunkt; null = keine Farm */
+  farmSince: string | null;
+  farmAt: number | null;
+}
+
 export interface TrackerEvent {
   id: string;
   at: string; // ISO
@@ -162,11 +176,13 @@ export interface PlayerState {
   afkSince: string | null;
   /** Vom Tracker gemessene AFK-Zeit in Sekunden (zählt zur Online-Zeit dazu, wird nicht abgezogen) */
   afkSeconds: number;
-  /** Laufende AFK-Phase ist eine Farm: Mobs oder Blöcke seit AFK-Beginn ≥ Schwelle */
+  /** Spieler farmt gerade (innerhalb der AFK-Phase): Mobs oder Blöcke, mindestens AFK_FARM_MIN pro Minute */
   afkFarm: AfkKind | null;
-  /** Mobs/Blöcke-Zähler zu Beginn der laufenden AFK-Phase (für die Farm-Erkennung) */
+  /** Mobs/Blöcke-Zähler zu Beginn der laufenden AFK-Phase */
   afkMobsAt: number | null;
   afkBlocksAt: number | null;
+  /** Laufende Farm-Prüfung (Fenster und Farm-Beginn); null = keine AFK-Phase */
+  afkCheck: AfkCheck | null;
 }
 
 export interface RecordValue {

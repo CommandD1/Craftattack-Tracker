@@ -302,7 +302,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                     {afkSeconds > 0 ? duration(afkSeconds) : "–"}
                     {afkSeconds > 0 && onlineSeconds > 0 && <small className="muted"> {Math.round((afkSeconds / onlineSeconds) * 100)} %</small>}
                   </dd>
-                  <dt title="AFK-Phasen, in denen trotzdem mindestens zehn Mobs starben bzw. zehn Blöcke fielen">AFK-Farmen</dt>
+                  <dt title="AFK-Zeit, in der trotzdem mindestens zehn Mobs bzw. zehn Blöcke pro Minute fielen">AFK-Farmen</dt>
                   <dd className="num">
                     {afkFarm.mobs > 0 || afkFarm.blocks > 0 ? [afkFarm.mobs > 0 ? `Mobs ${duration(afkFarm.mobs)}` : null, afkFarm.blocks > 0 ? `Blöcke ${duration(afkFarm.blocks)}` : null].filter(Boolean).join(" · ") : "–"}
                   </dd>

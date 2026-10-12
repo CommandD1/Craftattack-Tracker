@@ -12,13 +12,16 @@ export interface EventMeta {
 const berlinTime = (iso: string) => new Date(iso).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 function farmStartSub(e: TrackerEvent, what: string): string | null {
   const n = Number(e.value ?? 0);
-  const since = typeof e.meta?.since === "string" ? berlinTime(e.meta.since) : null;
-  return [n > 0 ? `${num(n)} ${what} ohne Bewegung` : null, since ? `AFK seit ${since} Uhr` : null].filter(Boolean).join(" · ") || null;
+  // Neuere Ereignisse: since = Farm-Beginn, afkSince = Beginn der AFK-Phase; ältere hatten nur since (= AFK-Beginn)
+  const afk = typeof e.meta?.afkSince === "string" ? e.meta.afkSince : typeof e.meta?.since === "string" ? e.meta.since : null;
+  const win = Number(e.meta?.windowSeconds ?? 0);
+  const amount = n > 0 ? (win > 0 ? `${num(n)} ${what} in ${duration(win)}` : `${num(n)} ${what} ohne Bewegung`) : null;
+  return [amount, afk ? `AFK seit ${berlinTime(afk)} Uhr` : null].filter(Boolean).join(" · ") || null;
 }
 function farmEndSub(e: TrackerEvent, what: string): string | null {
   const s = Number(e.meta?.afkSeconds ?? 0);
   const n = Number(e.value ?? 0);
-  return [s > 0 ? `AFK ${duration(s)}` : null, n > 0 ? `${num(n)} ${what}` : null].filter(Boolean).join(" · ") || null;
+  return [s > 0 ? `Farm ${duration(s)}` : null, n > 0 ? `${num(n)} ${what}` : null].filter(Boolean).join(" · ") || null;
 }
 
 export const EVENT_META: Record<EventType, EventMeta> = {
@@ -38,7 +41,7 @@ export const EVENT_META: Record<EventType, EventMeta> = {
   afk_mobs_end: {
     label: "Mob-Farm Ende",
     tone: "redstone",
-    text: (e) => (e.meta?.byLeave ? "hat die Mob-Farm bis zum Leave laufen lassen" : "ist von der Mob-Farm zurück"),
+    text: (e) => (e.meta?.byLeave ? "hat die Mob-Farm bis zum Leave laufen lassen" : e.meta?.stillAfk ? "farmt keine Mobs mehr, bleibt aber AFK" : "ist von der Mob-Farm zurück"),
     sub: (e) => farmEndSub(e, "Mobs"),
   },
   afk_blocks_start: {
@@ -50,17 +53,17 @@ export const EVENT_META: Record<EventType, EventMeta> = {
   afk_blocks_end: {
     label: "Block-Farm Ende",
     tone: "diamond",
-    text: (e) => (e.meta?.byLeave ? "hat die Block-Farm bis zum Leave laufen lassen" : "ist von der Block-Farm zurück"),
+    text: (e) => (e.meta?.byLeave ? "hat die Block-Farm bis zum Leave laufen lassen" : e.meta?.stillAfk ? "baut keine Blöcke mehr ab, bleibt aber AFK" : "ist von der Block-Farm zurück"),
     sub: (e) => farmEndSub(e, "Blöcke"),
   },
   afk_end: {
     label: "Zurück",
     tone: "grass",
     text: (e) => (e.meta?.byLeave ? "war bis zum Leave AFK" : "ist wieder da"),
+    // Keine Farm-Menge über die ganze Phase: die steht minutengenau in den Farm-Ende-Ereignissen
     sub: (e) => {
       const s = Number(e.meta?.afkSeconds ?? 0);
-      const farm = e.meta?.farm === "mobs" ? `dabei ${num(Number(e.meta.mobs ?? 0))} Mobs gefarmt` : e.meta?.farm === "blocks" ? `dabei ${num(Number(e.meta.blocks ?? 0))} Blöcke abgebaut` : null;
-      return s > 0 ? `AFK: ${duration(s)}${farm ? ` · ${farm}` : ""}` : null;
+      return s > 0 ? `AFK: ${duration(s)}` : null;
     },
   },
   leave: {

@@ -1,6 +1,6 @@
 import "server-only";
 import { getDb } from "./db";
-import { assignEventPlayer, deleteBackfilledEvents, ensureLoaded, getAllSessions, getState, insertPastEvents, type StoredSession } from "./store";
+import { assignEventPlayer, deleteBackfilledEvents, deleteEvents, ensureLoaded, getAllSessions, getState, insertPastEvents, type StoredSession } from "./store";
 import { loadAfkSpans } from "./analytics";
 import { UNKNOWN_DEATH_GRACE_MS } from "./tracker";
 import { trackedSecondsOf } from "./playtime";
@@ -13,8 +13,11 @@ const END_SLACK_MS = 10 * 60_000;
 
 const FARM_TYPES: EventType[] = ["afk_mobs_start", "afk_mobs_end", "afk_blocks_start", "afk_blocks_end"];
 
-/** Aktuelle Stufe der einmaligen Verlaufs-Korrekturen (tracker_meta.history_fix) */
-const HISTORY_FIX_LEVEL = 1;
+/**
+ * Aktuelle Stufe der einmaligen Verlaufs-Korrekturen (tracker_meta.history_fix):
+ * 1 = Zähler ohne ext und Spielzeit korrigiert, 2 = AFK-Farm-Ereignisse nach Minuten-Rate neu bewertet
+ */
+const HISTORY_FIX_LEVEL = 2;
 
 /** Alle Nachträge beim Prozessstart, in der richtigen Reihenfolge. */
 export async function runBackfills(): Promise<void> {
@@ -91,7 +94,32 @@ export async function fixHistoryOnce(): Promise<void> {
   await ensureLoaded();
   const db = await getDb();
   const meta = (await db.query<{ history_fix: number }>(`SELECT history_fix FROM tracker_meta WHERE id = 1`)).rows[0];
-  if ((meta?.history_fix ?? 0) >= HISTORY_FIX_LEVEL) return;
+  const level = meta?.history_fix ?? 0;
+  if (level >= HISTORY_FIX_LEVEL) return;
+  if (level < 1) await fixCountersAndPlaytime();
+  if (level < 2) {
+    const gone = await deleteFarmEventsForRescan();
+    console.log(`[tracker] ${gone} AFK-Farm-Ereignisse verworfen, sie werden nach Minuten-Rate neu nachgetragen`);
+  }
+  await db.query(`UPDATE tracker_meta SET history_fix = $1 WHERE id = 1`, [HISTORY_FIX_LEVEL]);
+}
+
+/**
+ * Bis 12.10.2026 galt eine ganze AFK-Phase als Farm, sobald darin insgesamt zehn Mobs bzw. Blöcke anfielen.
+ * Alle Farm-Ereignisse (live und nachgetragen) werden deshalb verworfen und vom Nachtrag minutengenau aus dem
+ * Verlauf neu erzeugt. Laufende AFK-Phasen bewertet der Live-Tracker ab jetzt neu (Farm-Status zurückgesetzt).
+ */
+async function deleteFarmEventsForRescan(): Promise<number> {
+  const state = await getState();
+  for (const p of Object.values(state.players)) {
+    p.afkFarm = null;
+    p.afkCheck = null;
+  }
+  return deleteEvents(FARM_TYPES);
+}
+
+async function fixCountersAndPlaytime(): Promise<void> {
+  const db = await getDb();
 
   // 1) Zähler von Spielern ohne ext
   const nulled = (
@@ -162,7 +190,6 @@ export async function fixHistoryOnce(): Promise<void> {
   }
 
   const gone = await deleteBackfilledEvents();
-  await db.query(`UPDATE tracker_meta SET history_fix = $1 WHERE id = 1`, [HISTORY_FIX_LEVEL]);
   console.log(`[tracker] Verlauf korrigiert: ${nulled} Punkte ohne ext-Daten bereinigt, ${fixed} Spielzeitwerte geschätzt, ${gone} alte Nachträge verworfen`);
 }
 
@@ -198,6 +225,7 @@ export async function backfillAfkFarmEvents(): Promise<number> {
       const endType: EventType = kind === "mobs" ? "afk_mobs_end" : "afk_blocks_end";
       const base = { player: id, playerName: p?.name ?? id, uuid: p?.uuid ?? "", where: "server" as const };
       const since = new Date(a).toISOString();
+      const afkSince = new Date(farm.afkSince).toISOString();
       const key = `${id}-${a.toString(36)}`;
       if (!has(id, startType, a, b)) {
         events.push({
@@ -206,7 +234,7 @@ export async function backfillAfkFarmEvents(): Promise<number> {
           type: startType,
           ...base,
           value: farm.atValue,
-          meta: { kind, since, [kind]: farm.atValue, backfilled: true },
+          meta: { kind, since, afkSince, windowSeconds: farm.windowSeconds, [kind]: farm.atValue, backfilled: true },
         });
       }
       if (!has(id, endType, a, b + END_SLACK_MS)) {
@@ -216,7 +244,16 @@ export async function backfillAfkFarmEvents(): Promise<number> {
           type: endType,
           ...base,
           value: farm.value,
-          meta: { kind, afkSeconds: Math.round((b - a) / 1000), since, byLeave: farm.byLeave, mobs: farm.mobs, blocks: farm.blocks, backfilled: true },
+          meta: {
+            kind,
+            afkSeconds: Math.round((b - a) / 1000),
+            since,
+            afkSince,
+            byLeave: farm.byLeave,
+            ...(farm.stillAfk ? { stillAfk: true } : {}),
+            [kind]: farm.value,
+            backfilled: true,
+          },
         });
       }
     }

@@ -17,8 +17,8 @@ const SORTS = [
   { key: "spielzeit", label: "Spielzeit", hint: "Online-Zeit an diesem Tag, inklusive AFK" },
   { key: "aktiv", label: "Aktiv auf dem Server", hint: "Online-Zeit ohne AFK" },
   { key: "afk", label: "AFK-Zeit", hint: "Online, aber mindestens fünf Minuten keine Bewegung" },
-  { key: "afkmobs", label: "AFK Mobs farmen", hint: "AFK-Phasen, in denen trotzdem ≥ 10 Mobs gestorben sind" },
-  { key: "afkblocks", label: "AFK Blöcke farmen", hint: "AFK-Phasen, in denen trotzdem ≥ 10 Blöcke abgebaut wurden" },
+  { key: "afkmobs", label: "AFK Mobs farmen", hint: "AFK-Zeit, in der trotzdem ≥ 10 Mobs pro Minute gestorben sind" },
+  { key: "afkblocks", label: "AFK Blöcke farmen", hint: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke pro Minute abgebaut wurden" },
   { key: "live", label: "Live auf Twitch", hint: "Stream-Dauer an diesem Tag" },
 ] as const;
 type SortKey = (typeof SORTS)[number]["key"];
@@ -109,10 +109,10 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
                 <i className="legend__afk" /> AFK (keine Bewegung ≥ 5 Min)
               </li>
               <li>
-                <i className="legend__afk legend__afk--mobs" /> AFK, farmt Mobs (≥ 10 Mobs)
+                <i className="legend__afk legend__afk--mobs" /> AFK, farmt Mobs (≥ 10 Mobs/Min)
               </li>
               <li>
-                <i className="legend__afk legend__afk--blocks" /> AFK, baut Blöcke ab (≥ 10 Blöcke)
+                <i className="legend__afk legend__afk--blocks" /> AFK, baut Blöcke ab (≥ 10 Blöcke/Min)
               </li>
               <li>
                 <i style={{ background: "var(--twitch)" }} /> live auf Twitch
@@ -180,8 +180,8 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
           </div>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
             Sessions entstehen aus den Join- und Leave-Ereignissen des Trackers, Streams aus den Stream-an/aus-Ereignissen. AFK heißt: online, aber
-            die gelaufene Strecke steigt mindestens fünf Minuten nicht, nur erkennbar bei Spielern mit Einzelstatistik. Sterben dabei trotzdem zehn Mobs oder
-            fallen zehn Blöcke, ist es eine AFK-Farm. Genauigkeit: etwa 30 Sekunden.
+            die gelaufene Strecke steigt mindestens fünf Minuten nicht, nur erkennbar bei Spielern mit Einzelstatistik. Sterben dabei trotzdem mindestens zehn Mobs
+            oder fallen zehn Blöcke pro Minute, ist dieser Teil eine AFK-Farm; sinkt die Rate darunter, ist es wieder normales AFK. Genauigkeit: etwa 30 Sekunden.
           </p>
         </div>
       </section>
