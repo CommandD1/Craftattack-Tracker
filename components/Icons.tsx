@@ -156,6 +156,7 @@ export const EVENT_ICON: Record<EventType, keyof typeof Icon> = {
   stream_title: "tag",
   subscription: "gift",
   subscription_gift: "gift",
+  follower_burst: "users",
   raid: "raid",
   server_online: "server",
   server_offline: "server",

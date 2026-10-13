@@ -46,6 +46,10 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
     live.map((p) => ({ player: p.id, startedAt: p.liveSince ?? p.live?.startedAt ?? null })),
   );
   const liveStreamSubs = live.reduce((total, player) => total + (streamSubs.get(player.id) ?? 0), 0);
+  const liveStreamFollowers = live.reduce(
+    (total, player) => total + (player.followersLiveAtSample === player.liveSince ? (player.followersOnLiveStream ?? 0) : 0),
+    0,
+  );
   const viewersAll = live.reduce((s, p) => s + (p.live?.viewers ?? 0), 0);
   // Zählt global nur, wer dabei auch auf dem Server ist
   const viewers = live.filter((p) => p.online).reduce((s, p) => s + (p.live?.viewers ?? 0), 0);
@@ -101,6 +105,10 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
             <div className="box st-fig" data-tone="amethyst">
               <dt title="Gesammelte Subs in den aktuell laufenden Streams">Subs in aktuellen Livestreams</dt>
               <FigValue>{num(liveStreamSubs)}</FigValue>
+            </div>
+            <div className="box st-fig" data-tone="pink">
+              <dt title="Follower, die während der aktuellen Streams bei Serveranwesenheit dazugekommen sind">Follower-Zuwachs in aktuellen Streams</dt>
+              <FigValue>{num(liveStreamFollowers)}</FigValue>
             </div>
           </dl>
           <Link
@@ -158,16 +166,26 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
                         {p.live!.title}
                       </p>
                       <p className="muted" style={{ fontSize: ".8125rem", marginTop: 4 }}>
-                        Live seit {p.liveSince ? ago(p.liveSince).replace("vor ", "") : "–"} · Peak {num(p.peakViewers)}
+                        Live seit {p.liveSince ? ago(p.liveSince).replace("vor ", "") : "–"}
                       </p>
-                      <p className="muted" style={{ fontSize: ".8125rem", marginTop: 4 }}>
-                        {num(streamSubs.get(p.id) ?? 0)} Subs in diesem Stream
-                      </p>
+                      <div className="stream__stats">
+                        <span className="stream__stat" data-tone="pink">
+                          <strong className="num">
+                            {p.followersLiveAtSample === p.liveSince ? num(p.followersOnLiveStream ?? 0) : "–"}
+                          </strong>
+                          <small>Follower-Zuwachs auf dem Server</small>
+                        </span>
+                        <span className="stream__stat" data-tone="amethyst">
+                          <strong className="num">{num(streamSubs.get(p.id) ?? 0)}</strong>
+                          <small>Subs in diesem Stream</small>
+                        </span>
+                      </div>
                     </div>
                     <p className="stream__viewers num">
                       <span className="dot dot--live" style={{ display: "inline-block", marginRight: 6 }} />
                       {num(p.live!.viewers)}
                       <small>Zuschauer</small>
+                      <small className="stream__peak">Peak {num(p.livePeakViewers ?? p.live!.viewers)}</small>
                     </p>
                   </a>
                 </li>

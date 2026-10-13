@@ -160,6 +160,12 @@ export const EVENT_META: Record<EventType, EventMeta> = {
     text: (e) => `hat ${num(e.delta ?? 0)} Subs von ${e.meta?.giftGiverName ?? "einem anderen Streamer"} geschenkt bekommen`,
     sub: (e) => e.meta?.channel ? `im Stream von ${e.meta.channel}` : null,
   },
+  follower_burst: {
+    label: "Follower-Schub",
+    tone: "pink",
+    text: (e) => `hat ${num(e.delta ?? 0)} Follower in ${duration(Number(e.meta?.windowSeconds ?? 60))} auf dem Server gewonnen (mehr als 20 pro Minute)`,
+    sub: (e) => `Auf dem Server insgesamt ${num(e.value ?? 0)} neue Follower erfasst`,
+  },
   raid: {
     label: "Raid",
     tone: "twitch",
@@ -224,7 +230,7 @@ export const EVENT_GROUPS: { key: string; label: string; tone: string; types: Ev
   { key: "server", label: "Server", tone: "grass", types: ["join", "leave", "afk_start", "afk_mobs_start", "afk_mobs_end", "afk_blocks_start", "afk_blocks_end", "afk_end", "server_online", "server_offline", "tracker_start"] },
   { key: "death", label: "Tode", tone: "redstone", types: ["death"] },
   { key: "loot", label: "Loot & Arbeit", tone: "gold", types: ["diamonds", "blocksBroken", "mobsKilled", "distance"] },
-  { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title", "subscription", "subscription_gift", "raid"] },
+  { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title", "subscription", "subscription_gift", "follower_burst", "raid"] },
   { key: "highlights", label: "Highlights", tone: "amethyst", types: ["first_join", "rank", "milestone", "record"] },
 ];
 
@@ -255,6 +261,8 @@ export function eventBadge(e: TrackerEvent): string | null {
       return `${num(e.value ?? 0)} Subs`;
     case "subscription_gift":
       return `${num(e.delta ?? 0)} Subs`;
+    case "follower_burst":
+      return `+${num(e.delta ?? 0)} Follower`;
     case "raid":
       return e.value !== undefined ? `${num(e.value)} Zuschauer` : null;
     case "stream_end": {
@@ -304,6 +312,7 @@ export const EVENT_TYPES: EventType[] = [
   "stream_end",
   "stream_title",
   "subscription",
+  "follower_burst",
   "raid",
   "rank",
   "milestone",

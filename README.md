@@ -48,6 +48,8 @@ Alle Seiten werden komplett serverseitig gerendert (SSR, `instant = false`), kei
 | Twitch-Abos (inkl. Resubs und Geschenk-Abos; normale Summen ab 10 Subs, Geschenke von bekannten Streamern als Einzelevent; nur wenn der Kanal-Streamer auf dem Spielserver online ist) | Twitch IRC `USERNOTICE` | Twitch |
 | Raids zwischen bekannten Spielern (mit Zuschauerzahl, falls Twitch sie mitsendet) | Twitch IRC `USERNOTICE` | Twitch |
 | Twitch-Subs gesamt, Tagesverlauf und aktuelle Streamsumme | gespeicherte IRC-Abo-Ereignisse | Twitch |
+| Follower-Zuwachs während des Serveraufenthalts und Verlauf | Differenz öffentlicher Twitch-GQL-Followerstände zwischen Messungen, bei denen der Spieler online ist | Twitch + Server |
+| Follower-Schub (mehr als 20 neue Follower pro Minute auf dem Server) | Differenz der Twitch-GQL-Follower-Messungen während aufeinanderfolgender Server-Messungen | Twitch + Server |
 | Server online / offline | `serverOnline` | Server |
 | Erster Auftritt eines Spielers (seit Tracker-Start) | `online[]` | Server |
 | Rang-Aufstieg in die Top 3 einer Bestenliste | Boards | Server |
@@ -65,6 +67,7 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 - `/events` offizielle Termine von craftattack.one (stündlich abgeglichen)
 - `/live` Twitch-Übersicht, Zuschauerkurve und Stream-Chronik
 - `/bestenlisten?liste=twitchSubs` Twitch-Abo-Bestenliste; Profile zeigen Gesamtzahl, Tagesgraph und – wenn live – Subs im aktuellen Stream
+- `/bestenlisten?liste=followers` Bestenliste des Follower-Zuwachses während der Serverzeit; Profile und eigener Graph zeigen den erfassten Verlauf, keine globalen Twitch-Gesamtstände
 - `/api/tracker?limit=200&player=<id>&type=<typ>` JSON-Export, `/api/tracker/poll` löst eine Abfrage manuell aus
 
 ## Konfiguration

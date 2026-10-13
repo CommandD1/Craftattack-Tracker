@@ -8,7 +8,7 @@ import { EventFeed } from "@/components/EventFeed";
 import { BOARD_ICON, Icon } from "@/components/Icons";
 import { FigValue } from "@/components/FigValue";
 import { StatSpark } from "@/components/StatSpark";
-import { getAllSessions, getPlayerHistory, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
+import { getAllSessions, getFullBoard, getPlayerHistory, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
 import { companionsOf, overlapsFor } from "@/lib/overlap";
 import { TwitchEmbed } from "@/components/TwitchEmbed";
 import { PlayerInsights } from "@/components/PlayerInsights";
@@ -115,7 +115,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const { state, events, now } = await loadTracker();
   const p = state.players[id];
   if (!p) notFound();
-  const [history, allSessions, rates, rankHistory, afkSpans, subscriptions, subscriptionBoard] = await Promise.all([
+  const [history, allSessions, rates, rankHistory, afkSpans, subscriptions, subscriptionBoard, followerBoard] = await Promise.all([
     getPlayerHistory(id),
     getAllSessions(),
     getPlayerRates(),
@@ -123,6 +123,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
     getPlayerAfkSpans(id),
     getTwitchSubscriptionProfile(id, p.live ? p.liveSince ?? p.live.startedAt ?? null : null),
     getTwitchSubscriptionBoard(),
+    getFullBoard("followers"),
   ]);
   const overlaps = overlapsFor(id, allSessions, now);
   const nameOf = (pid: string) => state.players[pid]?.name ?? pid;
@@ -160,7 +161,8 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
     }),
   ) as Record<BoardKey, { rank: number; of: number | null } | null>;
   const subscriptionRankIndex = subscriptionBoard.findIndex((entry) => entry.id === id);
-  const profileStatKeys = [...BOARD_KEYS, "twitchSubs"] as const;
+  const followerRankIndex = followerBoard.findIndex((entry) => entry.id === id);
+  const profileStatKeys = [...BOARD_KEYS, "followers", "twitchSubs"] as const;
 
   return (
     <>
@@ -227,6 +229,31 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
           <h2 className="sr-only">Statistiken</h2>
           <dl className="grid st-figs">
             {profileStatKeys.map((k) => {
+              if (k === "followers") {
+                return (
+                  <div key={k} className="box st-fig st-fig--spark" data-tone="twitch">
+                    <dt className="pstat">
+                      <Link className="pstat__label pstat__link" href={graphHref(k)} title={`Follower von ${p.name} im Graphen der Statistik öffnen`}>
+                        <Icon.users width={18} height={18} aria-hidden="true" />
+                        <span>Follower-Zuwachs auf dem Server</span>
+                        <span className="pstat__go" aria-hidden="true">↗</span>
+                      </Link>
+                      {followerRankIndex >= 0 && (
+                        <span className="pstat__meta">
+                          <span className="tag" data-tone="ink" title={`Platz ${followerRankIndex + 1} von ${followerBoard.length} in der Bestenliste für Follower-Zuwachs auf dem Server`}>
+                            Platz {followerRankIndex + 1}
+                            <span className="muted"> / {followerBoard.length}</span>
+                          </span>
+                        </span>
+                      )}
+                    </dt>
+                    <Link className="pstat__val" href={graphHref(k)} tabIndex={-1} aria-hidden="true">
+                      <FigValue>{p.followersAt ? num(p.followersOnServer) : "–"}</FigValue>
+                    </Link>
+                    <StatSpark points={history} k="followersOnServer" label="Follower-Zuwachs auf dem Server" href={graphHref(k)} />
+                  </div>
+                );
+              }
               if (k === "twitchSubs") {
                 return (
                   <div key={k} className="box st-fig st-fig--spark" data-tone="amethyst">
@@ -263,6 +290,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                         blocksBroken: null,
                         mobsKilled: null,
                         distance: null,
+                        followersOnServer: null,
                         twitchSubs: point.value,
                       }))}
                       k="twitchSubs"
@@ -321,7 +349,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
             Tode, Diamanten, Blöcke, Mobs und Strecke kommen aus der Einzelstatistik der API (inklusive Rang unter allen
             Teilnehmenden). Die Spielzeit liefert die API nur für die Top 10. Steht „Tracker“ dabei, ist es die seit Tracker-Start gemessene Online-Zeit.
-            Twitch-Subs werden nur gezählt, wenn der Streamer während des Sub-Events auf dem Spielserver online war (auch AFK). Die Kurven zeigen den Verlauf seit Tracker-Start ({num(history.length)} Messpunkte). Mit der Maus über die Kurve fahren zeigt Zeitpunkt und Wert. Ein Klick auf Beschriftung oder Wert öffnet den großen Graphen auf der Statistik-Seite.
+            Follower-Zuwachs zählt nur zwischen aufeinanderfolgenden Messungen, bei denen der Streamer auf dem Server war; globale Twitch-Followerstände werden nicht angezeigt. Ein Zuwachs von mehr als 20 Followern pro Minute auf dem Server erscheint als Ereignis. Twitch-Subs werden nur gezählt, wenn der Streamer während des Sub-Events auf dem Spielserver online war (auch AFK). Die Kurven zeigen den Verlauf seit Tracker-Start ({num(history.length)} Messpunkte). Mit der Maus über die Kurve fahren zeigt Zeitpunkt und Wert. Ein Klick auf Beschriftung oder Wert öffnet den großen Graphen auf der Statistik-Seite.
           </p>
         </div>
       </section>

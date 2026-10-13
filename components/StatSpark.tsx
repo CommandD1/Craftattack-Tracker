@@ -15,6 +15,7 @@ const FORMAT: Record<SparkKey, (v: number) => string> = {
   blocksBroken: num,
   mobsKilled: num,
   distance: (v) => boardValue("distance", v),
+  followersOnServer: num,
   twitchSubs: num,
 };
 

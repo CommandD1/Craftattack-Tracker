@@ -72,6 +72,12 @@ interface PlayerRow {
   stats: PlayerState["stats"];
   ranks: PlayerState["ranks"] | null;
   twitch_login: string | null;
+  followers: number | null;
+  followers_at: Date | null;
+  followers_online_at_sample: boolean;
+  followers_on_server: number;
+  followers_on_live_stream: number;
+  followers_live_at_sample: string | null;
   first_seen: Date;
   last_seen: Date;
   session_start: Date | null;
@@ -79,6 +85,7 @@ interface PlayerRow {
   sessions: number;
   live_since: Date | null;
   peak_viewers: number;
+  live_peak_viewers: number;
   longest_session: number;
   peak_viewers_on_server: number | null;
   stream_on_server_seconds: number | null;
@@ -125,6 +132,12 @@ function rowToPlayer(r: PlayerRow): PlayerState {
     stats: r.stats ?? {},
     ranks: r.ranks ?? {},
     twitchLogin: r.twitch_login ?? null,
+    followers: r.followers ?? null,
+    followersAt: iso(r.followers_at),
+    followersOnlineAtSample: r.followers_online_at_sample,
+    followersOnServer: r.followers_on_server,
+    followersOnLiveStream: r.followers_on_live_stream,
+    followersLiveAtSample: r.followers_live_at_sample,
     firstSeen: iso(r.first_seen)!,
     lastSeen: iso(r.last_seen)!,
     sessionStart: iso(r.session_start),
@@ -133,6 +146,7 @@ function rowToPlayer(r: PlayerRow): PlayerState {
     sessions: r.sessions,
     liveSince: iso(r.live_since),
     peakViewers: r.peak_viewers,
+    livePeakViewers: r.live_peak_viewers,
     peakViewersOnServer: r.peak_viewers_on_server ?? 0,
     streamOnServerSeconds: r.stream_on_server_seconds ?? 0,
     streamOffServerSeconds: r.stream_off_server_seconds ?? 0,
@@ -234,6 +248,13 @@ export async function getState(): Promise<TrackerState> {
     p.longestSession ??= 0;
     p.ranks ??= {};
     p.twitchLogin ??= p.live?.login ?? null;
+    p.followers ??= null;
+    p.followersAt ??= null;
+    p.followersOnlineAtSample ??= false;
+    p.followersOnServer ??= 0;
+    p.followersOnLiveStream ??= 0;
+    p.followersLiveAtSample ??= null;
+    p.livePeakViewers ??= 0;
   }
   return state;
 }
@@ -293,8 +314,8 @@ export async function saveState(state: TrackerState) {
       `INSERT INTO players (id, name, uuid, online, live, stats, first_seen, last_seen, session_start,
                             tracked_seconds, sessions, live_since, peak_viewers, longest_session, ranks, twitch_login,
                             peak_viewers_on_server, stream_on_server_seconds, stream_off_server_seconds,
-                            last_move_at, afk_since, afk_seconds, afk_farm, afk_mobs_at, afk_blocks_at, playtime_tracked, afk_check)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+                            last_move_at, afk_since, afk_seconds, afk_farm, afk_mobs_at, afk_blocks_at, playtime_tracked, afk_check, followers, followers_at, followers_online_at_sample, followers_on_server, followers_on_live_stream, followers_live_at_sample, live_peak_viewers)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name, uuid = EXCLUDED.uuid, online = EXCLUDED.online, live = EXCLUDED.live,
          stats = EXCLUDED.stats, first_seen = EXCLUDED.first_seen, last_seen = EXCLUDED.last_seen,
@@ -305,7 +326,11 @@ export async function saveState(state: TrackerState) {
          stream_on_server_seconds = EXCLUDED.stream_on_server_seconds, stream_off_server_seconds = EXCLUDED.stream_off_server_seconds,
          last_move_at = EXCLUDED.last_move_at, afk_since = EXCLUDED.afk_since, afk_seconds = EXCLUDED.afk_seconds,
          afk_farm = EXCLUDED.afk_farm, afk_mobs_at = EXCLUDED.afk_mobs_at, afk_blocks_at = EXCLUDED.afk_blocks_at,
-         playtime_tracked = EXCLUDED.playtime_tracked, afk_check = EXCLUDED.afk_check`,
+         playtime_tracked = EXCLUDED.playtime_tracked, afk_check = EXCLUDED.afk_check,
+         followers = EXCLUDED.followers, followers_at = EXCLUDED.followers_at,
+         followers_online_at_sample = EXCLUDED.followers_online_at_sample, followers_on_server = EXCLUDED.followers_on_server,
+         followers_on_live_stream = EXCLUDED.followers_on_live_stream, followers_live_at_sample = EXCLUDED.followers_live_at_sample,
+         live_peak_viewers = EXCLUDED.live_peak_viewers`,
       [
         p.id,
         p.name,
@@ -334,6 +359,13 @@ export async function saveState(state: TrackerState) {
         p.afkBlocksAt ?? null,
         p.playtimeTracked === null || p.playtimeTracked === undefined ? null : Math.round(p.playtimeTracked),
         p.afkCheck ? JSON.stringify(p.afkCheck) : null,
+        p.followers,
+        toDate(p.followersAt),
+        p.followersOnlineAtSample,
+        p.followersOnServer,
+        p.followersOnLiveStream,
+        p.followersLiveAtSample,
+        p.livePeakViewers,
       ],
     );
   }
@@ -652,7 +684,7 @@ const PLAYER_POINT_MAX_GAP_MS = 5 * 60_000;
 const lastPoint = new Map<string, { at: number; sig: string }>();
 
 function pointSignature(p: PlayerPoint) {
-  return [p.online, p.viewers, p.playtimeSeconds, p.deaths, p.diamonds, p.blocksBroken, p.mobsKilled, p.distance].join("|");
+  return [p.online, p.viewers, p.playtimeSeconds, p.deaths, p.diamonds, p.blocksBroken, p.mobsKilled, p.distance, p.followersOnServer].join("|");
 }
 
 /** Schreibt pro Spieler einen Punkt, wenn sich etwas geändert hat oder der letzte Punkt zu alt ist. */
@@ -666,7 +698,7 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
   const db = await getDb();
   const t = Date.parse(at);
   for (const p of players) {
-    const hasData = p.online || p.live || Object.keys(p.stats).length > 0;
+    const hasData = p.online || p.live || p.followersAt !== null || Object.keys(p.stats).length > 0;
     if (!hasData) continue;
     const isFresh = (key: BoardKey) => !fresh || (fresh.get(p.id)?.has(key) ?? false);
     const point: PlayerPoint = {
@@ -680,14 +712,15 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
       blocksBroken: isFresh("blocksBroken") ? (p.stats.blocksBroken ?? null) : null,
       mobsKilled: isFresh("mobsKilled") ? (p.stats.mobsKilled ?? null) : null,
       distance: isFresh("distance") ? (p.stats.distance ?? null) : null,
+      followersOnServer: p.followersAt ? p.followersOnServer : null,
     };
     const sig = pointSignature(point);
     const last = lastPoint.get(p.id);
     if (last && last.sig === sig && t - last.at < PLAYER_POINT_MAX_GAP_MS) continue;
     await db.query(
-      `INSERT INTO player_history (player, at, online, viewers, playtime_seconds, deaths, diamonds, blocks_broken, mobs_killed, distance)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (player, at) DO NOTHING`,
-      [p.id, toDate(at), point.online, point.viewers, point.playtimeSeconds, point.deaths, point.diamonds, point.blocksBroken, point.mobsKilled, point.distance],
+      `INSERT INTO player_history (player, at, online, viewers, playtime_seconds, deaths, diamonds, blocks_broken, mobs_killed, distance, followers_on_server)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT (player, at) DO NOTHING`,
+      [p.id, toDate(at), point.online, point.viewers, point.playtimeSeconds, point.deaths, point.diamonds, point.blocksBroken, point.mobsKilled, point.distance, point.followersOnServer],
     );
     lastPoint.set(p.id, { at: t, sig });
   }
@@ -703,6 +736,7 @@ interface PlayerPointRow {
   blocks_broken: number | null;
   mobs_killed: number | null;
   distance: number | null;
+  followers_on_server: number | null;
 }
 
 export async function getPlayerHistory(id: string, limit = 3000): Promise<PlayerPoint[]> {
@@ -721,6 +755,7 @@ export async function getPlayerHistory(id: string, limit = 3000): Promise<Player
     blocksBroken: r.blocks_broken,
     mobsKilled: r.mobs_killed,
     distance: r.distance === null ? null : Number(r.distance),
+    followersOnServer: r.followers_on_server,
   }));
 }
 
@@ -743,6 +778,7 @@ const COLUMN: Record<string, string> = {
   blocksBroken: "blocks_broken",
   mobsKilled: "mobs_killed",
   distance: "distance",
+  followers: "followers_on_server",
 };
 
 /** Letzter bekannter Wert pro Spieler für ein Board, absteigend sortiert. */
@@ -967,6 +1003,7 @@ export const SERIES_METRICS = [
   "blocksBroken",
   "mobsKilled",
   "distance",
+  "followers",
   "twitchSubs",
   "online",
   "afkSeconds",
@@ -1009,6 +1046,7 @@ const PLAYER_COL: Partial<Record<SeriesMetric, string>> = {
   blocksBroken: "blocks_broken",
   mobsKilled: "mobs_killed",
   distance: "distance",
+  followers: "followers_on_server",
   online: "(CASE WHEN online THEN 1 ELSE 0 END)",
 };
 
