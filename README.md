@@ -18,10 +18,14 @@ Ideen, die noch offen sind: Twitch-API-Anbindung (Clips, Kategorie), Discord-Ben
 Inoffizieller Tracker für CraftAttack 14. Fragt `https://craftattack.one/api/stats` standardmäßig in zufälligen Abständen
 von 45 bis 75 Sekunden ab (Mittelwert: eine Minute).
 Einzelstatistiken (`/api/ext/<id>`) werden höchstens zehn pro Poll und mit mindestens einer Sekunde Abstand angefragt;
-erfolgreiche Antworten werden 15 Minuten wiederverwendet. Bei Cloudflare-Challenges, HTTP 403/429 oder einer
-Cloudflare-503-Antwort pausiert der Tracker Anfragen an craftattack.one mindestens fünf Minuten und berücksichtigt
-`Retry-After`, falls vorhanden. Diese Rücksichtnahme kann eine Sperre nicht garantieren zu verhindern; beachte die
-Nutzungsbedingungen und wende dich bei einer Sperre an den Betreiber, statt Schutzmaßnahmen zu umgehen.
+erfolgreiche Antworten werden 15 Minuten wiederverwendet. Bei Cloudflare-Challenges, HTTP 403/429 oder Cloudflare-5xx-
+Antworten pausiert der Tracker Anfragen an den betroffenen Origin mindestens fünf Minuten. Wiederholte Sperren
+verlängern die Pause exponentiell bis höchstens sechs Stunden; `Retry-After` wird zusätzlich als Mindestwartezeit
+beachtet. Während der Pause werden keine automatischen Probe-Anfragen gesendet, danach wird automatisch vorsichtig
+fortgesetzt. Nach 24 Stunden ohne erneute Sperre beginnt die Eskalation wieder bei fünf Minuten. Bild-Proxys liefern
+während einer solchen Pause ebenfalls `503` mit `Retry-After`, statt auf eine alternative Quelle auszuweichen.
+Diese Rücksichtnahme kann eine Sperre nicht garantieren zu verhindern; beachte die Nutzungsbedingungen und wende
+dich bei einer Sperre an den Betreiber, statt Schutzmaßnahmen zu umgehen.
 Der Tracker vergleicht den Stand mit dem vorherigen und schreibt jede Änderung als Ereignis mit Zeitstempel auf.
 
 ## Starten

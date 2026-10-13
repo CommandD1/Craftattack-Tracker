@@ -1,7 +1,7 @@
 import "server-only";
 import { appendEvents, getState, recordPlayerPoints, saveState } from "./store";
 import { fetchFollowerCounts, fetchLiveStreams, TWITCH_ENABLED, type TwitchFollowerChannel, type TwitchStream } from "./twitch";
-import { fetchCraftAttack } from "./craftattackFetch";
+import { fetchCraftAttack, getCraftAttackPauseMs, maxCraftAttackTimerDelay } from "./craftattackFetch";
 import { trackedSecondsOf } from "./playtime";
 import {
   BOARD_KEYS,
@@ -174,6 +174,7 @@ export async function fetchExtAll(
   const missing = new Set<string>();
   let failed = 0;
   for (const [index, login] of queue.entries()) {
+    if (getCraftAttackPauseMs(EXT_URL) > 0) break;
     if (index > 0) await new Promise((resolve) => setTimeout(resolve, EXT_REQUEST_INTERVAL_MS));
     try {
       const player = await fetchExtPlayer(login);
@@ -768,6 +769,10 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
   if (Date.now() - lastPollStartedAt < MIN_POLL_INTERVAL_MS) {
     return { ok: false, events: 0, error: "cooldown" };
   }
+  const pauseMs = getCraftAttackPauseMs(STATS_URL);
+  if (pauseMs > 0) {
+    return { ok: false, events: 0, error: `paused until ${new Date(Date.now() + pauseMs).toISOString()}` };
+  }
   lastPollStartedAt = Date.now();
   polling = true;
   try {
@@ -839,8 +844,9 @@ export function startPolling() {
       console.error("[tracker] poll failed", e);
     }
     const interval = MIN_POLL_INTERVAL_MS + Math.floor(Math.random() * (MAX_POLL_INTERVAL_MS - MIN_POLL_INTERVAL_MS + 1));
-    const delay = Math.max(0, interval - (Date.now() - startedAt));
-    gl.__acPollTimer = setTimeout(() => void tick(), delay);
+    const intervalDelay = Math.max(0, interval - (Date.now() - startedAt));
+    const delay = Math.max(intervalDelay, getCraftAttackPauseMs(STATS_URL));
+    gl.__acPollTimer = setTimeout(() => void tick(), maxCraftAttackTimerDelay(delay));
   };
   void tick();
   console.log(`[tracker] polling ${STATS_URL} alle ${MIN_POLL_INTERVAL_MS / 1000}–${MAX_POLL_INTERVAL_MS / 1000}s (Jitter)`);

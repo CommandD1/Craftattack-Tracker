@@ -1,5 +1,5 @@
 import { connection } from "next/server";
-import { fetchCraftAttack } from "@/lib/craftattackFetch";
+import { craftAttackPausedResponse, fetchCraftAttack } from "@/lib/craftattackFetch";
 
 /**
  * Ganzkörper-Render (3D) eines Spielers.
@@ -28,7 +28,11 @@ export async function GET(req: Request, ctx: RouteContext<"/api/skin/[id]">) {
           headers: { "content-type": r.headers.get("content-type") ?? "image/webp", "cache-control": CACHE },
         });
       }
+      const paused = craftAttackPausedResponse("https://craftattack.one");
+      if (paused) return paused;
     } catch {
+      const paused = craftAttackPausedResponse("https://craftattack.one");
+      if (paused) return paused;
       /* weiter zum Fallback */
     }
   }
