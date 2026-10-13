@@ -1,4 +1,5 @@
 import "server-only";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
 /**
@@ -29,6 +30,7 @@ async function connect(): Promise<Db> {
   } else {
     const { PGlite } = await import("@electric-sql/pglite");
     const dir = path.join(process.cwd(), "data", "pglite");
+    await mkdir(dir, { recursive: true });
     const lite = await PGlite.create(dir);
     db = {
       kind: "pglite",

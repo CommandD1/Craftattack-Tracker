@@ -40,7 +40,7 @@ Der Poller startet automatisch mit dem Server (`instrumentation.ts`).
 ## Datenbank (PostgreSQL)
 
 - `DATABASE_URL` gesetzt (siehe `.env.example`) → echtes PostgreSQL über `pg`. Tabellen werden beim Start angelegt.
-- Nicht gesetzt → eingebettetes PostgreSQL (PGlite) unter `data/pglite`, ohne Installation.
+- Nicht gesetzt → eingebettetes PostgreSQL (PGlite) unter `data/pglite`, ohne Installation. Das Verzeichnis wird beim Start automatisch angelegt.
 
 Tabellen: `tracker_meta` (Status, Rekorde, letzter API-Snapshot), `players`, `events` (Chronik), `history` (Zeitreihe gesamt), `player_history` (Zeitreihe pro Spieler).
 
