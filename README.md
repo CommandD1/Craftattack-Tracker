@@ -3,8 +3,7 @@
 Live unter **https://craftattack.hiorcraft.tv**
 
 > **Hinweis:** Dieses Repo ist der Quellcode des Trackers, der auf craftattack.hiorcraft.tv läuft.
-> Es ist nicht als Self-Hosting-Paket gedacht und es gibt dafür keinen Support. Nutz einfach die Live-Seite.
-> Für neue Features, Bugfixes oder Ideen sind Pull Requests und Issues aber sehr willkommen.
+> Du kannst ihn über das enthaltene Render-Blueprint selbst deployen. Für neue Features, Bugfixes oder Ideen sind Pull Requests und Issues willkommen.
 
 ## Mitmachen
 
@@ -12,6 +11,14 @@ Live unter **https://craftattack.hiorcraft.tv**
 2. `npm run dev` startet die App lokal auf http://localhost:3000. Ohne `DATABASE_URL` nutzt sie eine eingebettete Datenbank (PGlite) unter `data/`, du brauchst also kein PostgreSQL.
 3. Änderung machen, `npm run lint` und `npx tsc --noEmit` müssen sauber sein.
 4. Pull Request gegen `main` mit kurzer Beschreibung, was und warum.
+
+## Auf Render deployen
+
+1. Dieses Repo zu GitHub pushen und in Render **New → Blueprint** wählen.
+2. Das GitHub-Repo verbinden und das Blueprint aus `render.yaml` anwenden. Es erstellt den Webdienst und eine PostgreSQL-Datenbank in Frankfurt und verbindet sie automatisch über `DATABASE_URL`.
+3. Nach dem Deploy die angezeigte Render-URL öffnen. Die Datenbanktabellen werden beim ersten Start automatisch angelegt.
+
+Das Blueprint verwendet den kostenlosen Render-Tarif. Kostenlose Webdienste schlafen nach Inaktivität ein; während der Schlafphase pausiert auch der automatische Tracker-Poller und der erste Seitenaufruf braucht länger. Die kostenlose PostgreSQL-Datenbank läuft nach 30 Tagen ab; sichere oder migriere deine Daten vorher, wenn du den Dienst länger betreiben möchtest. Für dauerhaftes Polling und langfristige Datenspeicherung müssen Webdienst und Datenbank auf bezahlte Tarife umgestellt werden.
 
 Ideen, die noch offen sind: Twitch-API-Anbindung (Clips, Kategorie), Discord-Benachrichtigungen bei Highlights, Tages- und Wochenstatistiken, Vergleich zweier Spieler.
 
