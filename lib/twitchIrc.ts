@@ -335,6 +335,40 @@ export function subscriptionEventFromNotice(message: TwitchIrcMessage, owner?: C
   return event;
 }
 
+function raidEventFromNotice(
+  message: TwitchIrcMessage,
+  channel: string,
+  raider: PlayerState,
+  target: ChannelOwner,
+): TrackerEvent | null {
+  if (message.command !== "USERNOTICE" || message.tags["msg-id"] !== "raid") return null;
+  const sentAt = Number(message.tags["tmi-sent-ts"]);
+  const timestamp = new Date(sentAt);
+  const at = Number.isFinite(sentAt) && sentAt > 0 && Number.isFinite(timestamp.getTime())
+    ? timestamp.toISOString()
+    : new Date().toISOString();
+  const viewerCount = Number(message.tags["msg-param-viewerCount"]);
+  const idSource = message.tags.id ?? `${channel}:${at}:raid:${raider.id}:${target.id}:${message.trailing ?? ""}`;
+  const id = `twitch-irc-${createHash("sha256").update(idSource).digest("hex").slice(0, 32)}`;
+  return {
+    id,
+    at,
+    type: "raid",
+    player: raider.id,
+    playerName: raider.name,
+    uuid: raider.uuid,
+    where: "twitch",
+    ...(Number.isFinite(viewerCount) && viewerCount > 0 ? { value: viewerCount } : {}),
+    meta: {
+      raidLogin: message.tags["msg-param-login"] ?? raider.twitchLogin ?? raider.id,
+      raidTargetPlayerId: target.id,
+      raidTargetName: target.name,
+      raidTargetUuid: target.uuid,
+      raidTargetLogin: channel,
+    },
+  };
+}
+
 async function handleLine(irc: IrcState, socket: WebSocket, line: string) {
   if (line.startsWith("PING ")) {
     socket.send(line.replace(/^PING/, "PONG") + "\r\n");
@@ -360,11 +394,24 @@ async function handleLine(irc: IrcState, socket: WebSocket, line: string) {
     reconcileChannels(irc);
     return;
   }
+  if (message.command !== "USERNOTICE") return;
   const channel = safeChannel(message.params[0] ?? "");
+  if (!channel) return;
   const owner = channel ? irc.desired.get(channel) : undefined;
+  if (message.tags["msg-id"] === "raid") {
+    const raiderLogin = message.tags["msg-param-login"];
+    if (!owner || !raiderLogin) return;
+    const currentState = await getState();
+    const raider = playerForTwitchLogin(currentState.players, raiderLogin);
+    if (!raider || raider.id === owner.id) return;
+    const event = raidEventFromNotice(message, channel, raider, owner);
+    if (!event || irc.seenIds.has(event.id)) return;
+    await appendLiveEvent(event);
+    rememberEventId(irc, event.id);
+    return;
+  }
   const event = subscriptionEventFromNotice(message, owner);
   if (!event || irc.seenIds.has(event.id)) return;
-  if (!channel) return;
   const currentState = await getState();
   const player = event.player ? currentState.players[event.player] : undefined;
   if (!player?.online) {
