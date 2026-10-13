@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { fetchCraftAttack } from "@/lib/craftattackFetch";
 
 /**
  * Ganzkörper-Render (3D) eines Spielers.
@@ -18,7 +19,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/skin/[id]">) {
 
   if (slug) {
     try {
-      const r = await fetch(`https://craftattack.one/skins/${slug}.webp`, {
+      const r = await fetchCraftAttack(`https://craftattack.one/skins/${slug}.webp`, {
         headers: { "user-agent": "actracker/1.0" },
         next: { revalidate: 86400 },
       });

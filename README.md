@@ -15,9 +15,13 @@ Live unter **https://craftattack.hiorcraft.tv**
 
 Ideen, die noch offen sind: Twitch-API-Anbindung (Clips, Kategorie), Discord-Benachrichtigungen bei Highlights, Tages- und Wochenstatistiken, Vergleich zweier Spieler.
 
-Inoffizieller Tracker für CraftAttack 14. Fragt alle 30 Sekunden `https://craftattack.one/api/stats` ab und dazu
-für jeden bekannten Spieler `https://craftattack.one/api/ext/<id>` (alle Zähler plus Rang, auch außerhalb der Top 10),
-vergleicht den Stand mit dem vorherigen und schreibt jede Änderung als Ereignis mit Zeitstempel auf.
+Inoffizieller Tracker für CraftAttack 14. Fragt `https://craftattack.one/api/stats` standardmäßig einmal pro Minute ab.
+Einzelstatistiken (`/api/ext/<id>`) werden höchstens zehn pro Poll und mit mindestens einer Sekunde Abstand angefragt;
+erfolgreiche Antworten werden 15 Minuten wiederverwendet. Bei Cloudflare-Challenges, HTTP 403/429 oder einer
+Cloudflare-503-Antwort pausiert der Tracker Anfragen an craftattack.one mindestens fünf Minuten und berücksichtigt
+`Retry-After`, falls vorhanden. Diese Rücksichtnahme kann eine Sperre nicht garantieren zu verhindern; beachte die
+Nutzungsbedingungen und wende dich bei einer Sperre an den Betreiber, statt Schutzmaßnahmen zu umgehen.
+Der Tracker vergleicht den Stand mit dem vorherigen und schreibt jede Änderung als Ereignis mit Zeitstempel auf.
 
 ## Starten
 
@@ -75,8 +79,7 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 - `DATABASE_URL` PostgreSQL-Verbindung, z. B. `postgres://user:pass@localhost:5432/actracker`
 - `CA_STATS_URL` andere API-Adresse
 - `CA_EXT_URL` Basis-Adresse der Einzelstatistik (Standard `https://craftattack.one/api/ext`)
-- `CA_EXT_CONCURRENCY` gleichzeitige ext-Anfragen pro Poll (Standard 8)
-- `CA_POLL_INTERVAL_MS` Abfrageintervall (Standard 30000)
+- `CA_POLL_INTERVAL_MS` Abfrageintervall in Millisekunden (Standard 60000; nicht unter die Vorgaben des API-Betreibers setzen)
 - `TWITCH_IRC_NICK` und `TWITCH_IRC_TOKEN` optional für Twitch-IRC mit `chat:read`; alle bekannten Kanäle werden mit höchstens 20 JOINs in 10 Sekunden (einer alle 500 ms) abonniert. Erfasst werden bekannte Sub-`USERNOTICE`s sowie Raids, wenn sowohl der raidende Spieler als auch der Zielkanal einem Spieler zugeordnet sind.
 - Twitch-Subzahlen werden ab Beginn der IRC-Erfassung gezählt und nur erfasst, wenn der Kanal-Streamer bei Eingang der Meldung auf dem Spielserver online ist (AFK zählt als online). Geschenk-USERNOTICEs von bekannten Spielern an einen anderen Streamer werden einzeln mit Geberbild und Anzahl angezeigt; bereits gespeicherte Minutensummen lassen sich mangels Geberdaten nicht rückwirkend in solche Einzelevents aufteilen.
 - `NEXT_PUBLIC_TWITCH_URL`, `NEXT_PUBLIC_DISCORD_URL`, `NEXT_PUBLIC_GITHUB_URL` optionale Footer-Links (werden beim Build eingebettet)

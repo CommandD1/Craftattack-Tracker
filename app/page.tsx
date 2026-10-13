@@ -87,7 +87,7 @@ async function Dashboard() {
           {!s && state.lastError && (
             <div className="box st-banner" data-tone="gold" role="status">
               <p className="t-3 st-banner__title">Keine Verbindung zur API.</p>
-              <p>{state.lastError} – wir versuchen es alle 30 Sekunden automatisch wieder.</p>
+              <p>{state.lastError} – der Tracker versucht es automatisch erneut und pausiert Anfragen bei einer Cloudflare-Sperre.</p>
             </div>
           )}
         </div>

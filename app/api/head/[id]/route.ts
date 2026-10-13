@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { fetchCraftAttack } from "@/lib/craftattackFetch";
 
 /**
  * Kopf-Bild eines Spielers.
@@ -18,7 +19,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/head/[id]">) {
 
   if (slug) {
     try {
-      const r = await fetch(`https://craftattack.one/skins/${slug}-head.webp`, {
+      const r = await fetchCraftAttack(`https://craftattack.one/skins/${slug}-head.webp`, {
         headers: { "user-agent": "actracker/1.0" },
         next: { revalidate: 86400 },
       });

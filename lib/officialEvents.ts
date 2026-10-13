@@ -1,5 +1,6 @@
 import "server-only";
 import { cacheLife } from "next/cache";
+import { fetchCraftAttack } from "./craftattackFetch";
 
 export interface OfficialEvent {
   title: string;
@@ -28,7 +29,7 @@ export async function getOfficialEvents(): Promise<{ events: OfficialEvent[]; er
   "use cache";
   cacheLife("hours");
   try {
-    const res = await fetch(`${BASE}/events/`, { headers: { "user-agent": "actracker/1.0" } });
+    const res = await fetchCraftAttack(`${BASE}/events/`, { headers: { "user-agent": "actracker/1.0" } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const html = (await res.text()).replace(/ data-astro-cid-[a-z0-9]+(="[^"]*")?/g, "");
     const events: OfficialEvent[] = [];

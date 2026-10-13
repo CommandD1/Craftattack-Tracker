@@ -226,7 +226,7 @@ export default async function Page(props: PageProps<"/statistik">) {
             <Record label="Größte Mob-Schlacht am Stück" tone="grass" value={bigMobs[0]?.delta ? `${num(bigMobs[0].delta)} Mobs` : "–"} who={bigMobs[0]?.player ? { id: bigMobs[0].player, name: bigMobs[0].playerName ?? bigMobs[0].player } : null} uuid={bigMobs[0]?.uuid} when={bigMobs[0]?.at} />
           </dl>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
-            „Am Stück“ heißt: innerhalb eines Abfrage-Intervalls von 30 Sekunden. Online-Zeit, Sessions und Zuschauer misst der Tracker selbst seit
+            „Am Stück“ heißt: innerhalb eines Abfrage-Intervalls (standardmäßig eine Minute). Online-Zeit, Sessions und Zuschauer misst der Tracker selbst seit
             seinem Start.
           </p>
         </div>

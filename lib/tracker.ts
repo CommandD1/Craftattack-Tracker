@@ -1,6 +1,7 @@
 import "server-only";
 import { appendEvents, getState, recordPlayerPoints, saveState } from "./store";
 import { fetchFollowerCounts, fetchLiveStreams, TWITCH_ENABLED, type TwitchFollowerChannel, type TwitchStream } from "./twitch";
+import { fetchCraftAttack } from "./craftattackFetch";
 import { trackedSecondsOf } from "./playtime";
 import {
   BOARD_KEYS,
@@ -21,10 +22,12 @@ export const STATS_URL = process.env.CA_STATS_URL ?? "https://craftattack.one/ap
  * Erwartet den Twitch-Login (nicht die Spieler-ID), siehe `extLogins`.
  */
 export const EXT_URL = process.env.CA_EXT_URL ?? "https://craftattack.one/api/ext";
-export const POLL_INTERVAL_MS = Number(process.env.CA_POLL_INTERVAL_MS ?? 30_000);
+export const POLL_INTERVAL_MS = Number(process.env.CA_POLL_INTERVAL_MS ?? 60_000);
 export const FOLLOWER_POLL_INTERVAL_MS = 60_000;
-/** Wie viele ext-Anfragen gleichzeitig laufen */
-const EXT_CONCURRENCY = Number(process.env.CA_EXT_CONCURRENCY ?? 8);
+const EXT_CACHE_TTL_MS = 15 * 60_000;
+const EXT_REQUEST_INTERVAL_MS = 1_000;
+const EXT_MAX_PER_POLL = 10;
+const extCache = new Map<string, { player: ExtPlayer | null; at: number; failed: boolean }>();
 
 /** Board-Keys, deren Anstieg als Ereignis protokolliert wird */
 const COUNTER_EVENTS: Partial<Record<BoardKey, EventType>> = {
@@ -39,7 +42,7 @@ const COUNTER_EVENTS: Partial<Record<BoardKey, EventType>> = {
 export const AFK_MS = Number(process.env.CA_AFK_MINUTES ?? 5) * 60_000;
 /** Ab so vielen Mobs bzw. Blöcken pro Minute (während AFK) gilt ein Abschnitt als AFK-Farm */
 export const AFK_FARM_MIN = Number(process.env.CA_AFK_FARM_MIN ?? 10);
-/** Mindestlänge eines Prüffensters für die Farm-Rate (kürzer wäre bei 30-s-Polls zu zufällig) */
+/** Mindestlänge eines Prüffensters für die Farm-Rate */
 export const AFK_FARM_WINDOW_MS = 60_000;
 
 /** Farm-Art eines Zeitabschnitts: mindestens AFK_FARM_MIN Mobs bzw. Blöcke pro Minute (Mobs haben Vorrang) */
@@ -124,7 +127,7 @@ function eventId(at: string) {
 }
 
 export async function fetchStats(): Promise<ApiStats> {
-  const res = await fetch(STATS_URL, {
+  const res = await fetchCraftAttack(STATS_URL, {
     headers: { accept: "application/json", "user-agent": "actracker/1.0" },
     cache: "no-store",
     signal: AbortSignal.timeout(15_000),
@@ -137,7 +140,7 @@ export type ExtPlayer = NonNullable<ApiExtPlayer["player"]>;
 
 /** Holt die Einzelstatistik eines Spielers per Twitch-Login; `null`, wenn die API ihn nicht kennt. */
 export async function fetchExtPlayer(login: string): Promise<ExtPlayer | null> {
-  const res = await fetch(`${EXT_URL}/${encodeURIComponent(login)}`, {
+  const res = await fetchCraftAttack(`${EXT_URL}/${encodeURIComponent(login)}`, {
     headers: { accept: "application/json", "user-agent": "actracker/1.0" },
     cache: "no-store",
     signal: AbortSignal.timeout(15_000),
@@ -148,32 +151,48 @@ export async function fetchExtPlayer(login: string): Promise<ExtPlayer | null> {
 }
 
 /**
- * Fragt alle Logins parallel (begrenzt) ab. Ergebnis ist nach Spieler-ID (aus der Antwort) abgelegt.
- * Fehlgeschlagene Spieler fehlen einfach im Ergebnis.
+ * Fragt höchstens zehn veraltete Logins pro Poll einzeln ab und cached sie 15 Minuten.
+ * Ergebnis ist nach Spieler-ID (aus der Antwort) abgelegt.
  */
 export async function fetchExtAll(
   logins: Iterable<string>,
 ): Promise<{ players: Map<string, ExtPlayer>; loginOf: Map<string, string>; missing: Set<string>; failed: number }> {
-  const queue = [...new Set(logins)];
+  const all = [...new Set(logins)];
+  const now = Date.now();
+  const queue = all
+    .filter((login) => {
+      const cached = extCache.get(login);
+      return !cached || now - cached.at >= EXT_CACHE_TTL_MS;
+    })
+    .slice(0, EXT_MAX_PER_POLL);
   const players = new Map<string, ExtPlayer>();
   const loginOf = new Map<string, string>();
   /** Logins, die die API nicht kennt (im Gegensatz zu Fehlern/Timeouts) */
   const missing = new Set<string>();
   let failed = 0;
-  const worker = async () => {
-    for (let login = queue.shift(); login !== undefined; login = queue.shift()) {
-      try {
-        const p = await fetchExtPlayer(login);
-        if (p) {
-          players.set(p.id, p);
-          loginOf.set(p.id, login);
-        } else missing.add(login);
-      } catch {
-        failed += 1;
-      }
+  for (const [index, login] of queue.entries()) {
+    if (index > 0) await new Promise((resolve) => setTimeout(resolve, EXT_REQUEST_INTERVAL_MS));
+    try {
+      const player = await fetchExtPlayer(login);
+      extCache.set(login, { player, at: Date.now(), failed: false });
+    } catch {
+      failed += 1;
+      extCache.set(login, { player: null, at: Date.now(), failed: true });
     }
-  };
-  await Promise.all(Array.from({ length: Math.max(1, EXT_CONCURRENCY) }, worker));
+  }
+
+  for (const login of all) {
+    const cached = extCache.get(login);
+    if (!cached || Date.now() - cached.at >= EXT_CACHE_TTL_MS) continue;
+    if (cached.failed) {
+      continue;
+    } else if (cached.player) {
+      players.set(cached.player.id, cached.player);
+      loginOf.set(cached.player.id, login);
+    } else {
+      missing.add(login);
+    }
+  }
   return { players, loginOf, missing, failed };
 }
 
@@ -740,8 +759,13 @@ export function diffSnapshot(
 }
 
 let polling = false;
+let lastPollStartedAt = 0;
 export async function pollOnce(): Promise<{ ok: boolean; events: number; error?: string }> {
   if (polling) return { ok: false, events: 0, error: "busy" };
+  if (Date.now() - lastPollStartedAt < POLL_INTERVAL_MS) {
+    return { ok: false, events: 0, error: "cooldown" };
+  }
+  lastPollStartedAt = Date.now();
   polling = true;
   try {
     const state = await getState();
