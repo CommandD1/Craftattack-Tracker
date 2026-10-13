@@ -23,6 +23,9 @@ export const STATS_URL = process.env.CA_STATS_URL ?? "https://craftattack.one/ap
  */
 export const EXT_URL = process.env.CA_EXT_URL ?? "https://craftattack.one/api/ext";
 export const POLL_INTERVAL_MS = Number(process.env.CA_POLL_INTERVAL_MS ?? 60_000);
+const POLL_JITTER_RATIO = 0.25;
+const MIN_POLL_INTERVAL_MS = Math.floor(POLL_INTERVAL_MS * (1 - POLL_JITTER_RATIO));
+const MAX_POLL_INTERVAL_MS = Math.ceil(POLL_INTERVAL_MS * (1 + POLL_JITTER_RATIO));
 export const FOLLOWER_POLL_INTERVAL_MS = 60_000;
 const EXT_CACHE_TTL_MS = 15 * 60_000;
 const EXT_REQUEST_INTERVAL_MS = 1_000;
@@ -762,7 +765,7 @@ let polling = false;
 let lastPollStartedAt = 0;
 export async function pollOnce(): Promise<{ ok: boolean; events: number; error?: string }> {
   if (polling) return { ok: false, events: 0, error: "busy" };
-  if (Date.now() - lastPollStartedAt < POLL_INTERVAL_MS) {
+  if (Date.now() - lastPollStartedAt < MIN_POLL_INTERVAL_MS) {
     return { ok: false, events: 0, error: "cooldown" };
   }
   lastPollStartedAt = Date.now();
@@ -822,16 +825,23 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
   }
 }
 
-type Globals = typeof globalThis & { __acPollTimer?: ReturnType<typeof setInterval> };
+type Globals = typeof globalThis & { __acPollTimer?: ReturnType<typeof setTimeout> };
 
 /** Startet die Endlosschleife (einmal pro Prozess). */
 export function startPolling() {
   const gl = globalThis as Globals;
   if (gl.__acPollTimer) return;
-  const tick = () => {
-    pollOnce().catch((e) => console.error("[tracker] poll failed", e));
+  const tick = async () => {
+    const startedAt = Date.now();
+    try {
+      await pollOnce();
+    } catch (e) {
+      console.error("[tracker] poll failed", e);
+    }
+    const interval = MIN_POLL_INTERVAL_MS + Math.floor(Math.random() * (MAX_POLL_INTERVAL_MS - MIN_POLL_INTERVAL_MS + 1));
+    const delay = Math.max(0, interval - (Date.now() - startedAt));
+    gl.__acPollTimer = setTimeout(() => void tick(), delay);
   };
-  tick();
-  gl.__acPollTimer = setInterval(tick, POLL_INTERVAL_MS);
-  console.log(`[tracker] polling ${STATS_URL} alle ${POLL_INTERVAL_MS / 1000}s`);
+  void tick();
+  console.log(`[tracker] polling ${STATS_URL} alle ${MIN_POLL_INTERVAL_MS / 1000}–${MAX_POLL_INTERVAL_MS / 1000}s (Jitter)`);
 }

@@ -63,7 +63,7 @@ export function SiteFooter() {
             </ul>
           )}
           <p>
-            Der Tracker fragt die API standardmäßig jede Minute ab. Alles, was dazwischen passiert, bleibt ein
+            Der Tracker fragt die API standardmäßig etwa jede Minute in zufälligen Abständen ab. Alles, was dazwischen passiert, bleibt ein
             Geheimnis.
           </p>
           <p>

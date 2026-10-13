@@ -15,7 +15,8 @@ Live unter **https://craftattack.hiorcraft.tv**
 
 Ideen, die noch offen sind: Twitch-API-Anbindung (Clips, Kategorie), Discord-Benachrichtigungen bei Highlights, Tages- und Wochenstatistiken, Vergleich zweier Spieler.
 
-Inoffizieller Tracker für CraftAttack 14. Fragt `https://craftattack.one/api/stats` standardmäßig einmal pro Minute ab.
+Inoffizieller Tracker für CraftAttack 14. Fragt `https://craftattack.one/api/stats` standardmäßig in zufälligen Abständen
+von 45 bis 75 Sekunden ab (Mittelwert: eine Minute).
 Einzelstatistiken (`/api/ext/<id>`) werden höchstens zehn pro Poll und mit mindestens einer Sekunde Abstand angefragt;
 erfolgreiche Antworten werden 15 Minuten wiederverwendet. Bei Cloudflare-Challenges, HTTP 403/429 oder einer
 Cloudflare-503-Antwort pausiert der Tracker Anfragen an craftattack.one mindestens fünf Minuten und berücksichtigt
@@ -79,7 +80,7 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 - `DATABASE_URL` PostgreSQL-Verbindung, z. B. `postgres://user:pass@localhost:5432/actracker`
 - `CA_STATS_URL` andere API-Adresse
 - `CA_EXT_URL` Basis-Adresse der Einzelstatistik (Standard `https://craftattack.one/api/ext`)
-- `CA_POLL_INTERVAL_MS` Abfrageintervall in Millisekunden (Standard 60000; nicht unter die Vorgaben des API-Betreibers setzen)
+- `CA_POLL_INTERVAL_MS` mittleres Abfrageintervall in Millisekunden (Standard 60000, mit ±25 % Jitter; nicht unter die Vorgaben des API-Betreibers setzen)
 - `TWITCH_IRC_NICK` und `TWITCH_IRC_TOKEN` optional für Twitch-IRC mit `chat:read`; alle bekannten Kanäle werden mit höchstens 20 JOINs in 10 Sekunden (einer alle 500 ms) abonniert. Erfasst werden bekannte Sub-`USERNOTICE`s sowie Raids, wenn sowohl der raidende Spieler als auch der Zielkanal einem Spieler zugeordnet sind.
 - Twitch-Subzahlen werden ab Beginn der IRC-Erfassung gezählt und nur erfasst, wenn der Kanal-Streamer bei Eingang der Meldung auf dem Spielserver online ist (AFK zählt als online). Geschenk-USERNOTICEs von bekannten Spielern an einen anderen Streamer werden einzeln mit Geberbild und Anzahl angezeigt; bereits gespeicherte Minutensummen lassen sich mangels Geberdaten nicht rückwirkend in solche Einzelevents aufteilen.
 - `NEXT_PUBLIC_TWITCH_URL`, `NEXT_PUBLIC_DISCORD_URL`, `NEXT_PUBLIC_GITHUB_URL` optionale Footer-Links (werden beim Build eingebettet)
