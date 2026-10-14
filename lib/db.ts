@@ -1,45 +1,31 @@
 import "server-only";
-import { mkdir } from "node:fs/promises";
-import path from "node:path";
 
 /**
  * Datenbank-Anbindung.
- * - `DATABASE_URL` gesetzt → echtes PostgreSQL über `pg`
- * - sonst → PGlite (eingebettetes PostgreSQL, Dateien unter `data/pglite`)
+ * `DATABASE_URL` muss gesetzt sein, damit die App auf PostgreSQL zugreift.
  */
 export interface Db {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
-  kind: "postgres" | "pglite";
+  kind: "postgres";
 }
 
 type Globals = typeof globalThis & { __acDb?: Promise<Db> };
 
 async function connect(): Promise<Db> {
   const url = process.env.DATABASE_URL;
-  let db: Db;
-  if (url) {
-    const { Pool } = await import("pg");
-    const pool = new Pool({ connectionString: url, max: 5 });
-    db = {
-      kind: "postgres",
-      query: async (sql, params) => {
-        const r = await pool.query(sql, params as never[]);
-        return { rows: r.rows as never[] };
-      },
-    };
-  } else {
-    const { PGlite } = await import("@electric-sql/pglite");
-    const dir = path.join(process.cwd(), "data", "pglite");
-    await mkdir(dir, { recursive: true });
-    const lite = await PGlite.create(dir);
-    db = {
-      kind: "pglite",
-      query: async (sql, params) => {
-        const r = await lite.query(sql, params as never[]);
-        return { rows: r.rows as never[] };
-      },
-    };
+  if (!url) {
+    throw new Error("DATABASE_URL is required to connect to PostgreSQL.");
   }
+
+  const { Pool } = await import("pg");
+  const pool = new Pool({ connectionString: url, max: 5 });
+  const db: Db = {
+    kind: "postgres",
+    query: async (sql, params) => {
+      const r = await pool.query(sql, params as never[]);
+      return { rows: r.rows as never[] };
+    },
+  };
   await migrate(db);
   console.log(`[tracker] Datenbank: ${db.kind}`);
   return db;

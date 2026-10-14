@@ -9,7 +9,7 @@ Live unter **https://craftattack.hiorcraft.tv**
 ## Mitmachen
 
 1. Repo forken und klonen, `npm install`
-2. `npm run dev` startet die App lokal auf http://localhost:3000. Ohne `DATABASE_URL` nutzt sie eine eingebettete Datenbank (PGlite) unter `data/`, du brauchst also kein PostgreSQL.
+2. `DATABASE_URL` in `.env.local` setzen, dann startet `npm run dev` lokal auf http://localhost:3000.
 3. Änderung machen, `npm run lint` und `npx tsc --noEmit` müssen sauber sein.
 4. Pull Request gegen `main` mit kurzer Beschreibung, was und warum.
 
@@ -39,8 +39,7 @@ Der Poller startet automatisch mit dem Server (`instrumentation.ts`).
 
 ## Datenbank (PostgreSQL)
 
-- `DATABASE_URL` gesetzt (siehe `.env.example`) → echtes PostgreSQL über `pg`. Tabellen werden beim Start angelegt.
-- Nicht gesetzt → eingebettetes PostgreSQL (PGlite) unter `data/pglite`, ohne Installation. Das Verzeichnis wird beim Start automatisch angelegt.
+- `DATABASE_URL` muss gesetzt sein (siehe `.env.example`), damit die App auf PostgreSQL über `pg` zugreift. Tabellen werden beim Start angelegt.
 - Mit Neon werden Auth- und Object-Storage-Umgebungsvariablen über `neon env pull` bereitgestellt; `NEON_AUTH_COOKIE_SECRET` muss lokal einmalig mit `openssl rand -base64 32` erzeugt werden.
 - `/konto` bietet Neon-Managed-Auth (E-Mail/Passwort) und private persönliche Datei-Uploads. Dateien bis 10 MiB werden im privaten Neon-Bucket `assets` gespeichert; Metadaten und Besitzer-ID liegen in PostgreSQL. Die API prüft den angemeldeten Besitzer bei jedem Aufruf.
 
