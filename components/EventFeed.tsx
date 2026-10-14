@@ -12,6 +12,44 @@ const dayFmt = new Intl.DateTimeFormat("de-DE", {
 });
 const dayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" });
 
+function combineGiftSubscriptions(events: TrackerEvent[]): TrackerEvent[] {
+  const combined: TrackerEvent[] = [];
+  const giftIndexes = new Map<string, number>();
+
+  for (const event of events) {
+    const giver = event.meta?.giftGiverPlayerId;
+    if (event.type !== "subscription_gift" || typeof giver !== "string") {
+      combined.push(event);
+      continue;
+    }
+
+    const key = JSON.stringify([
+      event.player,
+      event.meta?.channel,
+      event.meta?.streamStartedAt,
+      giver,
+      Math.floor(Date.parse(event.at) / 60_000),
+    ]);
+    const existingIndex = giftIndexes.get(key);
+    if (existingIndex === undefined) {
+      giftIndexes.set(key, combined.length);
+      combined.push(event);
+      continue;
+    }
+
+    const existing = combined[existingIndex];
+    const delta = (existing.delta ?? 0) + (event.delta ?? 0);
+    combined[existingIndex] = {
+      ...existing,
+      delta,
+      value: (existing.value ?? 0) + (event.value ?? event.delta ?? 0),
+      meta: { ...existing.meta, giftCount: delta },
+    };
+  }
+
+  return combined;
+}
+
 /** Ereignisse ohne Spieler: das Typ-Icon ersetzt den Kopf */
 const SERVER_TYPES = new Set<EventType>(["server_online", "server_offline", "tracker_start", "record"]);
 
@@ -152,6 +190,7 @@ export function EventFeed({
   empty?: string;
 }) {
   if (events.length === 0) return <p className="st-online__empty">{empty}</p>;
+  const visibleEvents = combineGiftSubscriptions(events);
   const out: React.ReactNode[] = [];
   let lastDay = "";
   let lastMin = "";
@@ -173,7 +212,7 @@ export function EventFeed({
     );
     bucket = [];
   };
-  for (const e of events) {
+  for (const e of visibleEvents) {
     const d = new Date(e.at);
     const k = dayKey.format(d);
     const m = `${k} ${time(e.at)}`;

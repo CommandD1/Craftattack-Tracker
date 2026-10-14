@@ -68,7 +68,7 @@ Die Tracker-Datenseiten werden serverseitig gerendert (SSR, `instant = false`), 
 | Tod, Diamanten, Blöcke, Mobs, Strecke | Anstieg in `/api/ext/<id>` bzw. den Top-10-Boards | Server |
 | Tode, die keinem bekannten Spieler zuzuordnen sind | `totals.deaths` | Server (ohne Spieler) |
 | Stream an / aus / Titel geändert, Peak-Zuschauer | `live[]` | Twitch |
-| Twitch-Abos (inkl. Resubs und Geschenk-Abos; normale Summen ab 10 Subs, Geschenke von bekannten Streamern als Einzelevent; nur wenn der Kanal-Streamer auf dem Spielserver online ist) | Twitch IRC `USERNOTICE` | Twitch |
+| Twitch-Abos (inkl. Resubs und Geschenk-Abos; normale Summen ab 10 Subs, Geschenke von bekannten Streamern im Feed je Geber und Minute zusammengefasst; nur wenn der Kanal-Streamer auf dem Spielserver online ist) | Twitch IRC `USERNOTICE` | Twitch |
 | Raids zwischen bekannten Spielern (mit Zuschauerzahl, falls Twitch sie mitsendet) | Twitch IRC `USERNOTICE` | Twitch |
 | Twitch-Subs gesamt, Tagesverlauf und aktuelle Streamsumme | gespeicherte IRC-Abo-Ereignisse | Twitch |
 | Follower-Zuwachs während des Serveraufenthalts und Verlauf | Differenz öffentlicher Twitch-GQL-Followerstände zwischen Messungen, bei denen der Spieler online ist | Twitch + Server |
@@ -103,5 +103,5 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 - `CA_EXT_URL` Basis-Adresse der Einzelstatistik (Standard `https://craftattack.one/api/ext`)
 - `CA_POLL_INTERVAL_MS` mittleres Abfrageintervall in Millisekunden (Standard 60000, mit ±25 % Jitter; nicht unter die Vorgaben des API-Betreibers setzen)
 - `TWITCH_IRC_NICK` und `TWITCH_IRC_TOKEN` optional für Twitch-IRC mit `chat:read`; alle bekannten Kanäle werden mit höchstens 20 JOINs in 10 Sekunden (einer alle 500 ms) abonniert. Erfasst werden bekannte Sub-`USERNOTICE`s sowie Raids, wenn sowohl der raidende Spieler als auch der Zielkanal einem Spieler zugeordnet sind.
-- Twitch-Subzahlen werden ab Beginn der IRC-Erfassung gezählt und nur erfasst, wenn der Kanal-Streamer bei Eingang der Meldung auf dem Spielserver online ist (AFK zählt als online). Geschenk-USERNOTICEs von bekannten Spielern an einen anderen Streamer werden einzeln mit Geberbild und Anzahl angezeigt; bereits gespeicherte Minutensummen lassen sich mangels Geberdaten nicht rückwirkend in solche Einzelevents aufteilen.
+- Twitch-Subzahlen werden ab Beginn der IRC-Erfassung gezählt und nur erfasst, wenn der Kanal-Streamer bei Eingang der Meldung auf dem Spielserver online ist (AFK zählt als online). Geschenk-USERNOTICEs von bekannten Spielern an einen anderen Streamer werden im Feed pro Geber, Stream und Minute mit Geberbild und aufsummierter Anzahl angezeigt; die einzelnen IRC-Meldungen bleiben für die Statistiken gespeichert. Bereits gespeicherte Minutensummen lassen sich mangels Geberdaten nicht rückwirkend solchen Gebern zuordnen.
 - `NEXT_PUBLIC_TWITCH_URL`, `NEXT_PUBLIC_DISCORD_URL`, `NEXT_PUBLIC_GITHUB_URL` optionale Footer-Links (werden beim Build eingebettet)
