@@ -189,7 +189,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                   </span>
                 )}
                 {p.online && p.afkSince && (
-                  <span className="tag" data-tone="gold" title={p.afkFarm ? `Die Strecke steigt nicht, aber ${p.afkFarm === "mobs" ? "Mobs sterben" : "Blöcke fallen"} – eine AFK-Farm` : "Die gelaufene Strecke steigt seit mindestens fünf Minuten nicht"}>
+                  <span className="tag" data-tone="gold" title={p.afkFarm ? `Die Strecke steigt nicht, aber ${p.afkFarm === "mobs" ? "Mobs sterben" : "Blöcke fallen"} – eine AFK-Farm` : "Die gelaufene Strecke steigt seit mindestens 20 Minuten nicht"}>
                     AFK seit {ago(p.afkSince).replace("vor ", "")}
                     {p.afkFarm ? ` · ${p.afkFarm === "mobs" ? "farmt Mobs" : "baut Blöcke ab"}` : ""}
                   </span>
@@ -389,7 +389,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                   <dd className="num">{num(deaths)}</dd>
                   <dt>Längste Session</dt>
                   <dd className="num">{p.longestSession > 0 ? duration(p.longestSession) : "–"}</dd>
-                  <dt title="Online, aber ohne Streckenzuwachs für mindestens fünf Minuten. Zählt zur Online-Zeit dazu.">AFK-Zeit</dt>
+                  <dt title="Online, aber ohne Streckenzuwachs für mindestens 20 Minuten. Zählt zur Online-Zeit dazu.">AFK-Zeit</dt>
                   <dd className="num">
                     {afkSeconds > 0 ? duration(afkSeconds) : "–"}
                     {afkSeconds > 0 && onlineSeconds > 0 && <small className="muted"> {Math.round((afkSeconds / onlineSeconds) * 100)} %</small>}

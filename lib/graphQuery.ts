@@ -23,7 +23,7 @@ export const METRICS: Record<Metric, MetricMeta> = {
   liveCount: { label: "Streams live", perPlayer: false, counter: false, format: num, tone: "twitch", icon: "twitch" },
   viewers: { label: "Zuschauer", perPlayer: true, counter: false, format: num, hint: "Ohne Spieler: Summe aller Streams", tone: "twitch", icon: "eye" },
   playtimeSeconds: { label: "Spielzeit", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "Die API liefert Spielzeit nur für die Top 10", tone: "sky", icon: "clock" },
-  afkSeconds: { label: "AFK-Zeit", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "AFK = online, aber ≥ 5 Min keine Bewegung; aus dem Spielerverlauf berechnet", tone: "gold", icon: "clock" },
+  afkSeconds: { label: "AFK-Zeit", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "AFK = online, aber ≥ 20 Min keine Bewegung; aus dem Spielerverlauf berechnet", tone: "gold", icon: "clock" },
   afkMobsSeconds: { label: "AFK: Mobs farmen", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "AFK-Zeit, in der trotzdem ≥ 10 Mobs pro Minute gestorben sind (Mob-Farm)", tone: "gold", icon: "sword" },
   afkBlocksSeconds: { label: "AFK: Blöcke farmen", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke pro Minute abgebaut wurden (Block-Farm)", tone: "gold", icon: "pickaxe" },
   deaths: { label: "Tode", perPlayer: true, counter: true, format: num, tone: "redstone", icon: "skull" },

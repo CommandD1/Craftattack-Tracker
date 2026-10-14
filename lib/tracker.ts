@@ -42,7 +42,7 @@ const COUNTER_EVENTS: Partial<Record<BoardKey, EventType>> = {
 };
 
 /** Ab wann ein Spieler ohne Streckenzuwachs als AFK gilt */
-export const AFK_MS = Number(process.env.CA_AFK_MINUTES ?? 5) * 60_000;
+export const AFK_MS = Number(process.env.CA_AFK_MINUTES ?? 20) * 60_000;
 /** Ab so vielen Mobs bzw. Blöcken pro Minute (während AFK) gilt ein Abschnitt als AFK-Farm */
 export const AFK_FARM_MIN = Number(process.env.CA_AFK_FARM_MIN ?? 10);
 /** Mindestlänge eines Prüffensters für die Farm-Rate */

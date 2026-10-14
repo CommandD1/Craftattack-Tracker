@@ -2,7 +2,7 @@ import "server-only";
 import { getDb } from "./db";
 import { assignEventPlayer, deleteBackfilledEvents, deleteEvents, ensureLoaded, getAllSessions, getState, insertPastEvents, type StoredSession } from "./store";
 import { loadAfkSpans } from "./analytics";
-import { UNKNOWN_DEATH_GRACE_MS } from "./tracker";
+import { AFK_MS, UNKNOWN_DEATH_GRACE_MS } from "./tracker";
 import { trackedSecondsOf } from "./playtime";
 import type { EventType, TrackerEvent } from "./types";
 
@@ -12,16 +12,20 @@ const RUNNING_SLACK_MS = 90_000;
 const END_SLACK_MS = 10 * 60_000;
 
 const FARM_TYPES: EventType[] = ["afk_mobs_start", "afk_mobs_end", "afk_blocks_start", "afk_blocks_end"];
+const AFK_TYPES: EventType[] = ["afk_start", "afk_end", ...FARM_TYPES];
 
 /**
  * Aktuelle Stufe der einmaligen Verlaufs-Korrekturen (tracker_meta.history_fix):
- * 1 = Zähler ohne ext und Spielzeit korrigiert, 2 = AFK-Farm-Ereignisse nach Minuten-Rate neu bewertet
+ * 1 = Zähler ohne ext und Spielzeit korrigiert, 2 = AFK-Farm-Ereignisse nach Minuten-Rate neu bewertet,
+ * 3 = alle AFK-Ereignisse mit der aktuellen AFK-Schwelle aus dem Verlauf neu aufgebaut
  */
-const HISTORY_FIX_LEVEL = 2;
+const HISTORY_FIX_LEVEL = 3;
 
 /** Alle Nachträge beim Prozessstart, in der richtigen Reihenfolge. */
 export async function runBackfills(): Promise<void> {
   await fixHistoryOnce();
+  const afk = await backfillAfkEvents();
+  if (afk > 0) console.log(`[tracker] ${afk} AFK-Ereignisse rückwirkend neu aufgebaut`);
   const n = await backfillAfkFarmEvents();
   if (n > 0) console.log(`[tracker] ${n} AFK-Farm-Ereignisse rückwirkend nachgetragen`);
   const d = await assignUnknownDeaths();
@@ -100,6 +104,20 @@ export async function fixHistoryOnce(): Promise<void> {
   if (level < 2) {
     const gone = await deleteFarmEventsForRescan();
     console.log(`[tracker] ${gone} AFK-Farm-Ereignisse verworfen, sie werden nach Minuten-Rate neu nachgetragen`);
+  }
+  if (level < 3) {
+    const state = await getState();
+    for (const p of Object.values(state.players)) {
+      p.afkFarm = null;
+      p.afkCheck = null;
+      if (p.online && p.afkSince && p.lastMoveAt && Date.now() - Date.parse(p.lastMoveAt) < AFK_MS) {
+        p.afkSince = null;
+        p.afkMobsAt = null;
+        p.afkBlocksAt = null;
+      }
+    }
+    const gone = await deleteEvents(AFK_TYPES);
+    console.log(`[tracker] ${gone} alte AFK-Ereignisse zur Neubewertung entfernt`);
   }
   await db.query(`UPDATE tracker_meta SET history_fix = $1 WHERE id = 1`, [HISTORY_FIX_LEVEL]);
 }
@@ -257,6 +275,65 @@ export async function backfillAfkFarmEvents(): Promise<number> {
         });
       }
     }
+  }
+  return insertPastEvents(events);
+}
+
+/** Baut die allgemeinen AFK-Start-/Ende-Ereignisse aus den mit der aktuellen Schwelle erkannten Phasen neu auf. */
+export async function backfillAfkEvents(): Promise<number> {
+  await ensureLoaded();
+  const [state, sessions] = await Promise.all([getState(), getAllSessions()]);
+  const db = await getDb();
+  const now = Date.now();
+  const spans = await loadAfkSpans(0, now, now);
+  const existing = (
+    await db.query<{ player: string; type: string; at: Date }>(
+      `SELECT player, type, at FROM events WHERE type = ANY($1::text[]) AND player IS NOT NULL`,
+      [["afk_start", "afk_end"]],
+    )
+  ).rows.map((r) => ({ player: r.player, type: r.type, at: new Date(r.at).getTime() }));
+  const has = (player: string, type: EventType, from: number, to: number) =>
+    existing.some((e) => e.player === player && e.type === type && e.at >= from && e.at <= to);
+  const events: TrackerEvent[] = [];
+
+  for (const [id, list] of spans) {
+    const p = state.players[id];
+    let start: number | null = null;
+    let end = 0;
+    const flush = () => {
+      if (start === null) return;
+      const startAt = start + AFK_MS;
+      const key = `${id}-${start.toString(36)}`;
+      const base = { player: id, playerName: p?.name ?? id, uuid: p?.uuid ?? "", where: "server" as const };
+      if (!has(id, "afk_start", startAt - 10 * 60_000, startAt + 10 * 60_000)) {
+        events.push({
+          id: `bf-afk-start-${key}`,
+          at: new Date(startAt).toISOString(),
+          type: "afk_start",
+          ...base,
+          meta: { since: new Date(start).toISOString(), backfilled: true },
+        });
+      }
+      const running = p?.online && end >= now - RUNNING_SLACK_MS;
+      if (!running && !has(id, "afk_end", end - END_SLACK_MS, end + END_SLACK_MS)) {
+        const byLeave = sessions.some((s) => s.player === id && s.end && Math.abs(Date.parse(s.end) - end) < 1_000);
+        events.push({
+          id: `bf-afk-end-${key}`,
+          at: new Date(end).toISOString(),
+          type: "afk_end",
+          ...base,
+          meta: { afkSeconds: Math.round((end - start) / 1000), since: new Date(start).toISOString(), ...(byLeave ? { byLeave: true } : {}), backfilled: true },
+        });
+      }
+      start = null;
+    };
+
+    for (const [a, b] of list) {
+      if (start !== null && a > end) flush();
+      if (start === null) start = a;
+      end = b;
+    }
+    flush();
   }
   return insertPastEvents(events);
 }

@@ -16,7 +16,7 @@ const HOURS = [0, 3, 6, 9, 12, 15, 18, 21];
 const SORTS = [
   { key: "spielzeit", label: "Spielzeit", hint: "Online-Zeit an diesem Tag, inklusive AFK" },
   { key: "aktiv", label: "Aktiv auf dem Server", hint: "Online-Zeit ohne AFK" },
-  { key: "afk", label: "AFK-Zeit", hint: "Online, aber mindestens fünf Minuten keine Bewegung" },
+  { key: "afk", label: "AFK-Zeit", hint: "Online, aber mindestens 20 Minuten keine Bewegung" },
   { key: "afkmobs", label: "AFK Mobs farmen", hint: "AFK-Zeit, in der trotzdem ≥ 10 Mobs pro Minute gestorben sind" },
   { key: "afkblocks", label: "AFK Blöcke farmen", hint: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke pro Minute abgebaut wurden" },
   { key: "live", label: "Live auf Twitch", hint: "Stream-Dauer an diesem Tag" },
@@ -106,7 +106,7 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
                 <i style={{ background: "var(--grass)" }} /> auf dem Server
               </li>
               <li>
-                <i className="legend__afk" /> AFK (keine Bewegung ≥ 5 Min)
+                <i className="legend__afk" /> AFK (keine Bewegung ≥ 20 Min)
               </li>
               <li>
                 <i className="legend__afk legend__afk--mobs" /> AFK, farmt Mobs (≥ 10 Mobs/Min)
@@ -180,7 +180,7 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
           </div>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
             Sessions entstehen aus den Join- und Leave-Ereignissen des Trackers, Streams aus den Stream-an/aus-Ereignissen. AFK heißt: online, aber
-            die gelaufene Strecke steigt mindestens fünf Minuten nicht, nur erkennbar bei Spielern mit Einzelstatistik. Sterben dabei trotzdem mindestens zehn Mobs
+            die gelaufene Strecke steigt mindestens 20 Minuten nicht, nur erkennbar bei Spielern mit Einzelstatistik. Sterben dabei trotzdem mindestens zehn Mobs
             oder fallen zehn Blöcke pro Minute, ist dieser Teil eine AFK-Farm; sinkt die Rate darunter, ist es wieder normales AFK. Genauigkeit: etwa 30 Sekunden.
           </p>
         </div>

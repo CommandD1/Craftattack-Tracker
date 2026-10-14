@@ -23,7 +23,7 @@ const BOARDS: Record<BoardKey | "followers" | "twitchSubs" | "tracked" | "afk" |
   followers: { title: "Follower-Zuwachs auf dem Server", sub: "Neue Twitch-Follower während der Streamer auf dem Server waren", tone: "twitch" },
   twitchSubs: { title: "Sub-Stars", sub: "Twitch-Abos auf dem Server seit Beginn der IRC-Erfassung", tone: "amethyst" },
   tracked: { title: "Dauergäste", sub: "Online-Zeit laut Tracker, alle Spieler", tone: "lava" },
-  afk: { title: "Standbilder", sub: "AFK-Zeit laut Tracker: online, aber ≥ 5 Min keine Bewegung", tone: "gold" },
+  afk: { title: "Standbilder", sub: "AFK-Zeit laut Tracker: online, aber ≥ 20 Min keine Bewegung", tone: "gold" },
   afkmobs: { title: "Mob-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Mobs pro Minute gestorben sind (AFK-Mobfarm)", tone: "gold" },
   afkblocks: { title: "Block-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke pro Minute abgebaut wurden (AFK-Blockfarm)", tone: "gold" },
 };
