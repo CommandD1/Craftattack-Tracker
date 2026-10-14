@@ -92,7 +92,7 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 - `/bestenlisten?liste=twitchSubs` Twitch-Abo-Bestenliste; Profile zeigen Gesamtzahl, Tagesgraph und – wenn live – Subs im aktuellen Stream
 - `/bestenlisten?liste=followers` Bestenliste des Follower-Zuwachses während der Serverzeit; Profile und eigener Graph zeigen den erfassten Verlauf, keine globalen Twitch-Gesamtstände
 - `/konto` Registrierung, Anmeldung und private Datei-Uploads/Downloads
-- `/api/tracker?limit=200&player=<id>&type=<typ>` JSON-Export, `/api/tracker/poll` löst eine Abfrage manuell aus
+- `/api/tracker?limit=200&player=<id>&type=<typ>` JSON-Export, `/api/cron/poll` löst eine authentifizierte Abfrage aus
 
 ## Konfiguration
 
@@ -103,6 +103,7 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 - `CA_EXT_URL` Basis-Adresse der Einzelstatistik (Standard `https://craftattack.one/api/ext`)
 - `CA_POLL_INTERVAL_MS` mittleres Abfrageintervall in Millisekunden (Standard 60000, mit ±25 % Jitter; nicht unter die Vorgaben des API-Betreibers setzen)
 - `CA_AFK_MINUTES` Minuten ohne Streckenzuwachs, bevor ein Online-Spieler als AFK gilt (Standard 20); historische AFK-Zeiten und Ereignisse werden beim Start neu bewertet.
+- `CRON_SECRET` zufälliges Geheimnis für cron-job.org, mit `openssl rand -hex 32` erzeugen. In cron-job.org einen GET-Aufruf an `https://<deine-domain>/api/cron/poll` mit dem Header `Authorization: Bearer <CRON_SECRET>` einrichten. Bereits laufende oder wegen Poll-Abstand pausierte Abfragen antworten mit HTTP 200 und `status: "skipped"`; echte Fehler liefern HTTP 502.
 - `TWITCH_IRC_NICK` und `TWITCH_IRC_TOKEN` optional für Twitch-IRC mit `chat:read`; alle bekannten Kanäle werden mit höchstens 20 JOINs in 10 Sekunden (einer alle 500 ms) abonniert. Erfasst werden bekannte Sub-`USERNOTICE`s sowie Raids, wenn sowohl der raidende Spieler als auch der Zielkanal einem Spieler zugeordnet sind.
 - Twitch-Subzahlen werden ab Beginn der IRC-Erfassung gezählt und nur erfasst, wenn der Kanal-Streamer bei Eingang der Meldung auf dem Spielserver online ist (AFK zählt als online). Geschenk-USERNOTICEs von bekannten Spielern an einen anderen Streamer werden im Feed pro Geber, Stream und Minute mit Geberbild und aufsummierter Anzahl angezeigt; die einzelnen IRC-Meldungen bleiben für die Statistiken gespeichert. Bereits gespeicherte Minutensummen lassen sich mangels Geberdaten nicht rückwirkend solchen Gebern zuordnen.
 - `NEXT_PUBLIC_TWITCH_URL`, `NEXT_PUBLIC_DISCORD_URL`, `NEXT_PUBLIC_GITHUB_URL` optionale Footer-Links (werden beim Build eingebettet)

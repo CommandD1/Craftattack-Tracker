@@ -8,6 +8,8 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: CRON_SECRET
+        sync: false
       - key: NEON_AUTH_BASE_URL
         sync: false
       - key: NEON_AUTH_COOKIE_SECRET
