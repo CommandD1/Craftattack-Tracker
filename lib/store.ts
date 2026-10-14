@@ -467,20 +467,20 @@ export interface TwitchSubscriptionProfile {
   history: TwitchSubscriptionPoint[];
 }
 
-/** Twitch-Abos seit Beginn der Erfassung sowie Tagesverlauf und aktueller Stream. */
+/** Twitch-Abos seit Beginn der Erfassung sowie zeitlicher Verlauf und aktueller Stream. */
 export async function getTwitchSubscriptionProfile(
   player: string,
   streamStartedAt: string | null,
 ): Promise<TwitchSubscriptionProfile> {
   await ensureLoaded();
   const db = await getDb();
-  const [daily, stream] = await Promise.all([
+  const [buckets, stream] = await Promise.all([
     db.query<{ at: Date; count: number | string }>(
-      `SELECT date_trunc('day', at) AS at, SUM(delta) AS count
+      `SELECT date_trunc('minute', at) AS at, SUM(delta) AS count
          FROM events
         WHERE type IN ('subscription', 'subscription_gift') AND player = $1 AND meta->>'serverOnline' = 'true'
-        GROUP BY date_trunc('day', at)
-        ORDER BY date_trunc('day', at)`,
+        GROUP BY date_trunc('minute', at)
+        ORDER BY date_trunc('minute', at)`,
       [player],
     ),
     streamStartedAt
@@ -494,7 +494,7 @@ export async function getTwitchSubscriptionProfile(
       : Promise.resolve({ rows: [{ count: 0 }] }),
   ]);
   let total = 0;
-  const history = daily.rows.map((row) => {
+  const history = buckets.rows.map((row) => {
     total += Number(row.count);
     return { at: iso(row.at)!, value: total };
   });
