@@ -29,7 +29,9 @@ async function connect(): Promise<Db> {
     };
   } else {
     const { PGlite } = await import("@electric-sql/pglite");
-    const dir = path.join(process.cwd(), "data", "pglite");
+    const dir = process.env.PGLITE_DATA_DIR
+      ? path.resolve(process.env.PGLITE_DATA_DIR)
+      : path.join(process.cwd(), "data", "pglite");
     await mkdir(dir, { recursive: true });
     const lite = await PGlite.create(dir);
     db = {

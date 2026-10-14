@@ -1,10 +1,20 @@
+---
+title: CraftAttack 14 Tracker
+emoji: 📊
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # CraftAttack 14 Tracker
 
 Live unter **https://craftattack.hiorcraft.tv**
 
-> **Hinweis:** Dieses Repo ist der Quellcode des Trackers, der auf craftattack.hiorcraft.tv läuft.
-> Es ist nicht als Self-Hosting-Paket gedacht und es gibt dafür keinen Support. Nutz einfach die Live-Seite.
-> Für neue Features, Bugfixes oder Ideen sind Pull Requests und Issues aber sehr willkommen.
+> **Hinweis:** Dies ist ein inoffizieller Tracker. Die Hugging-Face-Space-Bereitstellung dient zum Ausprobieren;
+> für selbst gehostete Instanzen gibt es keinen Support. Für neue Features, Bugfixes oder Ideen sind Pull Requests
+> und Issues aber sehr willkommen.
 
 ## Mitmachen
 
@@ -36,6 +46,18 @@ npm run dev      # http://localhost:3000
 ```
 
 Der Poller startet automatisch mit dem Server (`instrumentation.ts`).
+
+## Hugging Face Spaces
+
+Das Repository kann als Docker Space gestartet werden: Erstelle auf Hugging Face einen Space mit dem SDK
+**Docker** und verwende dieses Repository als Quelle. Die Space-Metadaten und der Container-Port `7860`
+sind bereits konfiguriert.
+
+PGlite speichert seine Daten standardmäßig unter `/data/pglite` im Container. Aktiviere in den Space-Einstellungen
+persistent storage, damit die Datenbank Neustarts und Neubuilds übersteht. Ohne persistent storage gehen lokal
+gespeicherte Tracker-Daten bei einem Neustart oder Neubuild verloren. Alternativ kann `DATABASE_URL` als Space
+Secret auf eine externe PostgreSQL-Datenbank zeigen. Optionale API- und Twitch-Einstellungen lassen sich ebenfalls
+als Space Variables bzw. Secrets setzen; Zugangsdaten gehören in Secrets.
 
 ## Datenbank (PostgreSQL)
 
@@ -85,6 +107,7 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 - `CA_STATS_URL` andere API-Adresse
 - `CA_EXT_URL` Basis-Adresse der Einzelstatistik (Standard `https://craftattack.one/api/ext`)
 - `CA_POLL_INTERVAL_MS` mittleres Abfrageintervall in Millisekunden (Standard 60000, mit ±25 % Jitter; nicht unter die Vorgaben des API-Betreibers setzen)
+- `PGLITE_DATA_DIR` Verzeichnis für die eingebettete Datenbank (Standard `data/pglite`; im Docker Space `/data/pglite`)
 - `TWITCH_IRC_NICK` und `TWITCH_IRC_TOKEN` optional für Twitch-IRC mit `chat:read`; alle bekannten Kanäle werden mit höchstens 20 JOINs in 10 Sekunden (einer alle 500 ms) abonniert. Erfasst werden bekannte Sub-`USERNOTICE`s sowie Raids, wenn sowohl der raidende Spieler als auch der Zielkanal einem Spieler zugeordnet sind.
 - Twitch-Subzahlen werden ab Beginn der IRC-Erfassung gezählt und nur erfasst, wenn der Kanal-Streamer bei Eingang der Meldung auf dem Spielserver online ist (AFK zählt als online). Geschenk-USERNOTICEs von bekannten Spielern an einen anderen Streamer werden einzeln mit Geberbild und Anzahl angezeigt; bereits gespeicherte Minutensummen lassen sich mangels Geberdaten nicht rückwirkend in solche Einzelevents aufteilen.
 - `NEXT_PUBLIC_TWITCH_URL`, `NEXT_PUBLIC_DISCORD_URL`, `NEXT_PUBLIC_GITHUB_URL` optionale Footer-Links (werden beim Build eingebettet)
