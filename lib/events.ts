@@ -312,6 +312,7 @@ export const EVENT_TYPES: EventType[] = [
   "stream_end",
   "stream_title",
   "subscription",
+  "subscription_gift",
   "follower_burst",
   "raid",
   "rank",
