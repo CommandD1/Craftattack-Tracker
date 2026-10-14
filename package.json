@@ -11,7 +11,6 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1151.0",
     "@neon/config": "^1.9.1",
-    "@neon/env": "^1.6.2",
     "@neondatabase/auth": "^0.6.0-beta",
     "next": "16.4.0",
     "pg": "^8.23.1",
