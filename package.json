@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node --max-old-space-size=320 ./node_modules/next/dist/bin/next start",
     "lint": "eslint"
   },
   "dependencies": {

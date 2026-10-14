@@ -37,6 +37,19 @@ npm run dev      # http://localhost:3000
 
 Der Poller startet automatisch mit dem Server (`instrumentation.ts`).
 
+## Render (512 MB)
+
+`render.yaml` richtet einen Render-Starter-Web-Service ein. Der Produktionsserver
+begrenzt V8s Heap auf 320 MB; Next.js hält höchstens 16 MB Cache im Speicher und
+verwendet beim Build einen Worker. Die verbleibende Speichermarge ist für Node.js,
+native Module und den Tracker vorgesehen.
+
+Beim Erstellen des Blueprints die abgefragten Variablen eintragen:
+`DATABASE_URL`, `NEON_AUTH_BASE_URL`, `NEON_AUTH_COOKIE_SECRET` sowie
+`AWS_ENDPOINT_URL_S3`, `AWS_REGION`, `AWS_ACCESS_KEY_ID` und
+`AWS_SECRET_ACCESS_KEY` für private Datei-Uploads. Twitch-Zugangsdaten sind
+optional und können nach dem Erstellen im Render-Dashboard gesetzt werden.
+
 ## Datenbank (PostgreSQL)
 
 - `DATABASE_URL` muss gesetzt sein (siehe `.env.example`), damit die App auf PostgreSQL über `pg` zugreift. Tabellen werden beim Start angelegt.
