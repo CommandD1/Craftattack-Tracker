@@ -148,4 +148,14 @@ async function migrate(db: Db) {
       playtime_seconds bigint NOT NULL,
       deaths           integer NOT NULL
     )`);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS user_files (
+      id          text PRIMARY KEY,
+      owner_id    text NOT NULL,
+      object_key  text NOT NULL UNIQUE,
+      file_name   text NOT NULL,
+      size_bytes  integer NOT NULL CHECK (size_bytes >= 0),
+      created_at  timestamptz NOT NULL DEFAULT now()
+    )`);
+  await db.query(`CREATE INDEX IF NOT EXISTS user_files_owner_created_idx ON user_files (owner_id, created_at DESC)`);
 }

@@ -41,10 +41,12 @@ Der Poller startet automatisch mit dem Server (`instrumentation.ts`).
 
 - `DATABASE_URL` gesetzt (siehe `.env.example`) → echtes PostgreSQL über `pg`. Tabellen werden beim Start angelegt.
 - Nicht gesetzt → eingebettetes PostgreSQL (PGlite) unter `data/pglite`, ohne Installation. Das Verzeichnis wird beim Start automatisch angelegt.
+- Mit Neon werden Auth- und Object-Storage-Umgebungsvariablen über `neon env pull` bereitgestellt; `NEON_AUTH_COOKIE_SECRET` muss lokal einmalig mit `openssl rand -base64 32` erzeugt werden.
+- `/konto` bietet Neon-Managed-Auth (E-Mail/Passwort) und private persönliche Datei-Uploads. Dateien bis 10 MiB werden im privaten Neon-Bucket `assets` gespeichert; Metadaten und Besitzer-ID liegen in PostgreSQL. Die API prüft den angemeldeten Besitzer bei jedem Aufruf.
 
-Tabellen: `tracker_meta` (Status, Rekorde, letzter API-Snapshot), `players`, `events` (Chronik), `history` (Zeitreihe gesamt), `player_history` (Zeitreihe pro Spieler).
+Tabellen: `tracker_meta` (Status, Rekorde, letzter API-Snapshot), `players`, `events` (Chronik), `history` (Zeitreihe gesamt), `player_history` (Zeitreihe pro Spieler) und `user_files` (Metadaten privater Uploads).
 
-Alle Seiten werden komplett serverseitig gerendert (SSR, `instant = false`), kein Lade-Skeleton.
+Die Tracker-Datenseiten werden serverseitig gerendert (SSR, `instant = false`), ohne Lade-Skeleton. Das Konto ergänzt die Oberfläche clientseitig um Anmeldung und Dateiaktionen.
 
 ## Was erfasst wird
 
@@ -77,12 +79,15 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 - `/live` Twitch-Übersicht, Zuschauerkurve und Stream-Chronik
 - `/bestenlisten?liste=twitchSubs` Twitch-Abo-Bestenliste; Profile zeigen Gesamtzahl, Tagesgraph und – wenn live – Subs im aktuellen Stream
 - `/bestenlisten?liste=followers` Bestenliste des Follower-Zuwachses während der Serverzeit; Profile und eigener Graph zeigen den erfassten Verlauf, keine globalen Twitch-Gesamtstände
+- `/konto` Registrierung, Anmeldung und private Datei-Uploads/Downloads
 - `/api/tracker?limit=200&player=<id>&type=<typ>` JSON-Export, `/api/tracker/poll` löst eine Abfrage manuell aus
 
 ## Konfiguration
 
 - `DATABASE_URL` PostgreSQL-Verbindung, z. B. `postgres://user:pass@localhost:5432/actracker`
 - `CA_STATS_URL` andere API-Adresse
+- `NEON_AUTH_BASE_URL` Neon Managed Auth URL; `NEON_AUTH_COOKIE_SECRET` lokales Next.js-Cookie-Secret (mindestens 32 Zeichen).
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3` und `AWS_REGION` für den privaten Neon-Object-Storage-Bucket `assets`.
 - `CA_EXT_URL` Basis-Adresse der Einzelstatistik (Standard `https://craftattack.one/api/ext`)
 - `CA_POLL_INTERVAL_MS` mittleres Abfrageintervall in Millisekunden (Standard 60000, mit ±25 % Jitter; nicht unter die Vorgaben des API-Betreibers setzen)
 - `TWITCH_IRC_NICK` und `TWITCH_IRC_TOKEN` optional für Twitch-IRC mit `chat:read`; alle bekannten Kanäle werden mit höchstens 20 JOINs in 10 Sekunden (einer alle 500 ms) abonniert. Erfasst werden bekannte Sub-`USERNOTICE`s sowie Raids, wenn sowohl der raidende Spieler als auch der Zielkanal einem Spieler zugeordnet sind.
