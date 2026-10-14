@@ -6,6 +6,7 @@ import { getAfkBoard, getAfkRanksBefore, getBoardRanksBefore, getFollowerRanksBe
 import { BOARD_KEYS, type AfkKind, type BoardKey } from "@/lib/types";
 import { ago, boardValue, duration, headUrl, num } from "@/lib/format";
 import { BOARD_ICON, Icon } from "@/components/Icons";
+import { playtimeOf } from "@/lib/playtime";
 
 // Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
 export const instant = false;
@@ -13,7 +14,7 @@ export const instant = false;
 export const metadata: Metadata = { title: "Bestenlisten" };
 
 const BOARDS: Record<BoardKey | "followers" | "twitchSubs" | "tracked" | "afk" | "afkmobs" | "afkblocks", { title: string; sub: string; tone: string }> = {
-  playtimeSeconds: { title: "Dauerzocker", sub: "Spielzeit laut API, außerhalb der Top 10 aus Join/Leave weitergerechnet", tone: "sky" },
+  playtimeSeconds: { title: "Dauerzocker", sub: "Spielzeit laut API, sonst vom Tracker gemessene Online-Zeit", tone: "sky" },
   diamonds: { title: "Diamantenbank", sub: "Diamanten", tone: "diamond" },
   deaths: { title: "Friedhof", sub: "Tode", tone: "redstone" },
   blocksBroken: { title: "Abrissbirne", sub: "Abgebaute Blöcke", tone: "gold" },
@@ -69,8 +70,24 @@ export default async function Page(props: PageProps<"/bestenlisten">) {
   ]);
   const b = BOARDS[key];
 
-  let rows: { id: string; name: string; uuid: string; value: number; at: string | null; online: boolean; afkNow?: boolean }[];
-  if (isAfkKey(key)) {
+  let rows: { id: string; name: string; uuid: string; value: number; at: string | null; online: boolean; afkNow?: boolean; playtimeSource?: ReturnType<typeof playtimeOf>["source"] }[];
+  if (key === "playtimeSeconds") {
+    rows = Object.values(state.players)
+      .map((p) => {
+        const playtime = playtimeOf(p, now);
+        return {
+          id: p.id,
+          name: p.name,
+          uuid: p.uuid,
+          value: playtime.seconds,
+          at: null,
+          online: p.online,
+          playtimeSource: playtime.source,
+        };
+      })
+      .filter((p) => p.value > 0)
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, "de"));
+  } else if (isAfkKey(key)) {
     rows = (await getAfkBoard(afkKindOf(key))).map((r) => ({ ...r, at: null }));
   } else if (key === "tracked") {
     rows = Object.values(state.players)
@@ -160,7 +177,7 @@ export default async function Page(props: PageProps<"/bestenlisten">) {
                         {e.online && <span className="dot" style={{ display: "inline-block", marginLeft: 8, verticalAlign: "middle" }} title="online" />}
                       </span>
                       <span className="st-board__meta">
-                        {isAfkKey(key) ? (e.afkNow ? (key === "afk" ? "gerade AFK" : "farmt gerade") : "") : key === "tracked" ? (e.online ? "läuft" : "") : inApi.has(e.id) ? "aktuell" : e.at ? `Stand ${ago(e.at, now)}` : ""}
+                        {isAfkKey(key) ? (e.afkNow ? (key === "afk" ? "gerade AFK" : "farmt gerade") : "") : key === "tracked" ? (e.online ? "läuft" : "") : key === "playtimeSeconds" ? (inApi.has(e.id) ? "aktuell" : e.playtimeSource === "estimate" ? "geschätzt" : e.playtimeSource === "tracker" ? "Tracker" : "API-Wert") : inApi.has(e.id) ? "aktuell" : e.at ? `Stand ${ago(e.at, now)}` : ""}
                       </span>
                       <span className="st-board__val num">{fmt(e.value)}</span>
                       {diff === null ? (
@@ -187,7 +204,7 @@ export default async function Page(props: PageProps<"/bestenlisten">) {
           </section>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem", maxWidth: 760 }}>
             „Aktuell“ heißt: steht gerade in der Top 10 der API. Bei allen anderen API-Listen ist der Wert der letzte, den der
-            Tracker gesehen hat, der echte Wert kann inzwischen höher sein. „Dauergäste“, „Standbilder“ und die AFK-Farmer misst der Tracker selbst, für alle. ▲▼ zeigt die
+            Tracker gesehen hat, der echte Wert kann inzwischen höher sein. Bei den Dauerzockern ist die Spielzeit außerhalb der API-Top-10 geschätzt oder die vom Tracker gemessene Online-Zeit. „Dauergäste“, „Standbilder“ und die AFK-Farmer misst der Tracker selbst, für alle. ▲▼ zeigt die
             Bewegung gegenüber dem Stand vor {SPANS[span].label}, „neu“ heißt: damals noch nicht in der Liste.
           </p>
         </div>
