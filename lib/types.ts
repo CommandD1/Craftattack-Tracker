@@ -19,6 +19,8 @@ export interface LiveInfo {
   login: string;
   title: string;
   viewers: number;
+  gameId?: string;
+  gameName?: string;
   /** Streamt gerade und ist dabei auf dem Server (nur bei vom Tracker zusammengeführten Live-Daten gesetzt) */
   onServer?: boolean;
   /** Streambeginn laut Twitch (ISO), falls bekannt */
@@ -224,6 +226,10 @@ export interface PlayerPoint {
   mobsKilled: number | null;
   distance: number | null;
   followersOnServer: number | null;
+  followersTotal: number | null;
+  ranks: Partial<Record<ExtKey, PlayerRank>>;
+  streamGameId: string | null;
+  streamGameName: string | null;
   /** Vom Tracker gezählte Twitch-Abos; separate Ereignis-Zeitreihe kann dieses Feld ergänzen */
   twitchSubs?: number | null;
 }
@@ -231,6 +237,7 @@ export interface PlayerPoint {
 export interface TotalsPoint {
   at: string;
   onlineCount: number;
+  playerCount?: number | null;
   liveCount: number;
   viewers: number;
   playtimeSeconds: number;

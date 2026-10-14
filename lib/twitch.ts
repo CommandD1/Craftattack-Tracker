@@ -117,6 +117,8 @@ export interface TwitchStream {
   title: string;
   viewers: number;
   startedAt: string;
+  gameId: string;
+  gameName: string;
 }
 
 export const streamUrl = (login: string) => `https://www.twitch.tv/${encodeURIComponent(login)}`;
@@ -143,10 +145,17 @@ export async function fetchLiveStreams(logins: Iterable<string>): Promise<Map<st
     });
     if (res.status === 401) g().token = null;
     if (!res.ok) throw new Error(`Twitch streams HTTP ${res.status}`);
-    const data = ((await res.json()) as { data: { user_login: string; user_name: string; title: string; viewer_count: number; started_at: string; type: string }[] }).data;
+    const data = ((await res.json()) as { data: { user_login: string; user_name: string; title: string; viewer_count: number; started_at: string; type: string; game_id: string; game_name: string }[] }).data;
     for (const s of data) {
       if (s.type !== "live") continue;
-      out.set(s.user_login.toLowerCase(), { login: s.user_login, title: s.title, viewers: s.viewer_count, startedAt: s.started_at });
+      out.set(s.user_login.toLowerCase(), {
+        login: s.user_login,
+        title: s.title,
+        viewers: s.viewer_count,
+        startedAt: s.started_at,
+        gameId: s.game_id,
+        gameName: s.game_name,
+      });
     }
   }
   return out;

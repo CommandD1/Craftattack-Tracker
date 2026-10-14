@@ -116,6 +116,7 @@ interface EventRow {
 interface HistoryRow {
   at: Date;
   online_count: number;
+  player_count?: number | null;
   live_count: number;
   viewers: number;
   playtime_seconds: number | string;
@@ -176,6 +177,7 @@ function rowToPoint(r: HistoryRow): TotalsPoint {
   return {
     at: iso(r.at)!,
     onlineCount: r.online_count,
+    ...(r.player_count === null || r.player_count === undefined ? {} : { playerCount: r.player_count }),
     liveCount: r.live_count,
     viewers: r.viewers,
     playtimeSeconds: Number(r.playtime_seconds),
@@ -374,9 +376,9 @@ export async function saveState(state: TrackerState) {
   const fresh = state.history.slice(store.historySaved);
   for (const h of fresh) {
     await db.query(
-      `INSERT INTO history (at, online_count, live_count, viewers, playtime_seconds, deaths)
-       VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (at) DO NOTHING`,
-      [toDate(h.at), h.onlineCount, h.liveCount, h.viewers, h.playtimeSeconds, h.deaths],
+      `INSERT INTO history (at, online_count, player_count, live_count, viewers, playtime_seconds, deaths)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (at) DO NOTHING`,
+      [toDate(h.at), h.onlineCount, h.playerCount ?? null, h.liveCount, h.viewers, h.playtimeSeconds, h.deaths],
     );
   }
   store.historySaved = state.history.length;
@@ -684,7 +686,21 @@ const PLAYER_POINT_MAX_GAP_MS = 5 * 60_000;
 const lastPoint = new Map<string, { at: number; sig: string }>();
 
 function pointSignature(p: PlayerPoint) {
-  return [p.online, p.viewers, p.playtimeSeconds, p.deaths, p.diamonds, p.blocksBroken, p.mobsKilled, p.distance, p.followersOnServer].join("|");
+  return [
+    p.online,
+    p.viewers,
+    p.playtimeSeconds,
+    p.deaths,
+    p.diamonds,
+    p.blocksBroken,
+    p.mobsKilled,
+    p.distance,
+    p.followersOnServer,
+    p.followersTotal,
+    JSON.stringify(p.ranks),
+    p.streamGameId,
+    p.streamGameName,
+  ].join("|");
 }
 
 /** Schreibt pro Spieler einen Punkt, wenn sich etwas geändert hat oder der letzte Punkt zu alt ist. */
@@ -713,14 +729,34 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
       mobsKilled: isFresh("mobsKilled") ? (p.stats.mobsKilled ?? null) : null,
       distance: isFresh("distance") ? (p.stats.distance ?? null) : null,
       followersOnServer: p.followersAt ? p.followersOnServer : null,
+      followersTotal: p.followers,
+      ranks: p.ranks ?? {},
+      streamGameId: p.live?.gameId ?? null,
+      streamGameName: p.live?.gameName ?? null,
     };
     const sig = pointSignature(point);
     const last = lastPoint.get(p.id);
     if (last && last.sig === sig && t - last.at < PLAYER_POINT_MAX_GAP_MS) continue;
     await db.query(
-      `INSERT INTO player_history (player, at, online, viewers, playtime_seconds, deaths, diamonds, blocks_broken, mobs_killed, distance, followers_on_server)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT (player, at) DO NOTHING`,
-      [p.id, toDate(at), point.online, point.viewers, point.playtimeSeconds, point.deaths, point.diamonds, point.blocksBroken, point.mobsKilled, point.distance, point.followersOnServer],
+      `INSERT INTO player_history (player, at, online, viewers, playtime_seconds, deaths, diamonds, blocks_broken, mobs_killed, distance, followers_on_server, followers_total, ranks, stream_game_id, stream_game_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (player, at) DO NOTHING`,
+      [
+        p.id,
+        toDate(at),
+        point.online,
+        point.viewers,
+        point.playtimeSeconds,
+        point.deaths,
+        point.diamonds,
+        point.blocksBroken,
+        point.mobsKilled,
+        point.distance,
+        point.followersOnServer,
+        point.followersTotal,
+        JSON.stringify(point.ranks),
+        point.streamGameId,
+        point.streamGameName,
+      ],
     );
     lastPoint.set(p.id, { at: t, sig });
   }
@@ -737,6 +773,10 @@ interface PlayerPointRow {
   mobs_killed: number | null;
   distance: number | null;
   followers_on_server: number | null;
+  followers_total?: number | null;
+  ranks?: PlayerPoint["ranks"] | null;
+  stream_game_id?: string | null;
+  stream_game_name?: string | null;
 }
 
 export async function getPlayerHistory(id: string, limit = 3000): Promise<PlayerPoint[]> {
@@ -756,6 +796,10 @@ export async function getPlayerHistory(id: string, limit = 3000): Promise<Player
     mobsKilled: r.mobs_killed,
     distance: r.distance === null ? null : Number(r.distance),
     followersOnServer: r.followers_on_server,
+    followersTotal: r.followers_total ?? null,
+    ranks: r.ranks ?? {},
+    streamGameId: r.stream_game_id ?? null,
+    streamGameName: r.stream_game_name ?? null,
   }));
 }
 
@@ -891,7 +935,8 @@ export async function getHistoryAll(): Promise<{ points: TotalsPoint[]; bucketMi
     const rows = (
       await db.query<HistoryRow>(
         `SELECT to_timestamp(floor(extract(epoch FROM at) / ($1 * 60)) * ($1 * 60)) AS at,
-                max(online_count) AS online_count, max(live_count) AS live_count, max(viewers) AS viewers,
+                max(online_count) AS online_count, max(player_count) AS player_count,
+                max(live_count) AS live_count, max(viewers) AS viewers,
                 max(playtime_seconds) AS playtime_seconds, max(deaths) AS deaths
            FROM history GROUP BY 1 ORDER BY 1`,
         [minutes],

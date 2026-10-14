@@ -404,7 +404,16 @@ export function diffSnapshot(
     for (const [login, st] of twitch) {
       const ps = byLogin.get(login);
       if (!ps) continue;
-      liveNow.set(ps.id, { id: ps.id, name: ps.name, login: st.login, title: st.title, viewers: st.viewers, startedAt: st.startedAt });
+      liveNow.set(ps.id, {
+        id: ps.id,
+        name: ps.name,
+        login: st.login,
+        title: st.title,
+        viewers: st.viewers,
+        startedAt: st.startedAt,
+        gameId: st.gameId,
+        gameName: st.gameName,
+      });
     }
     // Spieler, deren Login Twitch nicht kannte, aber die API als live meldet
     for (const l of apiLive.values()) {
@@ -452,7 +461,15 @@ export function diffSnapshot(
         meta: { title: l.title, previousTitle: prev.title, login: l.login },
       });
     }
-    ps.live = { login: l.login, title: l.title, viewers: l.viewers, onServer, startedAt: l.startedAt };
+    ps.live = {
+      login: l.login,
+      title: l.title,
+      viewers: l.viewers,
+      onServer,
+      startedAt: l.startedAt,
+      ...(l.gameId ? { gameId: l.gameId } : {}),
+      ...(l.gameName ? { gameName: l.gameName } : {}),
+    };
     if (l.login) ps.twitchLogin = l.login;
   }
   for (const ps of Object.values(state.players)) {
@@ -482,7 +499,17 @@ export function diffSnapshot(
   stats.live = [...liveNow.values()];
   for (const p of stats.online) {
     const l = liveNow.get(p.id);
-    p.live = l ? { login: l.login, title: l.title, viewers: l.viewers, onServer: true, startedAt: l.startedAt } : null;
+    p.live = l
+      ? {
+          login: l.login,
+          title: l.title,
+          viewers: l.viewers,
+          onServer: true,
+          startedAt: l.startedAt,
+          ...(l.gameId ? { gameId: l.gameId } : {}),
+          ...(l.gameName ? { gameName: l.gameName } : {}),
+        }
+      : null;
   }
 
   // --- Einzelstatistiken (/api/ext/<login>): Name und Ränge für alle abgefragten Spieler übernehmen
@@ -735,6 +762,7 @@ export function diffSnapshot(
   state.history.push({
     at: now,
     onlineCount: stats.onlineCount,
+    playerCount: stats.playerCount,
     liveCount: liveOnServer.length,
     viewers,
     playtimeSeconds: stats.totals?.playtimeSeconds ?? 0,

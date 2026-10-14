@@ -5,7 +5,16 @@ import { boardValue, num } from "@/lib/format";
 import Link from "next/link";
 import { Sparkline } from "./Sparkline";
 
-export type SparkKey = Exclude<keyof PlayerPoint, "at" | "online">;
+export type SparkKey =
+  | "viewers"
+  | "playtimeSeconds"
+  | "deaths"
+  | "diamonds"
+  | "blocksBroken"
+  | "mobsKilled"
+  | "distance"
+  | "followersOnServer"
+  | "twitchSubs";
 
 const FORMAT: Record<SparkKey, (v: number) => string> = {
   viewers: num,

@@ -125,15 +125,21 @@ async function migrate(db: Db) {
       PRIMARY KEY (player, at)
     )`);
   await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS followers_on_server integer`);
+  await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS followers_total integer`);
+  await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS ranks jsonb`);
+  await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS stream_game_id text`);
+  await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS stream_game_name text`);
   await db.query(`
     CREATE TABLE IF NOT EXISTS history (
       at               timestamptz PRIMARY KEY,
       online_count     integer NOT NULL,
+      player_count     integer,
       live_count       integer NOT NULL,
       viewers          integer NOT NULL,
       playtime_seconds bigint NOT NULL,
       deaths           integer NOT NULL
     )`);
+  await db.query(`ALTER TABLE history ADD COLUMN IF NOT EXISTS player_count integer`);
   await db.query(`
     CREATE TABLE IF NOT EXISTS user_files (
       id          text PRIMARY KEY,

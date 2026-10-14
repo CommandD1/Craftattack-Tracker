@@ -56,7 +56,7 @@ optional und können nach dem Erstellen im Render-Dashboard gesetzt werden.
 - Mit Neon werden Auth- und Object-Storage-Umgebungsvariablen über `neon env pull` bereitgestellt; `NEON_AUTH_COOKIE_SECRET` muss lokal einmalig mit `openssl rand -base64 32` erzeugt werden.
 - `/konto` bietet Neon-Managed-Auth (E-Mail/Passwort) und private persönliche Datei-Uploads. Dateien bis 10 MiB werden im privaten Neon-Bucket `assets` gespeichert; Metadaten und Besitzer-ID liegen in PostgreSQL. Die API prüft den angemeldeten Besitzer bei jedem Aufruf.
 
-Tabellen: `tracker_meta` (Status, Rekorde, letzter API-Snapshot), `players`, `events` (Chronik), `history` (Zeitreihe gesamt), `player_history` (Zeitreihe pro Spieler) und `user_files` (Metadaten privater Uploads).
+Tabellen: `tracker_meta` (Status, Rekorde, letzter API-Snapshot), `players`, `events` (Chronik), `history` (Zeitreihe gesamt, einschließlich Spielerzahl), `player_history` (Spielerwerte, Follower-Gesamtstand, Rang-Snapshot und Twitch-Kategorie je Messpunkt) und `user_files` (Metadaten privater Uploads). Neue Verlaufsfelder werden mit additiven `IF NOT EXISTS`-Spalten ergänzt; bestehende Daten bleiben erhalten.
 
 Die Tracker-Datenseiten werden serverseitig gerendert (SSR, `instant = false`), ohne Lade-Skeleton. Das Konto ergänzt die Oberfläche clientseitig um Anmeldung und Dateiaktionen.
 
@@ -78,7 +78,7 @@ Die Tracker-Datenseiten werden serverseitig gerendert (SSR, `instant = false`), 
 | Rang-Aufstieg in die Top 3 einer Bestenliste | Boards | Server |
 | Meilensteine (z. B. 24 h Spielzeit, 1.000 Diamanten, 10. Tod) | Boards | Server |
 | Rekorde: meiste gleichzeitig online / live / Zuschauer | Snapshot | Server |
-| Pro Spieler: Zeitreihe aller Werte, längste Session, Online-Zeit | abgeleitet | – |
+| Pro Spieler: Zeitreihe aller Werte, Follower-Gesamtstand, Rang-Snapshot und Twitch-Kategorie, längste Session, Online-Zeit | abgeleitet | – |
 
 Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder auf Twitch.
 

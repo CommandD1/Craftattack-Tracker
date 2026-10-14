@@ -291,6 +291,10 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                         mobsKilled: null,
                         distance: null,
                         followersOnServer: null,
+                        followersTotal: null,
+                        ranks: {},
+                        streamGameId: null,
+                        streamGameName: null,
                         twitchSubs: point.value,
                       }))}
                       k="twitchSubs"
