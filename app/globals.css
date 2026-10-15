@@ -2299,6 +2299,15 @@ a.spark-card--link:hover .eyebrow {
   height: 5px;
   background: var(--twitch);
 }
+.gantt__live-cursor {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 13px;
+  background: var(--ink);
+  box-shadow: 0 0 0 1px var(--paper);
+  pointer-events: none;
+}
 .gantt__now {
   top: 0;
   bottom: 0;
