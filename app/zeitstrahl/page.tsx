@@ -5,6 +5,8 @@ import { dayKey, getDayTimeline, getTimelapse } from "@/lib/analytics";
 import { duration, headUrl, num, time } from "@/lib/format";
 import { DateNav } from "@/components/DateNav";
 import { Timelapse } from "@/components/Timelapse";
+import { GanttLiveSegment } from "@/components/GanttLiveSegment";
+import { findVodAt } from "@/lib/twitch";
 
 export const instant = false;
 export const metadata: Metadata = { title: "Zeitstrahl" };
@@ -28,12 +30,19 @@ const AFK_TIP: Record<string, string> = { mobs: "AFK, farmt Mobs", blocks: "AFK,
 
 export default async function Page(props: PageProps<"/zeitstrahl">) {
   const sp = await props.searchParams;
-  await loadTracker();
+  const { state } = await loadTracker();
   const tag = typeof sp.tag === "string" ? sp.tag : undefined;
   const sort: SortKey = SORTS.find((s) => s.key === sp.sortieren)?.key ?? "spielzeit";
   const [{ nav, rows: unsorted, now }, lapse] = await Promise.all([getDayTimeline(tag), getTimelapse(tag)]);
   // Nach gewähltem Wert sortieren, Gleichstand nach Spielzeit, dann Name
   const rows = [...unsorted].sort((a, b) => sortValue(b, sort) - sortValue(a, sort) || b.seconds - a.seconds || a.name.localeCompare(b.name, "de"));
+  const vodOffsets = await Promise.all(
+    rows.map(async (r) => {
+      const login = state.players[r.id]?.twitchLogin ?? state.players[r.id]?.live?.login;
+      if (!login) return r.live.map(() => null);
+      return Promise.all(r.live.map(([a]) => findVodAt(login, a).catch(() => null)));
+    }),
+  );
   const sortHref = (key: SortKey) => {
     const q = new URLSearchParams();
     if (tag) q.set("tag", tag);
@@ -138,7 +147,7 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
                   </div>
                   <span className="gantt__sum muted">{sort === "spielzeit" ? "Summe" : SORTS.find((s) => s.key === sort)!.label}</span>
                 </div>
-                {rows.map((r) => (
+                {rows.map((r, rowIndex) => (
                   <div className="gantt__row" role="row" key={r.id}>
                     <Link className="gantt__name" href={`/spieler/${encodeURIComponent(r.id)}`} role="rowheader">
                       <img className="head" src={headUrl(r.uuid, 24, r.id)} alt="" width={24} height={24} loading="lazy" />
@@ -152,7 +161,16 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
                         <span key={`a${k}`} className="gantt__afk tip" data-kind={kind} style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }} data-edge={edge(a, b)} data-tip={`${r.name} · ${kind ? AFK_TIP[kind] : "AFK"} ${fmtSpan(a, b)} · ${duration((b - a) / 1000)}`} tabIndex={0} />
                       ))}
                       {r.live.map(([a, b], k) => (
-                        <span key={`l${k}`} className="gantt__live tip" style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }} data-edge={edge(a, b)} data-tip={`${r.name} · live ${fmtSpan(a, b)} · ${duration((b - a) / 1000)}`} tabIndex={0} />
+                        <GanttLiveSegment
+                          key={`l${k}`}
+                          vodId={vodOffsets[rowIndex]?.[k]?.vodId ?? null}
+                          startOffset={vodOffsets[rowIndex]?.[k]?.offset ?? null}
+                          start={a}
+                          end={b}
+                          style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }}
+                          edge={edge(a, b)}
+                          tip={`${r.name} · live ${fmtSpan(a, b)} · ${duration((b - a) / 1000)}`}
+                        />
                       ))}
                       {nowPct !== null && <span className="gantt__now" style={{ left: `${nowPct}%` }} />}
                     </div>

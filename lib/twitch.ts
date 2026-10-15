@@ -242,17 +242,23 @@ export function vodLink(vodId: string, offsetSec: number) {
 }
 
 /** Sucht das VOD, das den Zeitpunkt abdeckt. Laufende Streams haben noch eine „wachsende“ Dauer, daher Toleranz. */
-export async function findVod(login: string, atMs: number): Promise<{ vodId: string; offset: number } | null> {
+export async function findVodAt(login: string, atMs: number): Promise<{ vodId: string; offset: number } | null> {
   if (!TWITCH_ENABLED) return null;
   const list = await videos(login);
   for (const v of list) {
     const end = v.startMs + Math.max(v.durationSec, 1) * 1000 + 6 * 3600_000; // laufende Aufnahme: großzügig
     if (atMs >= v.startMs && atMs <= end) {
-      const offset = Math.max(0, (atMs - v.startMs) / 1000 - LEAD_SECONDS);
+      const offset = Math.max(0, (atMs - v.startMs) / 1000);
       return { vodId: v.id, offset };
     }
   }
   return null;
+}
+
+/** Sucht das passende VOD und steigt für Ereignislinks etwas vor dem Zeitpunkt ein. */
+export async function findVod(login: string, atMs: number): Promise<{ vodId: string; offset: number } | null> {
+  const hit = await findVodAt(login, atMs);
+  return hit ? { vodId: hit.vodId, offset: Math.max(0, hit.offset - LEAD_SECONDS) } : null;
 }
 
 const NEG_CACHE_MS = 10 * 60_000;
