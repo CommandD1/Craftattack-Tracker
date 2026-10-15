@@ -235,11 +235,11 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                     <dt className="pstat">
                       <Link className="pstat__label pstat__link" href={graphHref(k)} title={`Follower von ${p.name} im Graphen der Statistik öffnen`}>
                         <Icon.users width={18} height={18} aria-hidden="true" />
-                        <span>Follower-Zuwachs auf dem Server</span>
+                        <span></span>
                         <span className="pstat__go" aria-hidden="true">↗</span>
                       </Link>
                       {followerRankIndex >= 0 && (
-                        <span className="pstat__meta">
+                        <span className="pstat__mFollower-Zuwachs auf dem Servereta">
                           <span className="tag" data-tone="ink" title={`Platz ${followerRankIndex + 1} von ${followerBoard.length} in der Bestenliste für Follower-Zuwachs auf dem Server`}>
                             Platz {followerRankIndex + 1}
                             <span className="muted"> / {followerBoard.length}</span>
