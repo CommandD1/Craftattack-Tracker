@@ -14,6 +14,9 @@ const END_SLACK_MS = 10 * 60_000;
 const FARM_TYPES: EventType[] = ["afk_mobs_start", "afk_mobs_end", "afk_blocks_start", "afk_blocks_end"];
 const AFK_TYPES: EventType[] = ["afk_start", "afk_end", ...FARM_TYPES];
 
+/** Bei Änderungen der AFK-Erkennung erhöhen, damit bestehende Ereignisse aus dem Verlauf neu aufgebaut werden. */
+const AFK_HISTORY_VERSION = 1;
+
 /**
  * Aktuelle Stufe der einmaligen Verlaufs-Korrekturen (tracker_meta.history_fix):
  * 1 = Zähler ohne ext und Spielzeit korrigiert, 2 = AFK-Farm-Ereignisse nach Minuten-Rate neu bewertet,
@@ -24,12 +27,24 @@ const HISTORY_FIX_LEVEL = 3;
 /** Alle Nachträge beim Prozessstart, in der richtigen Reihenfolge. */
 export async function runBackfills(): Promise<void> {
   await fixHistoryOnce();
+  await rebuildAfkEventsIfNeeded();
   const afk = await backfillAfkEvents();
   if (afk > 0) console.log(`[tracker] ${afk} AFK-Ereignisse rückwirkend neu aufgebaut`);
   const n = await backfillAfkFarmEvents();
   if (n > 0) console.log(`[tracker] ${n} AFK-Farm-Ereignisse rückwirkend nachgetragen`);
   const d = await assignUnknownDeaths();
   if (d > 0) console.log(`[tracker] ${d} unbekannte Tode per Ausschluss nachträglich zugeordnet`);
+}
+
+/** Entfernt veraltete AFK-Ereignisse einmal pro Version der Erkennungslogik. */
+async function rebuildAfkEventsIfNeeded(): Promise<void> {
+  await ensureLoaded();
+  const db = await getDb();
+  const version = (await db.query<{ afk_history_version: number }>(`SELECT afk_history_version FROM tracker_meta WHERE id = 1`)).rows[0]?.afk_history_version ?? 0;
+  if (version >= AFK_HISTORY_VERSION) return;
+  const gone = await deleteEvents(AFK_TYPES);
+  await db.query(`UPDATE tracker_meta SET afk_history_version = $1 WHERE id = 1`, [AFK_HISTORY_VERSION]);
+  console.log(`[tracker] ${gone} AFK-Ereignisse für Neubewertung entfernt (Version ${AFK_HISTORY_VERSION})`);
 }
 
 /**
@@ -302,7 +317,7 @@ export async function backfillAfkEvents(): Promise<number> {
     let end = 0;
     const flush = () => {
       if (start === null) return;
-      const startAt = start + AFK_MS;
+      const startAt = start;
       const key = `${id}-${start.toString(36)}`;
       const base = { player: id, playerName: p?.name ?? id, uuid: p?.uuid ?? "", where: "server" as const };
       if (!has(id, "afk_start", startAt - 10 * 60_000, startAt + 10 * 60_000)) {

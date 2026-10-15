@@ -316,7 +316,8 @@ export function diffSnapshot(
 ): TrackerEvent[] {
   const now = nowDate.toISOString();
   const events: TrackerEvent[] = [];
-  const push = (e: Omit<TrackerEvent, "id" | "at">) => events.push({ id: eventId(now), at: now, ...e });
+  const pushAt = (at: string, e: Omit<TrackerEvent, "id" | "at">) => events.push({ id: eventId(at), at, ...e });
+  const push = (e: Omit<TrackerEvent, "id" | "at">) => pushAt(now, e);
 
   const first = state.latest === null;
   const onlineBeforePoll = new Map(Object.values(state.players).map((player) => [player.id, player.online]));
@@ -704,7 +705,7 @@ export function diffSnapshot(
         ps.afkBlocksAt = ps.stats.blocksBroken ?? null;
         ps.afkCheck = null; // erst leeren, damit kein alter Farm-Beginn übernommen wird
         ps.afkCheck = checkWindow(ps, now);
-        push({ type: "afk_start", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { since: ps.afkSince } });
+        pushAt(ps.afkSince, { type: "afk_start", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { since: ps.afkSince } });
       }
     }
   }

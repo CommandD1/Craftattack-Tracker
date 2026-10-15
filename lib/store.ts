@@ -390,6 +390,7 @@ export async function appendEvents(events: TrackerEvent[]) {
   const store = g();
   const db = await getDb();
   store.events.push(...events);
+  store.events.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.id.localeCompare(b.id));
   if (store.events.length > MAX_EVENTS_IN_MEMORY) {
     store.events = store.events.slice(-MAX_EVENTS_IN_MEMORY);
   }
