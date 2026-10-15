@@ -26,6 +26,23 @@ function apiUrl(q: GraphQuery, metric: Metric, now: number) {
   return `/api/series?${p}`;
 }
 
+function suggestionsUrl(q: Pick<GraphQuery, "zeit" | "von" | "bis" | "raster" | "modus">, metric: Metric, now: number) {
+  const p = new URLSearchParams();
+  p.set("metric", metric);
+  const r = RANGES.find((x) => x.key === q.zeit);
+  if (q.zeit === "eigen") {
+    const a = localMs(q.von);
+    const b = localMs(q.bis);
+    if (Number.isFinite(a)) p.set("von", String(a));
+    if (Number.isFinite(b)) p.set("bis", String(b));
+  } else if (r?.ms) {
+    p.set("von", String(now - r.ms));
+  }
+  if (q.raster !== "auto") p.set("raster", q.raster);
+  if (q.modus === "zuwachs" && METRICS[metric].counter) p.set("modus", "zuwachs");
+  return `/api/series/suggestions?${p}`;
+}
+
 interface ApiLine {
   id: string;
   name: string;
@@ -240,6 +257,7 @@ function MultiChart({ lines, hidden, dataKey }: { lines: Line[]; hidden: Set<str
 export function GraphBuilder({ players, initial }: { players: PlayerOption[]; initial: GraphQuery }) {
   const [q, setQ] = useState<GraphQuery>(initial);
   const [search, setSearch] = useState("");
+  const [playerScores, setPlayerScores] = useState<{ key: string; scores: Record<string, number>; error?: string } | null>(null);
   // Ergebnis samt der Abfrage, zu der es gehört – „lädt“ heißt: Ergebnis passt noch nicht zur aktuellen Abfrage
   const [result, setResult] = useState<{ key: string; lines?: Line[]; bucketMinutes?: number; error?: string } | null>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
@@ -252,6 +270,34 @@ export function GraphBuilder({ players, initial }: { players: PlayerOption[]; in
   const anyPerPlayer = q.metrics.some((m) => METRICS[m].perPlayer);
   const anyCounter = q.metrics.some((m) => METRICS[m].counter);
   const multi = q.metrics.length > 1;
+  const rankingMetric =
+    (q.modus === "zuwachs" && q.metrics.find((m) => METRICS[m].perPlayer && METRICS[m].counter)) ||
+    q.metrics.find((m) => METRICS[m].perPlayer);
+  const rankingMode = rankingMetric && METRICS[rankingMetric].counter ? q.modus : "wert";
+  const rankingKey = rankingMetric ? [rankingMetric, q.zeit, q.von, q.bis, q.raster, rankingMode].join(":") : "";
+  const currentScores = playerScores?.key === rankingKey && !playerScores.error ? playerScores.scores : null;
+
+  useEffect(() => {
+    if (!rankingMetric) return;
+
+    const ctrl = new AbortController();
+    const url = suggestionsUrl(
+      { zeit: q.zeit, von: q.von, bis: q.bis, raster: q.raster, modus: q.modus },
+      rankingMetric,
+      Date.now(),
+    );
+    fetch(url, { signal: ctrl.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? `HTTP ${response.status}`);
+        return (await response.json()) as { scores: Record<string, number> };
+      })
+      .then(({ scores }) => setPlayerScores({ key: rankingKey, scores }))
+      .catch((e: Error) => {
+        if (e.name === "AbortError") return;
+        setPlayerScores({ key: rankingKey, scores: {}, error: e.message });
+      });
+    return () => ctrl.abort();
+  }, [rankingMetric, rankingKey, q.zeit, q.von, q.bis, q.raster, q.modus]);
 
   // URL mitführen, damit die Auswahl teilbar ist
   useEffect(() => {
@@ -307,8 +353,11 @@ export function GraphBuilder({ players, initial }: { players: PlayerOption[]; in
 
   const suggestions = useMemo(() => {
     const s = search.trim().toLowerCase();
-    return players.filter((p) => !q.spieler.includes(p.id) && (!s || p.name.toLowerCase().includes(s) || p.id.includes(s))).slice(0, s ? 12 : 8);
-  }, [players, q.spieler, search]);
+    return players
+      .filter((p) => !q.spieler.includes(p.id) && (!s || p.name.toLowerCase().includes(s) || p.id.includes(s)))
+      .sort((a, b) => (currentScores ? (currentScores[b.id] ?? 0) - (currentScores[a.id] ?? 0) : 0) || a.name.localeCompare(b.name, "de"))
+      .slice(0, s ? 12 : 8);
+  }, [players, q.spieler, search, currentScores]);
 
   const latest = (l: Line) => (l.points.length ? l.format(l.points[l.points.length - 1].v) : "–");
   const peak = (l: Line) => (l.points.length ? l.format(Math.max(...l.points.map((p) => p.v))) : "–");
@@ -385,6 +434,7 @@ export function GraphBuilder({ players, initial }: { players: PlayerOption[]; in
                     </li>
                   ))}
                   {suggestions.length === 0 && <li className="muted">Niemand gefunden.</li>}
+                  {playerScores?.key === rankingKey && playerScores.error && <li className="muted">Sortierung nicht verfügbar: {playerScores.error}</li>}
                 </ul>
               </div>
             </div>
