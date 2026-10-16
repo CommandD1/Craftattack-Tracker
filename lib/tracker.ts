@@ -809,6 +809,7 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
     const now = new Date();
     state.lastPoll = now.toISOString();
     state.polls += 1;
+    let snapshotApplied = false;
     try {
       const stats = await fetchStats();
       // Einzelstatistiken für alle bekannten Spieler – Fehler hier sind nicht fatal, dann gibt es eben nur die Top 10
@@ -834,6 +835,7 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       if (ext.failed > 0) console.warn(`[tracker] ${ext.failed} ext-Anfragen fehlgeschlagen`);
       const first = state.latest === null;
       const events = diffSnapshot(state, stats, now, ext.players, twitch, ext.loginOf, ext.missing, followers);
+      snapshotApplied = true;
       if (first) {
         events.unshift({
           id: eventId(now.toISOString()),
@@ -851,7 +853,7 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       return { ok: true, events: events.length };
     } catch (err) {
       state.lastError = err instanceof Error ? err.message : String(err);
-      await saveState(state);
+      await saveState(state, { savePlayers: snapshotApplied });
       return { ok: false, events: 0, error: state.lastError };
     }
   } finally {

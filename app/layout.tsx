@@ -48,7 +48,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <SiteHeader />
         <main id="inhalt">{children}</main>
         <SiteFooter />
-        <AutoRefresh intervalMs={30_000} />
+        <AutoRefresh intervalMs={60_000} />
       </body>
     </html>
   );

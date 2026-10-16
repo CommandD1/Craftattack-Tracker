@@ -59,6 +59,7 @@ optional und können nach dem Erstellen im Render-Dashboard gesetzt werden.
 Tabellen: `tracker_meta` (Status, Rekorde, letzter API-Snapshot), `players`, `events` (Chronik), `history` (Zeitreihe gesamt, einschließlich Spielerzahl), `player_history` (Spielerwerte, Follower-Gesamtstand, Rang-Snapshot und Twitch-Kategorie je Messpunkt) und `user_files` (Metadaten privater Uploads). Neue Verlaufsfelder werden mit additiven `IF NOT EXISTS`-Spalten ergänzt; bestehende Daten bleiben erhalten.
 
 Die Tracker-Datenseiten werden serverseitig gerendert (SSR, `instant = false`), ohne Lade-Skeleton. Das Konto ergänzt die Oberfläche clientseitig um Anmeldung und Dateiaktionen.
+Geöffnete Seiten aktualisieren ihre Daten höchstens einmal pro Minute und nur solange der Tab sichtbar ist.
 
 ## Was erfasst wird
 

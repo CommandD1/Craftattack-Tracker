@@ -6,6 +6,7 @@ import type { BoardKey, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, Tra
 
 const MAX_EVENTS_IN_MEMORY = 20000;
 const MAX_HISTORY_POINTS = 2880; // 24 h bei 30 s
+const MAX_BULK_INSERT_ROWS = 500;
 const MIN_VISIBLE_SUBSCRIPTION_COUNT = 10;
 
 type Globals = typeof globalThis & {
@@ -45,6 +46,32 @@ export function freshState(): TrackerState {
 
 const iso = (v: unknown): string | null => (v instanceof Date ? v.toISOString() : v ? String(v) : null);
 const toDate = (v: string | null | undefined) => (v ? new Date(v) : null);
+
+async function insertRows(
+  db: Db,
+  table: string,
+  columns: string[],
+  rows: unknown[][],
+  conflict: string,
+  returning?: string,
+): Promise<{ id: string }[]> {
+  const inserted: { id: string }[] = [];
+  for (let offset = 0; offset < rows.length; offset += MAX_BULK_INSERT_ROWS) {
+    const batch = rows.slice(offset, offset + MAX_BULK_INSERT_ROWS);
+    const values = batch
+      .map((_, rowIndex) => {
+        const placeholders = columns.map((__, columnIndex) => `$${rowIndex * columns.length + columnIndex + 1}`);
+        return `(${placeholders.join(", ")})`;
+      })
+      .join(", ");
+    const result = await db.query<{ id: string }>(
+      `INSERT INTO ${table} (${columns.join(", ")}) VALUES ${values} ${conflict}${returning ? ` RETURNING ${returning}` : ""}`,
+      batch.flat(),
+    );
+    inserted.push(...result.rows);
+  }
+  return inserted;
+}
 
 /* ---------- Zeilen ↔ Objekte ---------- */
 
@@ -274,7 +301,7 @@ export async function getEvents(): Promise<TrackerEvent[]> {
 
 /* ---------- Speichern ---------- */
 
-export async function saveState(state: TrackerState) {
+export async function saveState(state: TrackerState, { savePlayers = true }: { savePlayers?: boolean } = {}) {
   await ensureLoaded();
   const store = g();
   const db = await getDb();
@@ -310,30 +337,20 @@ export async function saveState(state: TrackerState) {
     ],
   );
 
-  // Spieler: alle upserten (≈100 Zeilen, ein Statement pro Spieler ist hier völlig ausreichend)
-  for (const p of Object.values(state.players)) {
-    await db.query(
-      `INSERT INTO players (id, name, uuid, online, live, stats, first_seen, last_seen, session_start,
-                            tracked_seconds, sessions, live_since, peak_viewers, longest_session, ranks, twitch_login,
-                            peak_viewers_on_server, stream_on_server_seconds, stream_off_server_seconds,
-                            last_move_at, afk_since, afk_seconds, afk_farm, afk_mobs_at, afk_blocks_at, playtime_tracked, afk_check, followers, followers_at, followers_online_at_sample, followers_on_server, followers_on_live_stream, followers_live_at_sample, live_peak_viewers)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
-       ON CONFLICT (id) DO UPDATE SET
-         name = EXCLUDED.name, uuid = EXCLUDED.uuid, online = EXCLUDED.online, live = EXCLUDED.live,
-         stats = EXCLUDED.stats, first_seen = EXCLUDED.first_seen, last_seen = EXCLUDED.last_seen,
-         session_start = EXCLUDED.session_start, tracked_seconds = EXCLUDED.tracked_seconds,
-         sessions = EXCLUDED.sessions, live_since = EXCLUDED.live_since, peak_viewers = EXCLUDED.peak_viewers,
-         longest_session = EXCLUDED.longest_session, ranks = EXCLUDED.ranks,
-         twitch_login = EXCLUDED.twitch_login, peak_viewers_on_server = EXCLUDED.peak_viewers_on_server,
-         stream_on_server_seconds = EXCLUDED.stream_on_server_seconds, stream_off_server_seconds = EXCLUDED.stream_off_server_seconds,
-         last_move_at = EXCLUDED.last_move_at, afk_since = EXCLUDED.afk_since, afk_seconds = EXCLUDED.afk_seconds,
-         afk_farm = EXCLUDED.afk_farm, afk_mobs_at = EXCLUDED.afk_mobs_at, afk_blocks_at = EXCLUDED.afk_blocks_at,
-         playtime_tracked = EXCLUDED.playtime_tracked, afk_check = EXCLUDED.afk_check,
-         followers = EXCLUDED.followers, followers_at = EXCLUDED.followers_at,
-         followers_online_at_sample = EXCLUDED.followers_online_at_sample, followers_on_server = EXCLUDED.followers_on_server,
-         followers_on_live_stream = EXCLUDED.followers_on_live_stream, followers_live_at_sample = EXCLUDED.followers_live_at_sample,
-         live_peak_viewers = EXCLUDED.live_peak_viewers`,
+  if (savePlayers) {
+    const players = Object.values(state.players);
+    await insertRows(
+      db,
+      "players",
       [
+        "id", "name", "uuid", "online", "live", "stats", "first_seen", "last_seen", "session_start",
+        "tracked_seconds", "sessions", "live_since", "peak_viewers", "longest_session", "ranks", "twitch_login",
+        "peak_viewers_on_server", "stream_on_server_seconds", "stream_off_server_seconds", "last_move_at", "afk_since",
+        "afk_seconds", "afk_farm", "afk_mobs_at", "afk_blocks_at", "playtime_tracked", "afk_check", "followers",
+        "followers_at", "followers_online_at_sample", "followers_on_server", "followers_on_live_stream",
+        "followers_live_at_sample", "live_peak_viewers",
+      ],
+      players.map((p) => [
         p.id,
         p.name,
         p.uuid,
@@ -368,19 +385,34 @@ export async function saveState(state: TrackerState) {
         p.followersOnLiveStream,
         p.followersLiveAtSample,
         p.livePeakViewers,
-      ],
+      ]),
+      `ON CONFLICT (id) DO UPDATE SET
+       name = EXCLUDED.name, uuid = EXCLUDED.uuid, online = EXCLUDED.online, live = EXCLUDED.live,
+       stats = EXCLUDED.stats, first_seen = EXCLUDED.first_seen, last_seen = EXCLUDED.last_seen,
+       session_start = EXCLUDED.session_start, tracked_seconds = EXCLUDED.tracked_seconds,
+       sessions = EXCLUDED.sessions, live_since = EXCLUDED.live_since, peak_viewers = EXCLUDED.peak_viewers,
+       longest_session = EXCLUDED.longest_session, ranks = EXCLUDED.ranks,
+       twitch_login = EXCLUDED.twitch_login, peak_viewers_on_server = EXCLUDED.peak_viewers_on_server,
+       stream_on_server_seconds = EXCLUDED.stream_on_server_seconds, stream_off_server_seconds = EXCLUDED.stream_off_server_seconds,
+       last_move_at = EXCLUDED.last_move_at, afk_since = EXCLUDED.afk_since, afk_seconds = EXCLUDED.afk_seconds,
+       afk_farm = EXCLUDED.afk_farm, afk_mobs_at = EXCLUDED.afk_mobs_at, afk_blocks_at = EXCLUDED.afk_blocks_at,
+       playtime_tracked = EXCLUDED.playtime_tracked, afk_check = EXCLUDED.afk_check,
+       followers = EXCLUDED.followers, followers_at = EXCLUDED.followers_at,
+       followers_online_at_sample = EXCLUDED.followers_online_at_sample, followers_on_server = EXCLUDED.followers_on_server,
+       followers_on_live_stream = EXCLUDED.followers_on_live_stream, followers_live_at_sample = EXCLUDED.followers_live_at_sample,
+       live_peak_viewers = EXCLUDED.live_peak_viewers`,
     );
   }
 
   // Verlauf: nur neue Punkte anhängen
   const fresh = state.history.slice(store.historySaved);
-  for (const h of fresh) {
-    await db.query(
-      `INSERT INTO history (at, online_count, player_count, live_count, viewers, playtime_seconds, deaths)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (at) DO NOTHING`,
-      [toDate(h.at), h.onlineCount, h.playerCount ?? null, h.liveCount, h.viewers, h.playtimeSeconds, h.deaths],
-    );
-  }
+  await insertRows(
+    db,
+    "history",
+    ["at", "online_count", "player_count", "live_count", "viewers", "playtime_seconds", "deaths"],
+    fresh.map((h) => [toDate(h.at), h.onlineCount, h.playerCount ?? null, h.liveCount, h.viewers, h.playtimeSeconds, h.deaths]),
+    "ON CONFLICT (at) DO NOTHING",
+  );
   store.historySaved = state.history.length;
 }
 
@@ -389,12 +421,21 @@ export async function appendEvents(events: TrackerEvent[]) {
   await ensureLoaded();
   const store = g();
   const db = await getDb();
+  await insertRows(
+    db,
+    "events",
+    ["id", "at", "type", "player", "player_name", "uuid", `"where"`, "delta", "value", "meta"],
+    events.map((e) => [
+      e.id, toDate(e.at), e.type, e.player ?? null, e.playerName ?? null, e.uuid ?? null,
+      e.where, e.delta ?? null, e.value ?? null, e.meta ? JSON.stringify(e.meta) : null,
+    ]),
+    "ON CONFLICT (id) DO NOTHING",
+  );
   store.events.push(...events);
   store.events.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.id.localeCompare(b.id));
   if (store.events.length > MAX_EVENTS_IN_MEMORY) {
     store.events = store.events.slice(-MAX_EVENTS_IN_MEMORY);
   }
-  for (const e of events) await insertEventRow(db, e);
 }
 
 /** Speichert ein von einer Live-Quelle geliefertes Ereignis und aktualisiert den Ereigniszähler. */
@@ -609,13 +650,24 @@ export async function insertPastEvents(events: TrackerEvent[]): Promise<number> 
   await ensureLoaded();
   const store = g();
   const db = await getDb();
-  let added = 0;
-  for (const e of events) {
-    if (await insertEventRow(db, e)) {
-      added++;
-      store.events.push(e);
-    }
-  }
+  const inserted = await insertRows(
+    db,
+    "events",
+    ["id", "at", "type", "player", "player_name", "uuid", `"where"`, "delta", "value", "meta"],
+    events.map((e) => [
+      e.id, toDate(e.at), e.type, e.player ?? null, e.playerName ?? null, e.uuid ?? null,
+      e.where, e.delta ?? null, e.value ?? null, e.meta ? JSON.stringify(e.meta) : null,
+    ]),
+    "ON CONFLICT (id) DO NOTHING",
+    "id",
+  );
+  const addedById = new Map(events.map((event) => [event.id, event]));
+  const addedEvents = inserted.flatMap(({ id }) => {
+    const event = addedById.get(id);
+    return event ? [event] : [];
+  });
+  const added = addedEvents.length;
+  store.events.push(...addedEvents);
   if (added > 0) {
     store.events.sort((x, y) => Date.parse(x.at) - Date.parse(y.at) || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
     if (store.events.length > MAX_EVENTS_IN_MEMORY) store.events = store.events.slice(-MAX_EVENTS_IN_MEMORY);
@@ -714,6 +766,8 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
   await ensureLoaded();
   const db = await getDb();
   const t = Date.parse(at);
+  const rows: unknown[][] = [];
+  const signatures: { id: string; sig: string }[] = [];
   for (const p of players) {
     const hasData = p.online || p.live || p.followersAt !== null || Object.keys(p.stats).length > 0;
     if (!hasData) continue;
@@ -738,10 +792,7 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
     const sig = pointSignature(point);
     const last = lastPoint.get(p.id);
     if (last && last.sig === sig && t - last.at < PLAYER_POINT_MAX_GAP_MS) continue;
-    await db.query(
-      `INSERT INTO player_history (player, at, online, viewers, playtime_seconds, deaths, diamonds, blocks_broken, mobs_killed, distance, followers_on_server, followers_total, ranks, stream_game_id, stream_game_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (player, at) DO NOTHING`,
-      [
+    rows.push([
         p.id,
         toDate(at),
         point.online,
@@ -757,10 +808,20 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
         JSON.stringify(point.ranks),
         point.streamGameId,
         point.streamGameName,
-      ],
-    );
-    lastPoint.set(p.id, { at: t, sig });
+    ]);
+    signatures.push({ id: p.id, sig });
   }
+  await insertRows(
+    db,
+    "player_history",
+    [
+      "player", "at", "online", "viewers", "playtime_seconds", "deaths", "diamonds", "blocks_broken",
+      "mobs_killed", "distance", "followers_on_server", "followers_total", "ranks", "stream_game_id", "stream_game_name",
+    ],
+    rows,
+    "ON CONFLICT (player, at) DO NOTHING",
+  );
+  for (const { id, sig } of signatures) lastPoint.set(id, { at: t, sig });
 }
 
 interface PlayerPointRow {

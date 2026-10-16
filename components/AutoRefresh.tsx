@@ -3,8 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-/** Lädt die Server-Daten regelmäßig neu, solange der Tab sichtbar ist. */
-export function AutoRefresh({ intervalMs = 30_000 }: { intervalMs?: number }) {
+/** Lädt die Server-Daten einmal pro Minute neu, solange der Tab sichtbar ist. */
+export function AutoRefresh({ intervalMs = 60_000 }: { intervalMs?: number }) {
   const router = useRouter();
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -13,13 +13,8 @@ export function AutoRefresh({ intervalMs = 30_000 }: { intervalMs?: number }) {
       timer = setTimeout(tick, intervalMs);
     };
     timer = setTimeout(tick, intervalMs);
-    const onVis = () => {
-      if (document.visibilityState === "visible") router.refresh();
-    };
-    document.addEventListener("visibilitychange", onVis);
     return () => {
       clearTimeout(timer);
-      document.removeEventListener("visibilitychange", onVis);
     };
   }, [router, intervalMs]);
   return null;

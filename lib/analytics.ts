@@ -922,18 +922,71 @@ export async function getBoardRanksBefore(hoursAgo = 24): Promise<Partial<Record
   return cached(`ranksBefore:${hoursAgo}`, 300_000, async () => {
     await ensureLoaded();
     const db = await getDb();
-    const col: Record<BoardKey, string> = { playtimeSeconds: "playtime_seconds", deaths: "deaths", diamonds: "diamonds", blocksBroken: "blocks_broken", mobsKilled: "mobs_killed", distance: "distance" };
     const cutoff = new Date(Date.now() - hoursAgo * 3600_000);
+    type RankRow = {
+      player: string;
+      playtime_seconds: number | string | null;
+      deaths: number | string | null;
+      diamonds: number | string | null;
+      blocks_broken: number | string | null;
+      mobs_killed: number | string | null;
+      distance: number | string | null;
+    };
+    const rows = (
+      await db.query<RankRow>(
+        `WITH known_players AS (
+           SELECT DISTINCT player FROM player_history WHERE at <= $1
+         )
+         SELECT players.player, playtime.playtime_seconds, deaths.deaths, diamonds.diamonds,
+                blocks.blocks_broken, mobs.mobs_killed, distance.distance
+           FROM known_players players
+           LEFT JOIN LATERAL (
+             SELECT playtime_seconds FROM player_history
+              WHERE player = players.player AND at <= $1 AND playtime_seconds IS NOT NULL
+              ORDER BY at DESC LIMIT 1
+           ) playtime ON true
+           LEFT JOIN LATERAL (
+             SELECT deaths FROM player_history
+              WHERE player = players.player AND at <= $1 AND deaths IS NOT NULL
+              ORDER BY at DESC LIMIT 1
+           ) deaths ON true
+           LEFT JOIN LATERAL (
+             SELECT diamonds FROM player_history
+              WHERE player = players.player AND at <= $1 AND diamonds IS NOT NULL
+              ORDER BY at DESC LIMIT 1
+           ) diamonds ON true
+           LEFT JOIN LATERAL (
+             SELECT blocks_broken FROM player_history
+              WHERE player = players.player AND at <= $1 AND blocks_broken IS NOT NULL
+              ORDER BY at DESC LIMIT 1
+           ) blocks ON true
+           LEFT JOIN LATERAL (
+             SELECT mobs_killed FROM player_history
+              WHERE player = players.player AND at <= $1 AND mobs_killed IS NOT NULL
+              ORDER BY at DESC LIMIT 1
+           ) mobs ON true
+           LEFT JOIN LATERAL (
+             SELECT distance FROM player_history
+              WHERE player = players.player AND at <= $1 AND distance IS NOT NULL
+              ORDER BY at DESC LIMIT 1
+           ) distance ON true`,
+        [cutoff],
+      )
+    ).rows;
+    const col: Record<BoardKey, keyof Omit<RankRow, "player">> = {
+      playtimeSeconds: "playtime_seconds",
+      deaths: "deaths",
+      diamonds: "diamonds",
+      blocksBroken: "blocks_broken",
+      mobsKilled: "mobs_killed",
+      distance: "distance",
+    };
     const out: Partial<Record<BoardKey, Record<string, number>>> = {};
     for (const key of BOARD_KEYS) {
-      const rows = (
-        await db.query<{ player: string; value: number | string }>(
-          `SELECT DISTINCT ON (player) player, ${col[key]} AS value FROM player_history WHERE at <= $1 AND ${col[key]} IS NOT NULL ORDER BY player, at DESC`,
-          [cutoff],
-        )
-      ).rows;
-      rows.sort((a, b) => Number(b.value) - Number(a.value));
-      out[key] = Object.fromEntries(rows.map((r, i) => [r.player, i + 1]));
+      const ranked = rows
+        .filter((row) => row[col[key]] !== null)
+        .sort((a, b) => Number(b[col[key]]) - Number(a[col[key]]));
+      out[key] = Object.fromEntries(ranked.map((row, index) => [row.player, index + 1]));
     }
 
     return out;
