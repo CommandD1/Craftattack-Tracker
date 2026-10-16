@@ -15,6 +15,7 @@ import { PlayerInsights } from "@/components/PlayerInsights";
 import { getPlayerAfkSpans, getPlayerRates, getRankHistory, spanSeconds } from "@/lib/analytics";
 import { PlayerActivity } from "@/components/PlayerActivity";
 import { playtimeOf, trackedSecondsOf } from "@/lib/playtime";
+import { findVodAt, vodLink } from "@/lib/twitch";
 
 // Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
 export const instant = false;
@@ -63,19 +64,25 @@ interface Phase extends Session {
 }
 
 /** Baut aus Stream-an/aus-Ereignissen eine Stream-Liste (laufender Stream: end = null). */
-function streams(events: TrackerEvent[], live: boolean, liveSince: string | null, now: number): (Session & { peak?: number })[] {
-  const out: (Session & { peak?: number })[] = [];
+function streams(events: TrackerEvent[], live: boolean, liveSince: string | null, now: number, liveLogin?: string): (Session & { peak?: number; login?: string })[] {
+  const out: (Session & { peak?: number; login?: string })[] = [];
   let open: string | null = null;
+  let openEvent: TrackerEvent | null = null;
   for (const e of events) {
-    if (e.type === "stream_start") open = e.at;
+    if (e.type === "stream_start") {
+      open = e.at;
+      openEvent = e;
+    }
     if (e.type === "stream_end") {
       const secs = Number(e.meta?.streamSeconds ?? 0);
-      const start = open ?? (typeof e.meta?.startedAt === "string" ? e.meta.startedAt : new Date(Date.parse(e.at) - secs * 1000).toISOString());
-      out.push({ start, end: e.at, seconds: secs || (Date.parse(e.at) - Date.parse(start)) / 1000, peak: Number(e.meta?.peakViewers ?? 0) || undefined });
+      const start = (typeof e.meta?.startedAt === "string" && e.meta.startedAt) || openEvent?.at || open || new Date(Date.parse(e.at) - secs * 1000).toISOString();
+      const login = (typeof e.meta?.login === "string" && e.meta.login) || (typeof openEvent?.meta?.login === "string" ? openEvent.meta.login : undefined);
+      out.push({ start, end: e.at, seconds: secs || (Date.parse(e.at) - Date.parse(start)) / 1000, peak: Number(e.meta?.peakViewers ?? 0) || undefined, login });
       open = null;
+      openEvent = null;
     }
   }
-  if (live && liveSince) out.push({ start: liveSince, end: null, seconds: (now - Date.parse(liveSince)) / 1000 });
+  if (live && liveSince) out.push({ start: liveSince, end: null, seconds: (now - Date.parse(liveSince)) / 1000, login: liveLogin });
   return out.reverse();
 }
 
@@ -143,13 +150,49 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const graphHref = (metric: string) => `/statistik?metric=${metric}&spieler=${encodeURIComponent(id)}&zeit=alle#graph`;
   const mine = events.filter((e) => e.player === id || e.meta?.raidTargetPlayerId === id);
   const sess = sessions(mine, p.online, p.sessionStart, now);
-  const strm = streams(mine, Boolean(p.live), p.liveSince, now);
+  const serverSessions = allSessions.filter((session) => session.player === id);
+  const strm = streams(mine, Boolean(p.live), p.liveSince, now, p.live?.login);
   // Sessions und Streams gemeinsam, neueste zuerst; die Überschneidung mit der anderen Art steht dabei
   const phases: Phase[] = [
     ...sess.map((s) => ({ ...s, kind: "server" as const, overlap: overlapSeconds(s, strm, now) })),
     ...strm.map((s) => ({ ...s, kind: "stream" as const, overlap: overlapSeconds(s, sess, now) })),
   ].sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
   const recent = [...mine].reverse().slice(0, 150);
+  const feedTimes = [...new Set(recent.map((e) => e.at.slice(0, 16)))].map(Date.parse);
+  const vodHits = new Map<string, { at: number; vodId: string; offset: number }>();
+  const streamsInFeed = strm.flatMap((stream) => {
+    const login = stream.login ?? twitchLogin;
+    if (!login) return [];
+    const start = Date.parse(stream.start);
+    const end = stream.end ? Date.parse(stream.end) : now;
+    const at = feedTimes.find((time) => time >= start && time < end);
+    return at === undefined ? [] : [{ stream, login, at }];
+  });
+  const hits = await Promise.all(
+    streamsInFeed.map(async ({ stream, login, at }) => {
+      try {
+        const hit = await findVodAt(login, at);
+        return hit ? { start: stream.start, at, vodId: hit.vodId, offset: hit.offset } : null;
+      } catch (err) {
+        console.warn("[spieler] VOD-Zeitpunkt konnte nicht ermittelt werden:", err instanceof Error ? err.message : err);
+        return null;
+      }
+    }),
+  );
+  for (const hit of hits) {
+    if (hit) vodHits.set(hit.start, hit);
+  }
+  const getTimeState = (iso: string) => {
+    const at = Date.parse(iso);
+    const server = serverSessions.some((session) => at >= Date.parse(session.start) && at < (session.end ? Date.parse(session.end) : now));
+    const stream = strm.find((session) => at >= Date.parse(session.start) && at < (session.end ? Date.parse(session.end) : now));
+    const hit = stream ? vodHits.get(stream.start) : undefined;
+    return {
+      server,
+      live: Boolean(stream),
+      href: hit ? vodLink(hit.vodId, hit.offset + (at - hit.at) / 1000) : undefined,
+    };
+  };
   const deaths = mine.filter((e) => e.type === "death").reduce((s, e) => s + (e.delta ?? 0), 0);
   // Rang: bevorzugt aus /api/ext/<login> (für alle Spieler), sonst Position in der Top 10 der Haupt-API
   const ranks = Object.fromEntries(
@@ -371,7 +414,10 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                   Alle {num(mine.length)}
                 </Link>
               </div>
-              <EventFeed events={recent} showPlayer={false} empty={`Für ${p.name} wurde noch nichts aufgezeichnet.`} />
+              <EventFeed events={recent} showPlayer={false} empty={`Für ${p.name} wurde noch nichts aufgezeichnet.`} getTimeState={getTimeState} />
+              <p className="muted" style={{ marginTop: 10, fontSize: ".875rem" }}>
+                Die Farbe der Uhrzeit zeigt den Status: Grün = auf dem Server, Lila = live, beide Farben = gleichzeitig auf dem Server und live. Klickbare Uhrzeiten öffnen das VOD an diesem Zeitpunkt.
+              </p>
             </div>
             <aside className="stack" style={{ "--stack": "16px" } as React.CSSProperties}>
               <div className="box" data-tone="white">

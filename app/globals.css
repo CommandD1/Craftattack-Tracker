@@ -906,6 +906,33 @@ a.st-chip-in[data-live="true"] {
   white-space: nowrap;
   opacity: 0.8;
 }
+.feed__time[data-presence="server"],
+.feed__time[data-presence="live"],
+.feed__time[data-presence="both"] {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 3px;
+  color: var(--ink);
+  opacity: 1;
+  text-decoration: none;
+}
+.feed__time[data-presence="server"] {
+  background: var(--grass);
+}
+.feed__time[data-presence="live"] {
+  background: var(--twitch);
+  color: #fff;
+}
+.feed__time[data-presence="both"] {
+  background: linear-gradient(90deg, var(--grass) 50%, var(--twitch) 50%);
+}
+.feed__time[href]:hover {
+  box-shadow: var(--outline);
+}
+.feed__time[href]:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+}
 .tiles {
   margin: 0;
   padding: 0;

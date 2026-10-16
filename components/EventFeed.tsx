@@ -184,10 +184,12 @@ export function EventFeed({
   events,
   showPlayer = true,
   empty = "Noch nichts passiert. Der Tracker braucht erst zwei Abfragen, um Unterschiede zu sehen.",
+  getTimeState,
 }: {
   events: TrackerEvent[];
   showPlayer?: boolean;
   empty?: string;
+  getTimeState?: (at: string) => { server: boolean; live: boolean; href?: string };
 }) {
   if (events.length === 0) return <p className="st-online__empty">{empty}</p>;
   const visibleEvents = combineGiftSubscriptions(events);
@@ -198,11 +200,22 @@ export function EventFeed({
   const flush = () => {
     if (bucket.length === 0) return;
     const first = bucket[0];
+    const timeState = getTimeState?.(first.at);
+    const presence = timeState ? (timeState.server && timeState.live ? "both" : timeState.server ? "server" : timeState.live ? "live" : "none") : undefined;
+    const timeTitle = timeState
+      ? `${timeState.server ? "Auf dem Server" : "Nicht auf dem Server"} · ${timeState.live ? "Live auf Twitch" : "Nicht live"}${timeState.href ? " · Im VOD ansehen" : ""}`
+      : undefined;
     out.push(
       <li key={`m-${first.id}`} className="feed__min">
-        <time className="feed__time" dateTime={first.at}>
-          {time(first.at)}
-        </time>
+        {timeState?.href ? (
+          <a className="feed__time" data-presence={presence} href={timeState.href} target="_blank" rel="noopener noreferrer" title={timeTitle} aria-label={`${time(first.at)} · ${timeTitle}`}>
+            {time(first.at)}
+          </a>
+        ) : (
+          <time className="feed__time" data-presence={presence} dateTime={first.at} title={timeTitle}>
+            {time(first.at)}
+          </time>
+        )}
         <ul className="tiles">
           {bucket.map((e) => (
             <EventTile key={e.id} e={e} showPlayer={showPlayer} />
