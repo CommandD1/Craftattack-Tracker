@@ -6,6 +6,8 @@ import type { EventType } from "@/lib/types";
 import { num } from "@/lib/format";
 import { EventFeed } from "@/components/EventFeed";
 import { EVENT_ICON, Icon } from "@/components/Icons";
+import { getAllSessions } from "@/lib/store";
+import { getPlayerEventTimeState } from "@/lib/playerEventStatus";
 
 // Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
 export const instant = false;
@@ -59,6 +61,16 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
   const pages = Math.max(1, Math.ceil(total / PAGE));
   const slice = list.slice((page - 1) * PAGE, page * PAGE);
   const playerName = player ? state.players[player]?.name ?? player : null;
+  const getTimeState = player
+    ? await getPlayerEventTimeState({
+        playerEvents: events.filter((event) => event.player === player),
+        displayEvents: slice,
+        serverSessions: (await getAllSessions()).filter((session) => session.player === player),
+        liveSince: state.players[player]?.liveSince ?? null,
+        liveLogin: state.players[player]?.live?.login ?? state.players[player]?.twitchLogin ?? null,
+        now,
+      })
+    : undefined;
 
   const groupCounts = EVENT_GROUPS.map((grp) => ({ ...grp, n: base.filter((e) => grp.types.includes(e.type)).length }));
   const groupTypes = g ? typesForGroup(g) ?? [] : [];
@@ -204,7 +216,12 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
             )}
           </div>
 
-          <EventFeed events={slice} showPlayer={!player} />
+          <EventFeed events={slice} showPlayer={!player} getTimeState={getTimeState} />
+          {player && (
+            <p className="muted" style={{ marginTop: 10, fontSize: ".875rem" }}>
+              Die Farbe der Uhrzeit zeigt den Status: Grün = auf dem Server, Lila = live, beide Farben = gleichzeitig auf dem Server und live. Klickbare Uhrzeiten öffnen das VOD an diesem Zeitpunkt.
+            </p>
+          )}
 
           {pages > 1 && (
             <nav className="pagination" aria-label="Seiten">

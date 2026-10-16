@@ -15,7 +15,7 @@ import { PlayerInsights } from "@/components/PlayerInsights";
 import { getPlayerAfkSpans, getPlayerRates, getRankHistory, spanSeconds } from "@/lib/analytics";
 import { PlayerActivity } from "@/components/PlayerActivity";
 import { playtimeOf, trackedSecondsOf } from "@/lib/playtime";
-import { findVodAt, vodLink } from "@/lib/twitch";
+import { getPlayerEventTimeState } from "@/lib/playerEventStatus";
 
 // Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
 export const instant = false;
@@ -158,41 +158,14 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
     ...strm.map((s) => ({ ...s, kind: "stream" as const, overlap: overlapSeconds(s, sess, now) })),
   ].sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
   const recent = [...mine].reverse().slice(0, 150);
-  const feedTimes = [...new Set(recent.map((e) => e.at.slice(0, 16)))].map(Date.parse);
-  const vodHits = new Map<string, { at: number; vodId: string; offset: number }>();
-  const streamsInFeed = strm.flatMap((stream) => {
-    const login = stream.login ?? twitchLogin;
-    if (!login) return [];
-    const start = Date.parse(stream.start);
-    const end = stream.end ? Date.parse(stream.end) : now;
-    const at = feedTimes.find((time) => time >= start && time < end);
-    return at === undefined ? [] : [{ stream, login, at }];
+  const getTimeState = await getPlayerEventTimeState({
+    playerEvents: mine.filter((event) => event.player === id),
+    displayEvents: recent,
+    serverSessions,
+    liveSince: p.liveSince,
+    liveLogin: p.live?.login ?? p.twitchLogin,
+    now,
   });
-  const hits = await Promise.all(
-    streamsInFeed.map(async ({ stream, login, at }) => {
-      try {
-        const hit = await findVodAt(login, at);
-        return hit ? { start: stream.start, at, vodId: hit.vodId, offset: hit.offset } : null;
-      } catch (err) {
-        console.warn("[spieler] VOD-Zeitpunkt konnte nicht ermittelt werden:", err instanceof Error ? err.message : err);
-        return null;
-      }
-    }),
-  );
-  for (const hit of hits) {
-    if (hit) vodHits.set(hit.start, hit);
-  }
-  const getTimeState = (iso: string) => {
-    const at = Date.parse(iso);
-    const server = serverSessions.some((session) => at >= Date.parse(session.start) && at < (session.end ? Date.parse(session.end) : now));
-    const stream = strm.find((session) => at >= Date.parse(session.start) && at < (session.end ? Date.parse(session.end) : now));
-    const hit = stream ? vodHits.get(stream.start) : undefined;
-    return {
-      server,
-      live: Boolean(stream),
-      href: hit ? vodLink(hit.vodId, hit.offset + (at - hit.at) / 1000) : undefined,
-    };
-  };
   const deaths = mine.filter((e) => e.type === "death").reduce((s, e) => s + (e.delta ?? 0), 0);
   // Rang: bevorzugt aus /api/ext/<login> (für alle Spieler), sonst Position in der Top 10 der Haupt-API
   const ranks = Object.fromEntries(
