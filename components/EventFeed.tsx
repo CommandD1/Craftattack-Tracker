@@ -70,7 +70,15 @@ function detail(e: TrackerEvent): string | null {
     case "first_join":
       return "Neu";
     case "death":
-      return e.meta?.unknown ? "unbekannt" : e.meta?.inferred ? "zugeordnet" : null;
+      return typeof e.meta?.killerName === "string"
+        ? `Von ${e.meta.killerName}`
+        : e.meta?.unknown
+          ? "unbekannt"
+          : e.meta?.inferred
+            ? "zugeordnet"
+            : null;
+    case "achievement":
+      return typeof e.meta?.title === "string" ? e.meta.title : null;
     // Zähler: die kleinen Icons sind nicht eindeutig, daher ein Wort dazu
     case "diamonds":
       return "Diamanten";

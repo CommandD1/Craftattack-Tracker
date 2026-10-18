@@ -79,7 +79,16 @@ async function migrate(db: Db) {
       value       double precision,
       meta        jsonb
     )`);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS feed_items (
+      id     text PRIMARY KEY,
+      at     timestamptz NOT NULL,
+      type   text NOT NULL,
+      player text NOT NULL,
+      data   jsonb NOT NULL
+    )`);
   await db.query(`ALTER TABLE tracker_meta ADD COLUMN IF NOT EXISTS records jsonb`);
+  await db.query(`ALTER TABLE tracker_meta ADD COLUMN IF NOT EXISTS latest_feed jsonb`);
   await db.query(`ALTER TABLE tracker_meta ADD COLUMN IF NOT EXISTS pending_deaths integer NOT NULL DEFAULT 0`);
   await db.query(`ALTER TABLE tracker_meta ADD COLUMN IF NOT EXISTS pending_since timestamptz`);
   await db.query(`ALTER TABLE tracker_meta ADD COLUMN IF NOT EXISTS pending_candidates jsonb`);
@@ -111,6 +120,7 @@ async function migrate(db: Db) {
   await db.query(`CREATE INDEX IF NOT EXISTS events_at_idx ON events (at)`);
   await db.query(`CREATE INDEX IF NOT EXISTS events_player_at_idx ON events (player, at)`);
   await db.query(`CREATE INDEX IF NOT EXISTS events_type_at_idx ON events (type, at)`);
+  await db.query(`CREATE INDEX IF NOT EXISTS feed_items_type_at_idx ON feed_items (type, at)`);
   await db.query(`
     CREATE TABLE IF NOT EXISTS player_history (
       player           text NOT NULL,

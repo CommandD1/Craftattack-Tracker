@@ -1,12 +1,15 @@
 import "server-only";
-import { appendEvents, getState, recordPlayerPoints, saveState } from "./store";
+import { createHash } from "node:crypto";
+import { appendEvents, appendFeedItems, getState, recordPlayerPoints, saveState } from "./store";
 import { fetchFollowerCounts, fetchLiveStreams, TWITCH_ENABLED, type TwitchFollowerChannel, type TwitchStream } from "./twitch";
 import { fetchCraftAttack, getCraftAttackPauseMs, maxCraftAttackTimerDelay } from "./craftattackFetch";
 import { trackedSecondsOf } from "./playtime";
 import {
   BOARD_KEYS,
   type ApiExtPlayer,
+  type ApiFeed,
   type ApiStats,
+  type FeedItem,
   type BoardEntry,
   type BoardKey,
   EXT_KEYS,
@@ -18,11 +21,8 @@ import {
 } from "./types";
 
 export const STATS_URL = process.env.CA_STATS_URL ?? "https://craftattack.one/api/stats";
-/**
- * Pro-Spieler-Endpunkt: liefert alle Zähler (außer Spielzeit) und den Rang – auch außerhalb der Top 10.
- * Erwartet den Twitch-Login (nicht die Spieler-ID), siehe `extLogins`.
- */
 export const EXT_URL = process.env.CA_EXT_URL ?? "https://craftattack.one/api/ext";
+export const FEED_URL = process.env.CA_FEED_URL ?? "https://craftattack.one/api/feed";
 export const POLL_INTERVAL_MS = Number(process.env.CA_POLL_INTERVAL_MS ?? 60_000);
 const POLL_JITTER_RATIO = 0.25;
 const MIN_POLL_INTERVAL_MS = Math.floor(POLL_INTERVAL_MS * (1 - POLL_JITTER_RATIO));
@@ -148,6 +148,33 @@ export async function fetchStats(): Promise<ApiStats> {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return (await res.json()) as ApiStats;
+}
+
+export async function fetchFeed(): Promise<ApiFeed> {
+  const res = await fetchCraftAttack(FEED_URL, {
+    headers: { accept: "application/json", "user-agent": "actracker/1.0" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as ApiFeed;
+}
+
+function feedItemKey(item: FeedItem): string {
+  return item.type === "death"
+    ? JSON.stringify([item.type, item.at, item.victim.id, item.message])
+    : JSON.stringify([item.type, item.at, item.player.id, item.advancement]);
+}
+
+function feedEventId(item: FeedItem): string {
+  return `feed-${createHash("sha256").update(feedItemKey(item)).digest("hex")}`;
+}
+
+function newFeedItems(previousFeed: FeedItem[] | null, currentFeed: FeedItem[]): FeedItem[] {
+  if (previousFeed === null) return [];
+  const previousKeys = new Set(previousFeed.map(feedItemKey));
+  const firstKnownIndex = currentFeed.findIndex((item) => previousKeys.has(feedItemKey(item)));
+  return firstKnownIndex === -1 ? currentFeed.slice(0, 10) : currentFeed.slice(0, firstKnownIndex);
 }
 
 export type ExtPlayer = NonNullable<ApiExtPlayer["player"]>;
@@ -315,6 +342,7 @@ function ensurePlayer(
 export function diffSnapshot(
   state: TrackerState,
   stats: ApiStats,
+  feed: ApiFeed,
   nowDate = new Date(),
   ext: Map<string, ExtPlayer> = new Map(),
   /** Live-Streams laut Twitch (Login → Stream); `null` = nicht abgefragt/fehlgeschlagen, dann zählt die API */
@@ -331,6 +359,8 @@ export function diffSnapshot(
   const push = (e: Omit<TrackerEvent, "id" | "at">) => pushAt(now, e);
 
   const first = state.latest === null;
+  const currentFeed = feed.feed.slice(0, 10);
+  const newItems = newFeedItems(state.latestFeed, currentFeed);
   const onlineBeforePoll = new Map(Object.values(state.players).map((player) => [player.id, player.online]));
 
   // --- Server-Status
@@ -768,6 +798,55 @@ export function diffSnapshot(
     }
   }
 
+  const deathFeedByPlayer = new Map<string, Extract<FeedItem, { type: "death" }>[]>();
+  for (const item of newItems) {
+    if (item.type !== "death") continue;
+    const items = deathFeedByPlayer.get(item.victim.id) ?? [];
+    items.push(item);
+    deathFeedByPlayer.set(item.victim.id, items);
+  }
+  for (const [playerId, items] of deathFeedByPlayer) {
+    const deathEvent = [...events].reverse().find((event) => event.type === "death" && event.player === playerId);
+    if (!deathEvent) continue;
+    const item = items[0];
+    deathEvent.meta = {
+      ...deathEvent.meta,
+      deathMessage: item.message,
+      feedAt: item.at,
+      victimMinecraft: item.victim.minecraft,
+      victimTwitch: item.victim.twitch,
+      killerId: item.killer?.id ?? null,
+      killerName: item.killer?.name ?? null,
+      killerUuid: item.killer?.uuid ?? null,
+      killerMinecraft: item.killer?.minecraft ?? null,
+      killerTwitch: item.killer?.twitch ?? null,
+      feedDeaths: JSON.stringify(items),
+    };
+  }
+
+  for (const item of newItems) {
+    if (item.type !== "achievement") continue;
+    events.push({
+      id: feedEventId(item),
+      at: item.at,
+      type: "achievement",
+      player: item.player.id,
+      playerName: item.player.name,
+      uuid: item.player.uuid,
+      where: "server",
+      meta: {
+        playerMinecraft: item.player.minecraft,
+        playerTwitch: item.player.twitch,
+        feedAt: item.at,
+        advancement: item.advancement,
+        frame: item.frame,
+        title: item.title,
+        message: item.message,
+      },
+    });
+  }
+  state.latestFeed = currentFeed;
+
   // --- Verlauf
   // Globale Zuschauer: nur Streams von Spielern, die gerade auf dem Server sind
   const liveOnServer = [...liveNow.values()].filter((l) => l.onServer);
@@ -822,8 +901,12 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
     state.lastPoll = now.toISOString();
     state.polls += 1;
     let snapshotApplied = false;
+    let feedCheckpointSaved = false;
+    const previousFeed = state.latestFeed;
     try {
       const stats = await fetchStats();
+      const feed = await fetchFeed();
+      const freshFeedItems = newFeedItems(state.latestFeed, feed.feed.slice(0, 10));
       // Einzelstatistiken für alle bekannten Spieler – Fehler hier sind nicht fatal, dann gibt es eben nur die Top 10
       const logins = extLogins(state, stats, knownPlayerIds(state, stats));
       // Live-Status direkt bei Twitch für alle bekannten Logins; schlägt das fehl, zählt die Haupt-API
@@ -846,7 +929,7 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       ]);
       if (ext.failed > 0) console.warn(`[tracker] ${ext.failed} ext-Anfragen fehlgeschlagen`);
       const first = state.latest === null;
-      const events = diffSnapshot(state, stats, now, ext.players, twitch, ext.loginOf, ext.missing, followers);
+      const events = diffSnapshot(state, stats, feed, now, ext.players, twitch, ext.loginOf, ext.missing, followers);
       snapshotApplied = true;
       if (first) {
         events.unshift({
@@ -859,11 +942,14 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
         state.eventCount += 1;
       }
       state.lastError = null;
+      await appendFeedItems(freshFeedItems.map((item) => ({ id: feedEventId(item), item })));
       await appendEvents(events);
       await saveState(state);
+      feedCheckpointSaved = true;
       await recordPlayerPoints(Object.values(state.players), now.toISOString(), freshStats);
       return { ok: true, events: events.length };
     } catch (err) {
+      if (!feedCheckpointSaved) state.latestFeed = previousFeed;
       state.lastError = err instanceof Error ? err.message : String(err);
       await saveState(state, { savePlayers: snapshotApplied });
       return { ok: false, events: 0, error: state.lastError };

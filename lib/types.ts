@@ -80,10 +80,44 @@ export interface ApiStats {
   live: (LiveInfo & { id: string; name: string })[];
 }
 
+export interface Player {
+  id: string;
+  name: string;
+  uuid: string;
+  minecraft: string;
+  twitch: string | null;
+}
+
+export interface AchievementFeedItem {
+  type: "achievement";
+  at: string;
+  player: Player;
+  advancement: string;
+  frame: string;
+  title: string;
+  message: string;
+}
+
+export interface DeathFeedItem {
+  type: "death";
+  at: string;
+  victim: Player;
+  killer: Player | null;
+  message: string;
+}
+
+export type FeedItem = AchievementFeedItem | DeathFeedItem;
+
+export interface ApiFeed {
+  updatedAt: string;
+  feed: FeedItem[];
+}
+
 export type EventType =
   | "join"
   | "leave"
   | "death"
+  | "achievement"
   | "diamonds"
   | "blocksBroken"
   | "mobsKilled"
@@ -264,6 +298,7 @@ export interface TrackerState {
   polls: number;
   serverOnline: boolean | null;
   latest: ApiStats | null;
+  latestFeed: FeedItem[] | null;
   players: Record<string, PlayerState>;
   history: TotalsPoint[];
   eventCount: number;

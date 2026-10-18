@@ -2,7 +2,7 @@ import "server-only";
 import { connection } from "next/server";
 import { getDb, type Db } from "./db";
 import { playtimeOf } from "./playtime";
-import type { BoardKey, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind, AfkCheck } from "./types";
+import type { BoardKey, FeedItem, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind, AfkCheck } from "./types";
 
 const MAX_EVENTS_IN_MEMORY = 20000;
 const MAX_HISTORY_POINTS = 2880; // 24 h bei 30 s
@@ -34,6 +34,7 @@ export function freshState(): TrackerState {
     polls: 0,
     serverOnline: null,
     latest: null,
+    latestFeed: null,
     players: {},
     history: [],
     eventCount: 0,
@@ -83,6 +84,7 @@ interface MetaRow {
   polls: number;
   server_online: boolean | null;
   latest: TrackerState["latest"];
+  latest_feed: FeedItem[] | null;
   event_count: number;
   records: TrackerRecords | null;
   pending_deaths: number | null;
@@ -228,6 +230,7 @@ async function loadFromDb() {
     state.polls = meta.polls;
     state.serverOnline = meta.server_online;
     state.latest = meta.latest;
+    state.latestFeed = Array.isArray(meta.latest_feed) ? meta.latest_feed : null;
     state.eventCount = meta.event_count;
     if (meta.records) state.records = { ...state.records, ...meta.records };
     state.pendingDeaths = meta.pending_deaths ?? 0;
@@ -314,12 +317,12 @@ export async function saveState(state: TrackerState, { savePlayers = true }: { s
   store.state = state;
 
   await db.query(
-    `INSERT INTO tracker_meta (id, started_at, last_poll, last_ok, last_error, polls, server_online, latest, event_count, records, pending_deaths, pending_since, pending_candidates)
-     VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    `INSERT INTO tracker_meta (id, started_at, last_poll, last_ok, last_error, polls, server_online, latest, latest_feed, event_count, records, pending_deaths, pending_since, pending_candidates)
+     VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      ON CONFLICT (id) DO UPDATE SET
        started_at = EXCLUDED.started_at, last_poll = EXCLUDED.last_poll, last_ok = EXCLUDED.last_ok,
        last_error = EXCLUDED.last_error, polls = EXCLUDED.polls, server_online = EXCLUDED.server_online,
-       latest = EXCLUDED.latest, event_count = EXCLUDED.event_count, records = EXCLUDED.records,
+       latest = EXCLUDED.latest, latest_feed = EXCLUDED.latest_feed, event_count = EXCLUDED.event_count, records = EXCLUDED.records,
        pending_deaths = EXCLUDED.pending_deaths, pending_since = EXCLUDED.pending_since, pending_candidates = EXCLUDED.pending_candidates`,
     [
       toDate(state.startedAt),
@@ -329,6 +332,7 @@ export async function saveState(state: TrackerState, { savePlayers = true }: { s
       state.polls,
       state.serverOnline,
       state.latest ? JSON.stringify(state.latest) : null,
+      state.latestFeed === null ? null : JSON.stringify(state.latestFeed),
       state.eventCount,
       JSON.stringify(state.records),
       state.pendingDeaths ?? 0,
@@ -436,6 +440,25 @@ export async function appendEvents(events: TrackerEvent[]) {
   if (store.events.length > MAX_EVENTS_IN_MEMORY) {
     store.events = store.events.slice(-MAX_EVENTS_IN_MEMORY);
   }
+}
+
+export async function appendFeedItems(items: { id: string; item: FeedItem }[]) {
+  if (items.length === 0) return;
+  await ensureLoaded();
+  const db = await getDb();
+  await insertRows(
+    db,
+    "feed_items",
+    ["id", "at", "type", "player", "data"],
+    items.map(({ id, item }) => [
+      id,
+      toDate(item.at),
+      item.type,
+      item.type === "death" ? item.victim.id : item.player.id,
+      JSON.stringify(item),
+    ]),
+    "ON CONFLICT (id) DO NOTHING",
+  );
 }
 
 /** Speichert ein von einer Live-Quelle geliefertes Ereignis und aktualisiert den Ereigniszähler. */

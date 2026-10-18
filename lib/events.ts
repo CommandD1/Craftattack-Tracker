@@ -84,18 +84,35 @@ export const EVENT_META: Record<EventType, EventMeta> = {
         : e.delta && e.delta > 1
           ? `ist ${num(e.delta)}× gestorben`
           : "ist gestorben",
-    sub: (e) =>
-      e.meta?.unknown
-        ? typeof e.meta.candidates === "number" && e.meta.candidates > 1
+    sub: (e) => {
+      if (e.meta?.unknown) {
+        return typeof e.meta.candidates === "number" && e.meta.candidates > 1
           ? `Außerhalb der Top 10 – ${num(e.meta.candidates)} Spieler ohne Einzelstatistik waren online, daher nicht eindeutig.`
-          : "Außerhalb der Top 10 – wer genau, verrät die API nicht."
-        : [
-            e.meta?.inferred ? "Per Ausschluss zugeordnet: einziger Spieler online, den die Einzelstatistik nicht kennt" : null,
-            e.value !== undefined ? `Insgesamt ${num(e.value)} Tode` : null,
-            e.meta?.live ? "Live auf Twitch" : null,
-          ]
-            .filter(Boolean)
-            .join(" · ") || null,
+          : "Außerhalb der Top 10 – wer genau, verrät die API nicht.";
+      }
+      return [
+        typeof e.meta?.killerName === "string" ? `Von ${e.meta.killerName} getötet` : null,
+        typeof e.meta?.deathMessage === "string" ? e.meta.deathMessage : null,
+        e.meta?.inferred ? "Per Ausschluss zugeordnet: einziger Spieler online, den die Einzelstatistik nicht kennt" : null,
+        e.value !== undefined ? `Insgesamt ${num(e.value)} Tode` : null,
+        e.meta?.live ? "Live auf Twitch" : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || null;
+    },
+  },
+  achievement: {
+    label: "Achievement",
+    tone: "amethyst",
+    text: (e) => `hat das Achievement „${e.meta?.title ?? e.meta?.advancement ?? "unbekannt"}“ erhalten`,
+    sub: (e) =>
+      [
+        typeof e.meta?.advancement === "string" ? e.meta.advancement : null,
+        typeof e.meta?.frame === "string" ? e.meta.frame : null,
+        typeof e.meta?.message === "string" ? e.meta.message : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || null,
   },
   diamonds: {
     label: "Diamanten",
@@ -249,7 +266,7 @@ export const EVENT_GROUPS: { key: string; label: string; tone: string; types: Ev
   { key: "death", label: "Tode", tone: "redstone", types: ["death"] },
   { key: "loot", label: "Loot & Arbeit", tone: "gold", types: ["diamonds", "blocksBroken", "mobsKilled", "distance", "damageDealt", "totemsUsed", "foodEaten"] },
   { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title", "subscription", "subscription_gift", "follower_burst", "raid"] },
-  { key: "highlights", label: "Highlights", tone: "amethyst", types: ["first_join", "rank", "milestone", "record"] },
+  { key: "highlights", label: "Highlights", tone: "amethyst", types: ["achievement", "first_join", "rank", "milestone", "record"] },
 ];
 
 export function typesForGroup(key: string | undefined): EventType[] | null {
@@ -327,6 +344,7 @@ export const EVENT_TYPES: EventType[] = [
   "afk_end",
   "first_join",
   "death",
+  "achievement",
   "diamonds",
   "blocksBroken",
   "mobsKilled",

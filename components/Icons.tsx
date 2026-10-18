@@ -167,6 +167,7 @@ export const EVENT_ICON: Record<EventType, keyof typeof Icon> = {
   afk_blocks_end: "pickaxe",
   afk_end: "boots",
   death: "skull",
+  achievement: "trophy",
   diamonds: "diamond",
   blocksBroken: "pickaxe",
   mobsKilled: "sword",
