@@ -123,9 +123,9 @@ const BOARD_LABEL: Record<BoardKey, string> = {
   blocksBroken: "Abrissbirne",
   mobsKilled: "Monsterjäger",
   distance: "Weltenbummler",
-  damageDealt: "Herzen",
-  totemsUsed: "Totems",
-  foodEaten: "Essen",
+  damageDealt: "Kampfmaschine",
+  totemsUsed: "Unsterblich",
+  foodEaten: "Vielfraß",
 };
 
 let seq = 0;
