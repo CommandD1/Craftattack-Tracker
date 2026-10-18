@@ -19,6 +19,9 @@ const BOARDS: Record<BoardKey, { title: string; sub: string; tone: string }> = {
   blocksBroken: { title: "Abrissbirne", sub: "Meiste Blöcke abgebaut", tone: "gold" },
   mobsKilled: { title: "Monsterjäger", sub: "Meiste Mobs erledigt", tone: "grass" },
   distance: { title: "Weltenbummler", sub: "Weiteste Strecke", tone: "pink" },
+  damageDealt: { title: "Herzen", sub: "Schaden geteilt durch 20", tone: "redstone" },
+  totemsUsed: { title: "Totems", sub: "Meiste Totems benutzt", tone: "amethyst" },
+  foodEaten: { title: "Essen", sub: "Meiste Nahrung gegessen", tone: "gold" },
 };
 
 // Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.

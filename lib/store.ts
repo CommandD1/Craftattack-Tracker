@@ -748,6 +748,9 @@ function pointSignature(p: PlayerPoint) {
     p.blocksBroken,
     p.mobsKilled,
     p.distance,
+    p.damageDealt,
+    p.totemsUsed,
+    p.foodEaten,
     p.followersOnServer,
     p.followersTotal,
     JSON.stringify(p.ranks),
@@ -758,9 +761,8 @@ function pointSignature(p: PlayerPoint) {
 
 /** Schreibt pro Spieler einen Punkt, wenn sich etwas geändert hat oder der letzte Punkt zu alt ist. */
 /**
- * Einen Messpunkt je Spieler anhängen. `fresh` sagt, welche Zähler in dieser Abfrage wirklich geliefert wurden:
- * Strecke, Mobs und Blöcke werden sonst als unbekannt (null) gespeichert, damit eine Datenlücke später nicht
- * wie Stillstand aussieht (AFK-Erkennung).
+ * Einen Messpunkt je Spieler anhängen. `fresh` sagt, welche Zähler in dieser Abfrage wirklich geliefert wurden.
+ * Zähler ohne frische Daten werden als unbekannt (null) gespeichert, damit eine Datenlücke nicht wie Stillstand aussieht.
  */
 export async function recordPlayerPoints(players: PlayerState[], at: string, fresh?: Map<string, Set<BoardKey>>) {
   await ensureLoaded();
@@ -783,6 +785,9 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
       blocksBroken: isFresh("blocksBroken") ? (p.stats.blocksBroken ?? null) : null,
       mobsKilled: isFresh("mobsKilled") ? (p.stats.mobsKilled ?? null) : null,
       distance: isFresh("distance") ? (p.stats.distance ?? null) : null,
+      damageDealt: isFresh("damageDealt") ? (p.stats.damageDealt ?? null) : null,
+      totemsUsed: isFresh("totemsUsed") ? (p.stats.totemsUsed ?? null) : null,
+      foodEaten: isFresh("foodEaten") ? (p.stats.foodEaten ?? null) : null,
       followersOnServer: p.followersAt ? p.followersOnServer : null,
       followersTotal: p.followers,
       ranks: p.ranks ?? {},
@@ -803,6 +808,9 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
         point.blocksBroken,
         point.mobsKilled,
         point.distance,
+        point.damageDealt,
+        point.totemsUsed,
+        point.foodEaten,
         point.followersOnServer,
         point.followersTotal,
         JSON.stringify(point.ranks),
@@ -816,7 +824,7 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
     "player_history",
     [
       "player", "at", "online", "viewers", "playtime_seconds", "deaths", "diamonds", "blocks_broken",
-      "mobs_killed", "distance", "followers_on_server", "followers_total", "ranks", "stream_game_id", "stream_game_name",
+      "mobs_killed", "distance", "damage_dealt", "totems_used", "food_eaten", "followers_on_server", "followers_total", "ranks", "stream_game_id", "stream_game_name",
     ],
     rows,
     "ON CONFLICT (player, at) DO NOTHING",
@@ -834,6 +842,9 @@ interface PlayerPointRow {
   blocks_broken: number | null;
   mobs_killed: number | null;
   distance: number | null;
+  damage_dealt: number | string | null;
+  totems_used: number | null;
+  food_eaten: number | null;
   followers_on_server: number | null;
   followers_total?: number | null;
   ranks?: PlayerPoint["ranks"] | null;
@@ -857,6 +868,9 @@ export async function getPlayerHistory(id: string, limit = 3000): Promise<Player
     blocksBroken: r.blocks_broken,
     mobsKilled: r.mobs_killed,
     distance: r.distance === null ? null : Number(r.distance),
+    damageDealt: r.damage_dealt === null ? null : Number(r.damage_dealt),
+    totemsUsed: r.totems_used,
+    foodEaten: r.food_eaten,
     followersOnServer: r.followers_on_server,
     followersTotal: r.followers_total ?? null,
     ranks: r.ranks ?? {},
@@ -884,6 +898,9 @@ const COLUMN: Record<string, string> = {
   blocksBroken: "blocks_broken",
   mobsKilled: "mobs_killed",
   distance: "distance",
+  damageDealt: "damage_dealt",
+  totemsUsed: "totems_used",
+  foodEaten: "food_eaten",
   followers: "followers_on_server",
 };
 
@@ -1014,6 +1031,9 @@ export interface TotalsSeriesPoint {
   blocksBroken: number;
   mobsKilled: number;
   distance: number;
+  damageDealt: number;
+  totemsUsed: number;
+  foodEaten: number;
 }
 
 /** Summe aller Spieler je Zähler über die Zeit (letzter Wert je Spieler wird fortgeschrieben). */
@@ -1024,12 +1044,13 @@ export async function getBoardTotalsOverTime(): Promise<{ points: TotalsSeriesPo
     const first = (await db.query<{ at: Date }>(`SELECT min(at) AS at FROM player_history`)).rows[0]?.at ?? null;
     const minutes = bucketMinutes(first, 800, 5);
     const rows = (
-      await db.query<{ player: string; bucket: Date; diamonds: number | null; blocks_broken: number | null; mobs_killed: number | null; distance: number | string | null }>(
-        `SELECT DISTINCT ON (player, bucket) player, bucket, diamonds, blocks_broken, mobs_killed, distance
-           FROM (SELECT player, at, diamonds, blocks_broken, mobs_killed, distance,
+      await db.query<{ player: string; bucket: Date; diamonds: number | null; blocks_broken: number | null; mobs_killed: number | null; distance: number | string | null; damage_dealt: number | string | null; totems_used: number | null; food_eaten: number | null }>(
+        `SELECT DISTINCT ON (player, bucket) player, bucket, diamonds, blocks_broken, mobs_killed, distance, damage_dealt, totems_used, food_eaten
+           FROM (SELECT player, at, diamonds, blocks_broken, mobs_killed, distance, damage_dealt, totems_used, food_eaten,
                         to_timestamp(floor(extract(epoch FROM at) / ($1 * 60)) * ($1 * 60)) AS bucket
                    FROM player_history
-                  WHERE diamonds IS NOT NULL OR blocks_broken IS NOT NULL OR mobs_killed IS NOT NULL OR distance IS NOT NULL) x
+                  WHERE diamonds IS NOT NULL OR blocks_broken IS NOT NULL OR mobs_killed IS NOT NULL OR distance IS NOT NULL
+                     OR damage_dealt IS NOT NULL OR totems_used IS NOT NULL OR food_eaten IS NOT NULL) x
           ORDER BY player, bucket, at DESC`,
         [minutes],
       )
@@ -1050,14 +1071,20 @@ export async function getBoardTotalsOverTime(): Promise<{ points: TotalsSeriesPo
           blocksBroken: r.blocks_broken ?? prev?.blocksBroken ?? 0,
           mobsKilled: r.mobs_killed ?? prev?.mobsKilled ?? 0,
           distance: r.distance === null ? (prev?.distance ?? 0) : Number(r.distance),
+          damageDealt: r.damage_dealt === null ? (prev?.damageDealt ?? 0) : Number(r.damage_dealt),
+          totemsUsed: r.totems_used ?? prev?.totemsUsed ?? 0,
+          foodEaten: r.food_eaten ?? prev?.foodEaten ?? 0,
         });
       }
-      const sum: TotalsSeriesPoint = { at: new Date(t).toISOString(), diamonds: 0, blocksBroken: 0, mobsKilled: 0, distance: 0 };
+      const sum: TotalsSeriesPoint = { at: new Date(t).toISOString(), diamonds: 0, blocksBroken: 0, mobsKilled: 0, distance: 0, damageDealt: 0, totemsUsed: 0, foodEaten: 0 };
       for (const v of last.values()) {
         sum.diamonds += v.diamonds;
         sum.blocksBroken += v.blocksBroken;
         sum.mobsKilled += v.mobsKilled;
         sum.distance += v.distance;
+        sum.damageDealt += v.damageDealt;
+        sum.totemsUsed += v.totemsUsed;
+        sum.foodEaten += v.foodEaten;
       }
       points.push(sum);
     }
@@ -1110,6 +1137,9 @@ export const SERIES_METRICS = [
   "blocksBroken",
   "mobsKilled",
   "distance",
+  "damageDealt",
+  "totemsUsed",
+  "foodEaten",
   "followers",
   "twitchSubs",
   "online",
@@ -1153,6 +1183,9 @@ const PLAYER_COL: Partial<Record<SeriesMetric, string>> = {
   blocksBroken: "blocks_broken",
   mobsKilled: "mobs_killed",
   distance: "distance",
+  damageDealt: "damage_dealt",
+  totemsUsed: "totems_used",
+  foodEaten: "food_eaten",
   followers: "followers_on_server",
   online: "(CASE WHEN online THEN 1 ELSE 0 END)",
 };

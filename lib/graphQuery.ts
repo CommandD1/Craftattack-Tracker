@@ -2,7 +2,7 @@ import { boardValue, num } from "./format";
 
 /* ---------- Konfiguration ---------- */
 
-export type Metric = "onlineCount" | "liveCount" | "viewers" | "playtimeSeconds" | "afkSeconds" | "afkMobsSeconds" | "afkBlocksSeconds" | "deaths" | "diamonds" | "blocksBroken" | "mobsKilled" | "distance" | "followers" | "twitchSubs" | "online";
+export type Metric = "onlineCount" | "liveCount" | "viewers" | "playtimeSeconds" | "afkSeconds" | "afkMobsSeconds" | "afkBlocksSeconds" | "deaths" | "diamonds" | "blocksBroken" | "mobsKilled" | "distance" | "damageDealt" | "totemsUsed" | "foodEaten" | "followers" | "twitchSubs" | "online";
 
 interface MetricMeta {
   label: string;
@@ -31,6 +31,9 @@ export const METRICS: Record<Metric, MetricMeta> = {
   blocksBroken: { label: "Blöcke", perPlayer: true, counter: true, format: num, tone: "gold", icon: "pickaxe" },
   mobsKilled: { label: "Mobs", perPlayer: true, counter: true, format: num, tone: "grass", icon: "sword" },
   distance: { label: "Strecke", perPlayer: true, counter: true, format: (v) => boardValue("distance", v), tone: "pink", icon: "boots" },
+  damageDealt: { label: "Herzen", perPlayer: true, counter: true, format: (v) => boardValue("damageDealt", v), hint: "Schaden aus der Top 10 der API, geteilt durch 20", tone: "redstone", icon: "heart" },
+  totemsUsed: { label: "Totems", perPlayer: true, counter: true, format: num, hint: "Nur in der Top 10 der API verfügbar", tone: "amethyst", icon: "totem" },
+  foodEaten: { label: "Essen", perPlayer: true, counter: true, format: num, hint: "Nur in der Top 10 der API verfügbar", tone: "gold", icon: "food" },
   followers: { label: "Follower", perPlayer: true, counter: true, format: num, hint: "Kumulierte neue Twitch-Follower während aufeinanderfolgender Messungen auf dem Server", tone: "twitch", icon: "users" },
   twitchSubs: { label: "Twitch Subs", perPlayer: true, counter: true, format: num, hint: "Abos, die eingegangen sind, während der Streamer auf dem Server online war", tone: "amethyst", icon: "gift" },
   online: { label: "Online (ja/nein)", perPlayer: true, counter: false, format: (v) => (v >= 1 ? "online" : "offline"), hint: "Ohne Spieler: Anzahl online", tone: "white", icon: "login" },

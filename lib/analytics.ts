@@ -931,6 +931,9 @@ export async function getBoardRanksBefore(hoursAgo = 24): Promise<Partial<Record
       blocks_broken: number | string | null;
       mobs_killed: number | string | null;
       distance: number | string | null;
+      damage_dealt: number | string | null;
+      totems_used: number | string | null;
+      food_eaten: number | string | null;
     };
     const rows = (
       await db.query<RankRow>(
@@ -938,7 +941,8 @@ export async function getBoardRanksBefore(hoursAgo = 24): Promise<Partial<Record
            SELECT DISTINCT player FROM player_history WHERE at <= $1
          )
          SELECT players.player, playtime.playtime_seconds, deaths.deaths, diamonds.diamonds,
-                blocks.blocks_broken, mobs.mobs_killed, distance.distance
+                blocks.blocks_broken, mobs.mobs_killed, distance.distance,
+                damage.damage_dealt, totems.totems_used, food.food_eaten
            FROM known_players players
            LEFT JOIN LATERAL (
              SELECT playtime_seconds FROM player_history
@@ -969,7 +973,22 @@ export async function getBoardRanksBefore(hoursAgo = 24): Promise<Partial<Record
              SELECT distance FROM player_history
               WHERE player = players.player AND at <= $1 AND distance IS NOT NULL
               ORDER BY at DESC LIMIT 1
-           ) distance ON true`,
+           ) distance ON true
+           LEFT JOIN LATERAL (
+             SELECT damage_dealt FROM player_history
+              WHERE player = players.player AND at <= $1 AND damage_dealt IS NOT NULL
+              ORDER BY at DESC LIMIT 1
+           ) damage ON true
+           LEFT JOIN LATERAL (
+             SELECT totems_used FROM player_history
+              WHERE player = players.player AND at <= $1 AND totems_used IS NOT NULL
+              ORDER BY at DESC LIMIT 1
+           ) totems ON true
+           LEFT JOIN LATERAL (
+             SELECT food_eaten FROM player_history
+              WHERE player = players.player AND at <= $1 AND food_eaten IS NOT NULL
+              ORDER BY at DESC LIMIT 1
+           ) food ON true`,
         [cutoff],
       )
     ).rows;
@@ -980,6 +999,9 @@ export async function getBoardRanksBefore(hoursAgo = 24): Promise<Partial<Record
       blocksBroken: "blocks_broken",
       mobsKilled: "mobs_killed",
       distance: "distance",
+      damageDealt: "damage_dealt",
+      totemsUsed: "totems_used",
+      foodEaten: "food_eaten",
     };
     const out: Partial<Record<BoardKey, Record<string, number>>> = {};
     for (const key of BOARD_KEYS) {

@@ -9,6 +9,7 @@ import {
   type ApiStats,
   type BoardEntry,
   type BoardKey,
+  EXT_KEYS,
   type EventType,
   type PlayerState,
   type TrackerEvent,
@@ -39,6 +40,9 @@ const COUNTER_EVENTS: Partial<Record<BoardKey, EventType>> = {
   blocksBroken: "blocksBroken",
   mobsKilled: "mobsKilled",
   distance: "distance",
+  damageDealt: "damageDealt",
+  totemsUsed: "totemsUsed",
+  foodEaten: "foodEaten",
 };
 
 /** Ab wann ein Spieler ohne Streckenzuwachs als AFK gilt */
@@ -97,6 +101,7 @@ const MIN_DELTA: Partial<Record<BoardKey, number>> = {
   distance: 500, // Meter
   blocksBroken: 100,
   mobsKilled: 10,
+  damageDealt: 20,
 };
 
 /** Meilensteine pro Zähler – beim Überschreiten gibt es ein Ereignis */
@@ -107,6 +112,9 @@ const MILESTONES: Partial<Record<BoardKey, number[]>> = {
   blocksBroken: [1000, 5000, 10000, 50000, 100000, 500000],
   mobsKilled: [100, 500, 1000, 5000, 10000],
   distance: [10000, 50000, 100000, 500000, 1000000],
+  damageDealt: [200, 1000, 2000, 10000, 20000],
+  totemsUsed: [1, 5, 10, 25, 50, 100],
+  foodEaten: [100, 500, 1000, 5000, 10000],
 };
 const BOARD_LABEL: Record<BoardKey, string> = {
   playtimeSeconds: "Dauerzocker",
@@ -115,6 +123,9 @@ const BOARD_LABEL: Record<BoardKey, string> = {
   blocksBroken: "Abrissbirne",
   mobsKilled: "Monsterjäger",
   distance: "Weltenbummler",
+  damageDealt: "Herzen",
+  totemsUsed: "Totems",
+  foodEaten: "Essen",
 };
 
 let seq = 0;
@@ -566,10 +577,11 @@ export function diffSnapshot(
     // Alle Spieler außerhalb der Top 10 kommen über die Einzelstatistik dazu (außer Spielzeit, die gibt es dort nicht).
     const inList = new Set(list.map((e) => e.id));
     const extEntries: (BoardEntry & { fromExt: true })[] = [];
-    if (key !== "playtimeSeconds") {
+    const extKey = EXT_KEYS.find((candidate) => candidate === key);
+    if (extKey) {
       for (const [id, x] of ext) {
         if (inList.has(id)) continue;
-        const value = x[key];
+        const value = x[extKey];
         if (typeof value !== "number") continue;
         extEntries.push({ id, name: x.name, uuid: state.players[id]?.uuid ?? "", value, fromExt: true });
       }

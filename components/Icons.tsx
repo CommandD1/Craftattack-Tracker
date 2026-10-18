@@ -44,6 +44,23 @@ export const Icon = {
       <path d="M6 14h6" />
     </svg>
   ),
+  heart: (p: P) => (
+    <svg {...base} {...p}>
+      <path d="M20.8 8.7c0 4.5-8.8 11-8.8 11s-8.8-6.5-8.8-11A4.7 4.7 0 0 1 12 6.1a4.7 4.7 0 0 1 8.8 2.6Z" />
+    </svg>
+  ),
+  totem: (p: P) => (
+    <svg {...base} {...p}>
+      <path d="M8 3h8v4l2 2v10l-6 2-6-2V9l2-2z" />
+      <path d="M8 9h8M9 12h1m4 0h1M10 16h4" />
+    </svg>
+  ),
+  food: (p: P) => (
+    <svg {...base} {...p}>
+      <path d="M12 8c-3-4-8-1-8 4 0 5 4 9 8 9s8-4 8-9c0-5-5-8-8-4Z" />
+      <path d="M12 8c0-3 2-5 5-5M12 8c-2-2-4-2-6-1" />
+    </svg>
+  ),
   login: (p: P) => (
     <svg {...base} {...p}>
       <path d="M10 17l5-5-5-5M15 12H3" />
@@ -135,6 +152,9 @@ export const BOARD_ICON: Record<BoardKey, keyof typeof Icon> = {
   blocksBroken: "pickaxe",
   mobsKilled: "sword",
   distance: "boots",
+  damageDealt: "heart",
+  totemsUsed: "totem",
+  foodEaten: "food",
 };
 
 export const EVENT_ICON: Record<EventType, keyof typeof Icon> = {
@@ -151,6 +171,9 @@ export const EVENT_ICON: Record<EventType, keyof typeof Icon> = {
   blocksBroken: "pickaxe",
   mobsKilled: "sword",
   distance: "boots",
+  damageDealt: "heart",
+  totemsUsed: "totem",
+  foodEaten: "food",
   stream_start: "twitch",
   stream_end: "twitch",
   stream_title: "tag",

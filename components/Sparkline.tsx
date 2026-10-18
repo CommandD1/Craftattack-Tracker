@@ -38,7 +38,7 @@ export function Sparkline({
   /** Nur aus Client-Komponenten nutzbar (Funktionen sind nicht serialisierbar) */
   format?: (v: number) => string;
   /** Für Server-Komponenten: Formatierung per Schlüssel */
-  kind?: "num" | "playtimeSeconds" | "distance" | "rank";
+  kind?: "num" | "playtimeSeconds" | "distance" | "damageDealt" | "rank";
   step?: boolean;
   /** Kleine Werte oben zeichnen (z. B. Rang: Platz 1 ist oben) */
   invert?: boolean;

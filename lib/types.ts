@@ -4,7 +4,10 @@ export type BoardKey =
   | "deaths"
   | "blocksBroken"
   | "mobsKilled"
-  | "distance";
+  | "distance"
+  | "damageDealt"
+  | "totemsUsed"
+  | "foodEaten";
 
 export const BOARD_KEYS: BoardKey[] = [
   "playtimeSeconds",
@@ -13,6 +16,9 @@ export const BOARD_KEYS: BoardKey[] = [
   "blocksBroken",
   "mobsKilled",
   "distance",
+  "damageDealt",
+  "totemsUsed",
+  "foodEaten",
 ];
 
 export interface LiveInfo {
@@ -48,7 +54,7 @@ export interface PlayerRank {
 }
 
 /** Zähler-Keys, die /api/ext/<login> liefert (keine Spielzeit) */
-export type ExtKey = Exclude<BoardKey, "playtimeSeconds">;
+export type ExtKey = Exclude<BoardKey, "playtimeSeconds" | "damageDealt" | "totemsUsed" | "foodEaten">;
 export const EXT_KEYS: ExtKey[] = ["diamonds", "deaths", "blocksBroken", "mobsKilled", "distance"];
 
 /** Antwort von https://craftattack.one/api/ext/<twitch-login> */
@@ -82,6 +88,9 @@ export type EventType =
   | "blocksBroken"
   | "mobsKilled"
   | "distance"
+  | "damageDealt"
+  | "totemsUsed"
+  | "foodEaten"
   | "stream_start"
   | "stream_end"
   | "stream_title"
@@ -225,6 +234,9 @@ export interface PlayerPoint {
   blocksBroken: number | null;
   mobsKilled: number | null;
   distance: number | null;
+  damageDealt: number | null;
+  totemsUsed: number | null;
+  foodEaten: number | null;
   followersOnServer: number | null;
   followersTotal: number | null;
   ranks: Partial<Record<ExtKey, PlayerRank>>;

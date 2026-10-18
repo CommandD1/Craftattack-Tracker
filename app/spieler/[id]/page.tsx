@@ -32,6 +32,9 @@ const LABEL: Record<BoardKey, string> = {
   blocksBroken: "Blöcke",
   mobsKilled: "Mobs",
   distance: "Strecke",
+  damageDealt: "Herzen",
+  totemsUsed: "Totems",
+  foodEaten: "Essen",
 };
 const TONE: Record<BoardKey, string> = {
   playtimeSeconds: "sky",
@@ -40,6 +43,9 @@ const TONE: Record<BoardKey, string> = {
   blocksBroken: "gold",
   mobsKilled: "grass",
   distance: "pink",
+  damageDealt: "redstone",
+  totemsUsed: "amethyst",
+  foodEaten: "gold",
 };
 
 export default function Page(props: PageProps<"/spieler/[id]">) {
@@ -170,7 +176,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   // Rang: bevorzugt aus /api/ext/<login> (für alle Spieler), sonst Position in der Top 10 der Haupt-API
   const ranks = Object.fromEntries(
     BOARD_KEYS.map((k) => {
-      const ext = k !== "playtimeSeconds" ? p.ranks?.[k] : undefined;
+      const ext = k !== "playtimeSeconds" && k !== "damageDealt" && k !== "totemsUsed" && k !== "foodEaten" ? p.ranks?.[k] : undefined;
       if (ext) return [k, { rank: ext.rank, of: ext.of }];
       const pos = (state.latest?.boards?.[k] ?? []).findIndex((e) => e.id === id) + 1;
       return [k, pos > 0 ? { rank: pos, of: null } : null];
@@ -306,6 +312,9 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                         blocksBroken: null,
                         mobsKilled: null,
                         distance: null,
+                        damageDealt: null,
+                        totemsUsed: null,
+                        foodEaten: null,
                         followersOnServer: null,
                         followersTotal: null,
                         ranks: {},
@@ -368,7 +377,8 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
           </dl>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
             Tode, Diamanten, Blöcke, Mobs und Strecke kommen aus der Einzelstatistik der API (inklusive Rang unter allen
-            Teilnehmenden). Die Spielzeit liefert die API nur für die Top 10. Steht „Tracker“ dabei, ist es die seit Tracker-Start gemessene Online-Zeit.
+            Teilnehmenden). Herzen, Totems und Essen liefert die API nur für die Top 10; Schaden wird für Herzen durch 20 geteilt.
+            Die Spielzeit liefert die API ebenfalls nur für die Top 10. Steht „Tracker“ dabei, ist es die seit Tracker-Start gemessene Online-Zeit.
             Follower-Zuwachs zählt nur zwischen aufeinanderfolgenden Messungen, bei denen der Streamer auf dem Server war; globale Twitch-Followerstände werden nicht angezeigt. Ein Zuwachs von mehr als 20 Followern pro Minute auf dem Server erscheint als Ereignis. Twitch-Subs werden nur gezählt, wenn der Streamer während des Sub-Events auf dem Spielserver online war (auch AFK). Die Kurven zeigen den Verlauf seit Tracker-Start ({num(history.length)} Messpunkte). Mit der Maus über die Kurve fahren zeigt Zeitpunkt und Wert. Ein Klick auf Beschriftung oder Wert öffnet den großen Graphen auf der Statistik-Seite.
           </p>
         </div>

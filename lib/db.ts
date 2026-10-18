@@ -123,10 +123,16 @@ async function migrate(db: Db) {
       blocks_broken    integer,
       mobs_killed      integer,
       distance         double precision,
+      damage_dealt     double precision,
+      totems_used      integer,
+      food_eaten       integer,
       followers_on_server integer,
       PRIMARY KEY (player, at)
     )`);
   await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS followers_on_server integer`);
+  await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS damage_dealt double precision`);
+  await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS totems_used integer`);
+  await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS food_eaten integer`);
   await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS followers_total integer`);
   await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS ranks jsonb`);
   await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS stream_game_id text`);

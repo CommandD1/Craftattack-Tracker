@@ -1,5 +1,5 @@
 import type { EventType, TrackerEvent } from "./types";
-import { duration, num, distance } from "./format";
+import { duration, hearts, num, distance } from "./format";
 
 export interface EventMeta {
   label: string;
@@ -121,6 +121,24 @@ export const EVENT_META: Record<EventType, EventMeta> = {
     text: (e) => `ist ${distance(e.delta ?? 0)} gelaufen`,
     sub: (e) => (e.value !== undefined ? `Jetzt ${distance(e.value)} insgesamt` : null),
   },
+  damageDealt: {
+    label: "Herzen",
+    tone: "redstone",
+    text: (e) => `hat ${hearts(e.delta ?? 0)} Herzen Schaden verursacht`,
+    sub: (e) => (e.value !== undefined ? `Jetzt ${hearts(e.value)} Herzen insgesamt` : null),
+  },
+  totemsUsed: {
+    label: "Totems",
+    tone: "amethyst",
+    text: (e) => `hat ${num(e.delta ?? 0)} Totems benutzt`,
+    sub: (e) => (e.value !== undefined ? `Jetzt ${num(e.value)} insgesamt` : null),
+  },
+  foodEaten: {
+    label: "Essen",
+    tone: "gold",
+    text: (e) => `hat ${num(e.delta ?? 0)} Essen gegessen`,
+    sub: (e) => (e.value !== undefined ? `Jetzt ${num(e.value)} insgesamt` : null),
+  },
   stream_start: {
     label: "Stream an",
     tone: "twitch",
@@ -229,7 +247,7 @@ export const EVENT_META: Record<EventType, EventMeta> = {
 export const EVENT_GROUPS: { key: string; label: string; tone: string; types: EventType[] }[] = [
   { key: "server", label: "Server", tone: "grass", types: ["join", "leave", "afk_start", "afk_mobs_start", "afk_mobs_end", "afk_blocks_start", "afk_blocks_end", "afk_end", "server_online", "server_offline", "tracker_start"] },
   { key: "death", label: "Tode", tone: "redstone", types: ["death"] },
-  { key: "loot", label: "Loot & Arbeit", tone: "gold", types: ["diamonds", "blocksBroken", "mobsKilled", "distance"] },
+  { key: "loot", label: "Loot & Arbeit", tone: "gold", types: ["diamonds", "blocksBroken", "mobsKilled", "distance", "damageDealt", "totemsUsed", "foodEaten"] },
   { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title", "subscription", "subscription_gift", "follower_burst", "raid"] },
   { key: "highlights", label: "Highlights", tone: "amethyst", types: ["first_join", "rank", "milestone", "record"] },
 ];
@@ -250,6 +268,11 @@ export function eventBadge(e: TrackerEvent): string | null {
       return `+${num(e.delta ?? 0)}`;
     case "distance":
       return `+${distance(e.delta ?? 0)}`;
+    case "damageDealt":
+      return `+${hearts(e.delta ?? 0)} Herzen`;
+    case "totemsUsed":
+    case "foodEaten":
+      return `+${num(e.delta ?? 0)}`;
     case "leave": {
       const s = Number(e.meta?.sessionSeconds ?? 0);
       return s > 0 ? duration(s) : null;
@@ -282,7 +305,7 @@ export function eventBadge(e: TrackerEvent): string | null {
     case "rank":
       return `#${e.value}`;
     case "milestone":
-      return e.meta?.board === "playtimeSeconds" ? `${Math.round((e.value ?? 0) / 3600)} h` : e.meta?.board === "distance" ? distance(e.value ?? 0) : num(e.value ?? 0);
+      return e.meta?.board === "playtimeSeconds" ? `${Math.round((e.value ?? 0) / 3600)} h` : e.meta?.board === "distance" ? distance(e.value ?? 0) : e.meta?.board === "damageDealt" ? hearts(e.value ?? 0) : num(e.value ?? 0);
     case "record":
       return num(e.value ?? 0);
     case "server_online":
@@ -308,6 +331,9 @@ export const EVENT_TYPES: EventType[] = [
   "blocksBroken",
   "mobsKilled",
   "distance",
+  "damageDealt",
+  "totemsUsed",
+  "foodEaten",
   "stream_start",
   "stream_end",
   "stream_title",

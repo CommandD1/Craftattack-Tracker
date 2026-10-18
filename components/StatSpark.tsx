@@ -13,6 +13,9 @@ export type SparkKey =
   | "blocksBroken"
   | "mobsKilled"
   | "distance"
+  | "damageDealt"
+  | "totemsUsed"
+  | "foodEaten"
   | "followersOnServer"
   | "twitchSubs";
 
@@ -24,6 +27,9 @@ const FORMAT: Record<SparkKey, (v: number) => string> = {
   blocksBroken: num,
   mobsKilled: num,
   distance: (v) => boardValue("distance", v),
+  damageDealt: (v) => boardValue("damageDealt", v),
+  totemsUsed: num,
+  foodEaten: num,
   followersOnServer: num,
   twitchSubs: num,
 };

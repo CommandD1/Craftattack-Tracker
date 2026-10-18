@@ -80,6 +80,12 @@ function detail(e: TrackerEvent): string | null {
       return "Mobs";
     case "distance":
       return "gelaufen";
+    case "damageDealt":
+      return "Schaden verursacht";
+    case "totemsUsed":
+      return "Totems benutzt";
+    case "foodEaten":
+      return "Essen gegessen";
     case "afk_start":
       return "AFK";
     case "afk_mobs_start":

@@ -14,6 +14,7 @@ const tf = new Intl.DateTimeFormat("de-DE", {
 });
 
 export const num = (n: number) => nf.format(Math.round(n));
+export const hearts = (damage: number) => new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 }).format(damage / 20);
 
 export function duration(sec: number) {
   const d = Math.floor(sec / 86400);
@@ -50,6 +51,8 @@ export function boardValue(key: string, v: number) {
       return duration(v);
     case "distance":
       return distance(v);
+    case "damageDealt":
+      return hearts(v);
     default:
       return num(v);
   }
