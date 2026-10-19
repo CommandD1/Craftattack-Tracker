@@ -9,7 +9,7 @@ Live unter **https://craftattack.hiorcraft.tv**
 ## Mitmachen
 
 1. Repo forken und klonen, `npm install`
-2. `DATABASE_URL` in `.env.local` setzen, dann startet `npm run dev` lokal auf http://localhost:3000.
+2. `DATABASE_URL` in `.env.local` setzen (siehe `.env.example`), dann startet `npm run dev` lokal auf http://localhost:3000.
 3. Änderung machen, `npm run lint` und `npx tsc --noEmit` müssen sauber sein.
 4. Pull Request gegen `main` mit kurzer Beschreibung, was und warum.
 
@@ -50,10 +50,20 @@ Beim Erstellen des Blueprints die abgefragten Variablen eintragen:
 `AWS_SECRET_ACCESS_KEY` für private Datei-Uploads. Twitch-Zugangsdaten sind
 optional und können nach dem Erstellen im Render-Dashboard gesetzt werden.
 
+Für `DATABASE_URL` die **Internal Database URL** der Render-PostgreSQL-Datenbank
+verwenden. Damit kommunizieren Web-Service und Datenbank intern über dasselbe
+Render-Netzwerk. Die Hostname-, Port-, Datenbank-, Username- und Password-Felder
+müssen nicht einzeln eingetragen werden; die Internal Database URL enthält sie
+bereits. Die **External Database URL** ist für Verbindungen von außerhalb Render,
+zum Beispiel für lokale Entwicklung. Die PSQL Command ist für manuelle
+`psql`-Verbindungen und wird von der App nicht benötigt. Die App verschlüsselt
+die PostgreSQL-Verbindung mit TLS; da Render intern selbstsignierte Zertifikate
+verwendet, wird das Zertifikat dabei nicht verifiziert.
+
 ## Datenbank (PostgreSQL)
 
-- `DATABASE_URL` muss gesetzt sein (siehe `.env.example`), damit die App auf PostgreSQL über `pg` zugreift. Tabellen werden beim Start angelegt.
-- Mit Neon werden Auth- und Object-Storage-Umgebungsvariablen über `neon env pull` bereitgestellt; `NEON_AUTH_COOKIE_SECRET` muss lokal einmalig mit `openssl rand -base64 32` erzeugt werden.
+- `DATABASE_URL` muss gesetzt sein (siehe `.env.example`), damit die App über `pg` direkt auf PostgreSQL zugreift. Für Render den Internal Database URL verwenden; bei lokaler Entwicklung mit einer Render-Datenbank den External Database URL. `SUPABASE_DB_URL` bleibt als Fallback für bestehende Deployments erhalten, wird aber ignoriert, wenn `DATABASE_URL` gesetzt ist. Tabellen werden beim Start angelegt.
+- Der Datenbankwechsel betrifft PostgreSQL; Kontoauthentifizierung und Datei-Uploads verwenden weiterhin Neon. Die Auth- und Object-Storage-Umgebungsvariablen kommen über `neon env pull`; `NEON_AUTH_COOKIE_SECRET` muss lokal einmalig mit `openssl rand -base64 32` erzeugt werden.
 - `/konto` bietet Neon-Managed-Auth (E-Mail/Passwort) und private persönliche Datei-Uploads. Dateien bis 10 MiB werden im privaten Neon-Bucket `assets` gespeichert; Metadaten und Besitzer-ID liegen in PostgreSQL. Die API prüft den angemeldeten Besitzer bei jedem Aufruf.
 
 Tabellen: `tracker_meta` (Status, Rekorde, letzter API-Snapshot), `players`, `events` (Chronik), `history` (Zeitreihe gesamt, einschließlich Spielerzahl), `player_history` (Spielerwerte, Follower-Gesamtstand, Rang-Snapshot und Twitch-Kategorie je Messpunkt) und `user_files` (Metadaten privater Uploads). Neue Verlaufsfelder werden mit additiven `IF NOT EXISTS`-Spalten ergänzt; bestehende Daten bleiben erhalten.
@@ -96,6 +106,8 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 - `/api/tracker?limit=200&player=<id>&type=<typ>` JSON-Export, `/api/cron/poll` löst eine authentifizierte Abfrage aus
 
 ## Konfiguration
+
+- `SUPABASE_DB_URL` optionaler Legacy-Fallback für bestehende Deployments; `DATABASE_URL` hat Vorrang.
 
 - `DATABASE_URL` PostgreSQL-Verbindung, z. B. `postgres://user:pass@localhost:5432/actracker`
 - `CA_STATS_URL` andere API-Adresse

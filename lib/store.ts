@@ -2,7 +2,7 @@ import "server-only";
 import { connection } from "next/server";
 import { getDb, type Db } from "./db";
 import { playtimeOf } from "./playtime";
-import type { BoardKey, FeedItem, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind, AfkCheck } from "./types";
+import type { BoardKey, DeathFeedItem, FeedItem, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind, AfkCheck } from "./types";
 
 const MAX_EVENTS_IN_MEMORY = 20000;
 const MAX_HISTORY_POINTS = 2880; // 24 h bei 30 s
@@ -459,6 +459,43 @@ export async function appendFeedItems(items: { id: string; item: FeedItem }[]) {
     ]),
     "ON CONFLICT (id) DO NOTHING",
   );
+}
+
+export async function enrichDeathEvents(items: DeathFeedItem[]) {
+  if (items.length === 0) return;
+  await ensureLoaded();
+  const store = g();
+  const db = await getDb();
+  const usedEventIds = new Set<string>();
+
+  for (const item of items) {
+    const feedAt = Date.parse(item.at);
+    const event = store.events
+      .filter((candidate) => candidate.type === "death" && candidate.player === item.victim.id && !usedEventIds.has(candidate.id))
+      .map((candidate) => ({ candidate, distance: Math.abs(Date.parse(candidate.at) - feedAt) }))
+      .filter(({ distance }) => distance <= 2 * 60_000)
+      .sort((a, b) => a.distance - b.distance)[0]?.candidate;
+    if (!event) continue;
+
+    usedEventIds.add(event.id);
+    const meta = {
+      ...event.meta,
+      deathMessage: item.message,
+      feedAt: item.at,
+      victimMinecraft: item.victim.minecraft,
+      victimTwitch: item.victim.twitch,
+      killerId: item.killer?.id ?? null,
+      killerName: item.killer?.name ?? null,
+      killerUuid: item.killer?.uuid ?? null,
+      killerMinecraft: item.killer?.minecraft ?? null,
+      killerTwitch: item.killer?.twitch ?? null,
+    };
+    await db.query(`UPDATE events SET meta = COALESCE(meta, '{}'::jsonb) || $2::jsonb WHERE id = $1`, [
+      event.id,
+      JSON.stringify(meta),
+    ]);
+    event.meta = meta;
+  }
 }
 
 /** Speichert ein von einer Live-Quelle geliefertes Ereignis und aktualisiert den Ereigniszähler. */

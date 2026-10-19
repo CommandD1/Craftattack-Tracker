@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { appendEvents, appendFeedItems, getState, recordPlayerPoints, saveState } from "./store";
+import { appendEvents, appendFeedItems, enrichDeathEvents, getState, recordPlayerPoints, saveState } from "./store";
 import { fetchFollowerCounts, fetchLiveStreams, TWITCH_ENABLED, type TwitchFollowerChannel, type TwitchStream } from "./twitch";
 import { fetchCraftAttack, getCraftAttackPauseMs, maxCraftAttackTimerDelay } from "./craftattackFetch";
 import { trackedSecondsOf } from "./playtime";
@@ -171,7 +171,7 @@ function feedEventId(item: FeedItem): string {
 }
 
 function newFeedItems(previousFeed: FeedItem[] | null, currentFeed: FeedItem[]): FeedItem[] {
-  if (previousFeed === null) return [];
+  if (previousFeed === null) return currentFeed.slice(0, 10);
   const previousKeys = new Set(previousFeed.map(feedItemKey));
   const firstKnownIndex = currentFeed.findIndex((item) => previousKeys.has(feedItemKey(item)));
   return firstKnownIndex === -1 ? currentFeed.slice(0, 10) : currentFeed.slice(0, firstKnownIndex);
@@ -798,32 +798,6 @@ export function diffSnapshot(
     }
   }
 
-  const deathFeedByPlayer = new Map<string, Extract<FeedItem, { type: "death" }>[]>();
-  for (const item of newItems) {
-    if (item.type !== "death") continue;
-    const items = deathFeedByPlayer.get(item.victim.id) ?? [];
-    items.push(item);
-    deathFeedByPlayer.set(item.victim.id, items);
-  }
-  for (const [playerId, items] of deathFeedByPlayer) {
-    const deathEvent = [...events].reverse().find((event) => event.type === "death" && event.player === playerId);
-    if (!deathEvent) continue;
-    const item = items[0];
-    deathEvent.meta = {
-      ...deathEvent.meta,
-      deathMessage: item.message,
-      feedAt: item.at,
-      victimMinecraft: item.victim.minecraft,
-      victimTwitch: item.victim.twitch,
-      killerId: item.killer?.id ?? null,
-      killerName: item.killer?.name ?? null,
-      killerUuid: item.killer?.uuid ?? null,
-      killerMinecraft: item.killer?.minecraft ?? null,
-      killerTwitch: item.killer?.twitch ?? null,
-      feedDeaths: JSON.stringify(items),
-    };
-  }
-
   for (const item of newItems) {
     if (item.type !== "achievement") continue;
     events.push({
@@ -944,6 +918,7 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       state.lastError = null;
       await appendFeedItems(freshFeedItems.map((item) => ({ id: feedEventId(item), item })));
       await appendEvents(events);
+      await enrichDeathEvents(feed.feed.slice(0, 10).filter((item): item is Extract<FeedItem, { type: "death" }> => item.type === "death"));
       await saveState(state);
       feedCheckpointSaved = true;
       await recordPlayerPoints(Object.values(state.players), now.toISOString(), freshStats);

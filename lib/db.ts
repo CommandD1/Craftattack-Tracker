@@ -2,7 +2,8 @@ import "server-only";
 
 /**
  * Datenbank-Anbindung.
- * `DATABASE_URL` muss gesetzt sein, damit die App auf PostgreSQL zugreift.
+ * `DATABASE_URL` enthält die PostgreSQL-Verbindung; `SUPABASE_DB_URL` bleibt
+ * als Fallback für bestehende Deployments erhalten.
  */
 export interface Db {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -12,13 +13,17 @@ export interface Db {
 type Globals = typeof globalThis & { __acDb?: Promise<Db> };
 
 async function connect(): Promise<Db> {
-  const url = process.env.DATABASE_URL;
+  const url = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
   if (!url) {
     throw new Error("DATABASE_URL is required to connect to PostgreSQL.");
   }
 
   const { Pool } = await import("pg");
-  const pool = new Pool({ connectionString: url, max: 5 });
+  const pool = new Pool({
+    connectionString: url,
+    ssl: { rejectUnauthorized: false },
+    max: 5,
+  });
   const db: Db = {
     kind: "postgres",
     query: async (sql, params) => {
