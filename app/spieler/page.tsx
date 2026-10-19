@@ -1,9 +1,9 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
-import { duration, headUrl, num, ago } from "@/lib/format";
+import { duration, headUrl, num, ago, dateTime } from "@/lib/format";
 import { playtimeOf, trackedSecondsOf } from "@/lib/playtime";
-import { getTwitchSubscriptionBoard } from "@/lib/store";
+import { getRecentTwitchChatMessages, getTwitchSubscriptionBoard } from "@/lib/store";
 
 // Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
 export const instant = false;
@@ -19,7 +19,11 @@ export default function Page(props: PageProps<"/spieler">) {
 async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["searchParams"] }) {
   const sp = await searchParams;
   const filter = typeof sp.filter === "string" ? sp.filter : "alle";
-  const [{ state, now }, subscriptionBoard] = await Promise.all([loadTracker(), getTwitchSubscriptionBoard()]);
+  const [{ state, now }, subscriptionBoard, chatMessages] = await Promise.all([
+    loadTracker(),
+    getTwitchSubscriptionBoard(),
+    getRecentTwitchChatMessages(),
+  ]);
   const subscriptions = new Map(subscriptionBoard.map((entry) => [entry.id, entry.value]));
 
   let players = Object.values(state.players);
@@ -57,6 +61,34 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
 
       <section className="block block--tight" data-tone="paper">
         <div className="wrap">
+          <section aria-labelledby="recent-twitch-chat" style={{ marginBottom: 32 }}>
+            <div className="section-head">
+              <div>
+                <p className="eyebrow" style={{ marginBottom: 4 }}>Twitch</p>
+                <h2 className="t-3" id="recent-twitch-chat">Neueste Spielernachrichten</h2>
+              </div>
+              <p className="muted num">{num(chatMessages.length)} Nachrichten</p>
+            </div>
+            {chatMessages.length === 0 ? (
+              <p className="muted">Noch keine Nachrichten zwischen erfassten Spielern.</p>
+            ) : (
+              <ol aria-label="Neueste Nachrichten von Spielern in Twitch-Chats" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                {chatMessages.map((message) => (
+                  <li key={message.id} style={{ padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "4px 10px" }}>
+                      <span>
+                        <Link href={`/spieler/${encodeURIComponent(message.senderId)}`}>{message.senderName}</Link>
+                        {" → "}
+                        <Link href={`/spieler/${encodeURIComponent(message.channelId)}`}>{message.channelName}</Link>
+                      </span>
+                      <time className="muted num" dateTime={message.at}>{dateTime(message.at)}</time>
+                    </div>
+                    <p style={{ margin: "4px 0 0", overflowWrap: "anywhere" }}>{message.message}</p>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
           <div className="section-head">
             <ul className="filters" aria-label="Filter">
               {(["alle", "online", "live", "nurserver"] as const).map((f) => (

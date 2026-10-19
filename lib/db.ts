@@ -127,6 +127,17 @@ async function migrate(db: Db) {
   await db.query(`CREATE INDEX IF NOT EXISTS events_type_at_idx ON events (type, at)`);
   await db.query(`CREATE INDEX IF NOT EXISTS feed_items_type_at_idx ON feed_items (type, at)`);
   await db.query(`
+    CREATE TABLE IF NOT EXISTS twitch_chat_messages (
+      id           text PRIMARY KEY,
+      at           timestamptz NOT NULL,
+      sender_id    text NOT NULL,
+      sender_name  text NOT NULL,
+      channel_id   text NOT NULL,
+      channel_name text NOT NULL,
+      message      text NOT NULL
+    )`);
+  await db.query(`CREATE INDEX IF NOT EXISTS twitch_chat_messages_at_idx ON twitch_chat_messages (at DESC, id DESC)`);
+  await db.query(`
     CREATE TABLE IF NOT EXISTS player_history (
       player           text NOT NULL,
       at               timestamptz NOT NULL,

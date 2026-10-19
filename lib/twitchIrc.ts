@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { appendLiveEvent, getEvents, getState, incrementLiveSubscriptionEvent } from "./store";
+import { appendLiveEvent, getEvents, getState, incrementLiveSubscriptionEvent, saveTwitchChatMessage } from "./store";
 import { KNOWN_LOGINS } from "./tracker";
 import type { PlayerState, TrackerEvent } from "./types";
 
@@ -39,6 +39,7 @@ const GIFT_NOTICE_IDS = new Set([
 
 export interface TwitchIrcMessage {
   tags: Record<string, string>;
+  prefix: string | null;
   command: string;
   params: string[];
   trailing: string | null;
@@ -73,6 +74,7 @@ export function parseTwitchIrcMessage(line: string): TwitchIrcMessage | null {
   const trailing = trailingAt < 0 ? null : rest.slice(trailingAt + 2);
   return {
     tags,
+    prefix: match[2] ?? null,
     command: match[3],
     params: paramsText ? paramsText.split(" ") : [],
     trailing,
@@ -392,6 +394,34 @@ async function handleLine(irc: IrcState, socket: WebSocket, line: string) {
   if (message.command === "001") {
     irc.registered = true;
     reconcileChannels(irc);
+    return;
+  }
+  if (message.command === "PRIVMSG") {
+    const channel = safeChannel(message.params[0] ?? "");
+    const senderLogin = safeChannel(message.prefix?.split("!", 1)[0] ?? message.tags.login ?? "");
+    const owner = channel ? irc.desired.get(channel) : undefined;
+    if (!channel || !senderLogin || !owner || !message.trailing?.trim()) return;
+
+    const currentState = await getState();
+    const sender = playerForTwitchLogin(currentState.players, senderLogin);
+    if (!sender || sender.id === owner.id || !currentState.players[owner.id]) return;
+
+    const sentAt = Number(message.tags["tmi-sent-ts"]);
+    const timestamp = new Date(sentAt);
+    const at = Number.isFinite(sentAt) && sentAt > 0 && Number.isFinite(timestamp.getTime())
+      ? timestamp.toISOString()
+      : new Date().toISOString();
+    const idSource = message.tags.id ?? `${channel}:${sender.id}:${at}:${message.trailing}`;
+    const id = `twitch-chat-${createHash("sha256").update(idSource).digest("hex").slice(0, 32)}`;
+    await saveTwitchChatMessage({
+      id,
+      at,
+      senderId: sender.id,
+      senderName: sender.name,
+      channelId: owner.id,
+      channelName: owner.name,
+      message: message.trailing,
+    });
     return;
   }
   if (message.command !== "USERNOTICE") return;

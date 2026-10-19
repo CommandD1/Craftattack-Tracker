@@ -8,6 +8,8 @@ const MAX_EVENTS_IN_MEMORY = 20000;
 const MAX_HISTORY_POINTS = 2880; // 24 h bei 30 s
 const MAX_BULK_INSERT_ROWS = 500;
 const MIN_VISIBLE_SUBSCRIPTION_COUNT = 10;
+const MAX_TWITCH_CHAT_MESSAGES = 10000;
+let twitchChatWritesSincePrune = 0;
 
 type Globals = typeof globalThis & {
   __acTracker?: {
@@ -561,6 +563,64 @@ export async function incrementLiveSubscriptionEvent(event: TrackerEvent): Promi
 export interface TwitchSubscriptionPoint {
   at: string;
   value: number;
+}
+
+export interface TwitchChatMessage {
+  id: string;
+  at: string;
+  senderId: string;
+  senderName: string;
+  channelId: string;
+  channelName: string;
+  message: string;
+}
+
+export async function saveTwitchChatMessage(message: TwitchChatMessage): Promise<void> {
+  const db = await getDb();
+  const inserted = await db.query(
+    `INSERT INTO twitch_chat_messages (id, at, sender_id, sender_name, channel_id, channel_name, message)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING RETURNING id`,
+    [message.id, toDate(message.at), message.senderId, message.senderName, message.channelId, message.channelName, message.message],
+  );
+  if (inserted.rows.length === 0) return;
+
+  twitchChatWritesSincePrune += 1;
+  if (twitchChatWritesSincePrune >= 100) {
+    await db.query(
+      `DELETE FROM twitch_chat_messages
+        WHERE id IN (
+          SELECT id FROM twitch_chat_messages ORDER BY at DESC, id DESC OFFSET $1
+        )`,
+      [MAX_TWITCH_CHAT_MESSAGES],
+    );
+    twitchChatWritesSincePrune = 0;
+  }
+}
+
+export async function getRecentTwitchChatMessages(limit = 50): Promise<TwitchChatMessage[]> {
+  const db = await getDb();
+  const rows = await db.query<{
+    id: string;
+    at: Date;
+    sender_id: string;
+    sender_name: string;
+    channel_id: string;
+    channel_name: string;
+    message: string;
+  }>(
+    `SELECT id, at, sender_id, sender_name, channel_id, channel_name, message
+       FROM twitch_chat_messages ORDER BY at DESC, id DESC LIMIT $1`,
+    [limit],
+  );
+  return rows.rows.map((row) => ({
+    id: row.id,
+    at: iso(row.at)!,
+    senderId: row.sender_id,
+    senderName: row.sender_name,
+    channelId: row.channel_id,
+    channelName: row.channel_name,
+    message: row.message,
+  }));
 }
 
 export interface TwitchSubscriptionProfile {
