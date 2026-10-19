@@ -276,12 +276,29 @@ export function deathCandidates(state: TrackerState, stats: ApiStats, ext: Map<s
  * Tracker nicht von selbst lernt (weil sie selten streamen). Quelle: Teilnehmerseite craftattack.one.
  */
 export const KNOWN_LOGINS: Record<string, string> = {
-  balui: "baluilp",
-  caravas: "caravasyt",
-  larslp: "larslp_live",
-  syou: "syoutv",
+  iicrimax: "icrimax",
+  tridanyt: "yttridan",
+  noriskk: "norisk",
+  askation: "tobifas",
+  syou:	"syoutv",
+  sintica: "sinticalive",
+  letshugo: "letshugotv",
+  niek: "niekbeats",
+  dersterzik: "sterzik",
   thejocraft: "thejocraft_live",
+  gamerstime: "gtimetv",
+  eisteelepeach: "eisteelepeach_1",
+  willygaminghd: "niklaswilson",
+  gambo: "notgambo",
+  rohaze: "xrohat",
+  caravas: "caravasyt",
+  balui: "baluilp",
+  larslp: "larslp_live",
+  dienessyy: "nessyssary",
+  crocodileandy: "crocodileandytv",
   noway4u: "noway4u_sir",
+  henkenbergen: "henke",
+  rgbpixel: "rgbpixl",
 };
 
 const newPlayers = new Set<string>();
