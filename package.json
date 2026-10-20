@@ -4,8 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:web": "TRACKER_MODE=web next dev",
+    "dev:tracker": "TRACKER_MODE=tracker next dev",
     "build": "next build",
     "start": "node --max-old-space-size=320 ./node_modules/next/dist/bin/next start",
+    "start:web": "TRACKER_MODE=web npm start",
+    "start:tracker": "TRACKER_MODE=tracker npm start",
     "lint": "eslint"
   },
   "dependencies": {

@@ -951,12 +951,13 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
   }
 }
 
-type Globals = typeof globalThis & { __acPollTimer?: ReturnType<typeof setTimeout> };
+type Globals = typeof globalThis & { __acPollTimer?: ReturnType<typeof setTimeout>; __acPollStarted?: boolean };
 
 /** Startet die Endlosschleife (einmal pro Prozess). */
 export function startPolling() {
   const gl = globalThis as Globals;
-  if (gl.__acPollTimer) return;
+  if (gl.__acPollStarted) return;
+  gl.__acPollStarted = true;
   const tick = async () => {
     const startedAt = Date.now();
     try {
