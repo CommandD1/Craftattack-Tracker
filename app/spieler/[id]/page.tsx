@@ -389,7 +389,15 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
       </section>
 
       <PlayerInsights p={p} history={history} sessions={allSessions.filter((s) => s.player === id)} events={mine} rates={rates.players[id]} server={rates.server} now={now} />
-      <PlayerActivity id={id} sessions={allSessions.filter((s) => s.player === id)} afk={afkSpans} ranks={rankHistory} now={now} />
+      <PlayerActivity
+        id={id}
+        sessions={allSessions.filter((s) => s.player === id)}
+        afk={afkSpans}
+        ranks={rankHistory}
+        values={{ ...p.stats, ...(playtime.seconds > 0 ? { playtimeSeconds: playtime.seconds } : {}) }}
+        apiRanks={p.ranks ?? {}}
+        now={now}
+      />
       <PlayerDetails id={id} detail={p.detail} name={p.name} now={now} topHistory={topHistory} />
 
       {(chat.sentTotal > 0 || chat.receivedTotal > 0) && (
