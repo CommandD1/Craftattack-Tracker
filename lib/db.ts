@@ -165,6 +165,8 @@ async function migrate(db: Db) {
   await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS ranks jsonb`);
   await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS stream_game_id text`);
   await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS stream_game_name text`);
+  // Zusatzwerte aus /api/player/<id> (Keys siehe lib/playerStats.ts), nur bei frischer Abfrage gesetzt
+  await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS extra jsonb`);
   await db.query(`
     CREATE TABLE IF NOT EXISTS history (
       at               timestamptz PRIMARY KEY,

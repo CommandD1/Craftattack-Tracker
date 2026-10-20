@@ -31,9 +31,20 @@ const POLL_JITTER_RATIO = 0.25;
 const MIN_POLL_INTERVAL_MS = Math.floor(POLL_INTERVAL_MS * (1 - POLL_JITTER_RATIO));
 const MAX_POLL_INTERVAL_MS = Math.ceil(POLL_INTERVAL_MS * (1 + POLL_JITTER_RATIO));
 export const FOLLOWER_POLL_INTERVAL_MS = 60_000;
-const EXT_CACHE_TTL_MS = 15 * 60_000;
-const EXT_REQUEST_INTERVAL_MS = 1_000;
-const EXT_MAX_PER_POLL = 10;
+const envNumber = (name: string, fallback: number, min: number) => {
+  const v = Number(process.env[name]);
+  return Number.isFinite(v) && v >= min ? v : fallback;
+};
+/**
+ * Einzelstatistik: Spieler, die online sind (oder es im vorigen Poll waren), werden bei jedem Poll neu
+ * abgefragt. Offline ändern sich die Werte nicht, deshalb reicht dort ein langsamerer Abgleich.
+ */
+const EXT_ONLINE_TTL_MS = Math.min(30_000, MIN_POLL_INTERVAL_MS / 2);
+const EXT_OFFLINE_TTL_MS = envNumber("CA_PLAYER_OFFLINE_REFRESH_MINUTES", 15, 1) * 60_000;
+/** So lange bleibt eine Antwort verwendbar, wenn sie nicht rechtzeitig erneuert werden konnte */
+const EXT_CACHE_TTL_MS = Math.max(15 * 60_000, EXT_OFFLINE_TTL_MS);
+const EXT_REQUEST_INTERVAL_MS = envNumber("CA_PLAYER_REQUEST_INTERVAL_MS", 500, 250);
+const EXT_MAX_PER_POLL = envNumber("CA_PLAYER_MAX_PER_POLL", 80, 1);
 /** Cache je Spieler-ID */
 const extCache = new Map<string, { player: ExtPlayer | null; at: number; failed: boolean }>();
 
@@ -139,6 +150,8 @@ let seq = 0;
  * Stillstand (AFK) zählen noch als unveränderte Strecke im Verlauf landen.
  */
 export let freshStats = new Map<string, Set<BoardKey>>();
+/** Spieler, deren Zusatzwerte (/api/player) im letzten Poll frisch abgefragt wurden */
+export let freshDetail = new Set<string>();
 function eventId(at: string) {
   seq = (seq + 1) % 100000;
   return `${Date.parse(at).toString(36)}-${seq.toString(36)}`;
@@ -249,19 +262,20 @@ export async function fetchExtPlayer(id: string): Promise<ExtPlayer | null> {
 }
 
 /**
- * Fragt höchstens zehn veraltete Spieler pro Poll einzeln ab und cached sie 15 Minuten.
+ * Fragt fällige Spieler einzeln ab: online jede Abfrage, offline alle `CA_PLAYER_OFFLINE_REFRESH_MINUTES`.
+ * Online-Spieler und noch nie abgefragte kommen zuerst, danach die ältesten Einträge.
  * Ergebnis ist nach Spieler-ID abgelegt; `loginOf` enthält den Twitch-Login laut API.
  */
 export async function fetchExtAll(
   ids: Iterable<string>,
+  online: Set<string> = new Set(),
 ): Promise<{ players: Map<string, ExtPlayer>; loginOf: Map<string, string>; missing: Set<string>; failed: number }> {
   const all = [...new Set(ids)];
   const now = Date.now();
+  const age = (id: string) => now - (extCache.get(id)?.at ?? 0);
   const queue = all
-    .filter((id) => {
-      const cached = extCache.get(id);
-      return !cached || now - cached.at >= EXT_CACHE_TTL_MS;
-    })
+    .filter((id) => age(id) >= (online.has(id) ? EXT_ONLINE_TTL_MS : EXT_OFFLINE_TTL_MS))
+    .sort((a, b) => Number(online.has(b)) - Number(online.has(a)) || age(b) - age(a))
     .slice(0, EXT_MAX_PER_POLL);
   const fetched = new Set<string>();
   const players = new Map<string, ExtPlayer>();
@@ -631,6 +645,7 @@ export function diffSnapshot(
   }
 
   // --- Einzelstatistiken (/api/player/<id>): Name, Ränge und Zusatzwerte für alle abgefragten Spieler übernehmen
+  freshDetail = new Set([...ext.values()].filter((x) => x.fresh).map((x) => x.id));
   for (const [id, x] of ext) {
     const ps = ensurePlayer(state, { id, name: x.name, uuid: state.players[id]?.uuid ?? "" }, now);
     ps.ranks = { ...x.ranks };
@@ -967,9 +982,11 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       // Einzelstatistiken für alle bekannten Spieler – Fehler hier sind nicht fatal, dann gibt es eben nur die Top 10
       const ids = knownPlayerIds(state, stats);
       const logins = extLogins(state, stats, ids);
+      // Wer jetzt oder beim vorigen Poll online war, bekommt frische Einzelwerte (auch die letzte Minute vor dem Leave)
+      const onlineIds = new Set([...stats.online, ...(state.latest?.online ?? [])].map((p) => p.id));
       // Live-Status direkt bei Twitch für alle bekannten Logins; schlägt das fehl, zählt die Haupt-API
       const [ext, twitch, followers] = await Promise.all([
-        fetchExtAll(ids),
+        fetchExtAll(ids, onlineIds),
         TWITCH_ENABLED
           ? fetchLiveStreams(logins.values()).catch((err: unknown) => {
               console.warn("[tracker] Twitch-Live-Abfrage fehlgeschlagen:", err instanceof Error ? err.message : err);
@@ -1005,7 +1022,7 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       await enrichDeathEvents(feed.feed.slice(0, 10).filter((item): item is Extract<FeedItem, { type: "death" }> => item.type === "death"));
       await saveState(state);
       feedCheckpointSaved = true;
-      await recordPlayerPoints(Object.values(state.players), now.toISOString(), freshStats);
+      await recordPlayerPoints(Object.values(state.players), now.toISOString(), freshStats, freshDetail);
       return { ok: true, events: events.length };
     } catch (err) {
       if (!feedCheckpointSaved) state.latestFeed = previousFeed;

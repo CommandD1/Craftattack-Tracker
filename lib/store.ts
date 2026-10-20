@@ -2,6 +2,7 @@ import "server-only";
 import { connection } from "next/server";
 import { getDb, type Db } from "./db";
 import { playtimeOf } from "./playtime";
+import { EXTRA_KEY_OF_METRIC, EXTRA_METRICS, EXTRA_STAT_KEYS, type ExtraMetric } from "./playerStats";
 import type { BoardKey, DeathFeedItem, FeedItem, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind, AfkCheck } from "./types";
 
 const MAX_EVENTS_IN_MEMORY = 20000;
@@ -880,6 +881,7 @@ function pointSignature(p: PlayerPoint) {
     JSON.stringify(p.ranks),
     p.streamGameId,
     p.streamGameName,
+    JSON.stringify(p.extra ?? {}),
   ].join("|");
 }
 
@@ -887,8 +889,9 @@ function pointSignature(p: PlayerPoint) {
 /**
  * Einen Messpunkt je Spieler anhängen. `fresh` sagt, welche Zähler in dieser Abfrage wirklich geliefert wurden.
  * Zähler ohne frische Daten werden als unbekannt (null) gespeichert, damit eine Datenlücke nicht wie Stillstand aussieht.
+ * `freshDetail` enthält die Spieler, deren Zusatzwerte (/api/player) in dieser Abfrage frisch kamen.
  */
-export async function recordPlayerPoints(players: PlayerState[], at: string, fresh?: Map<string, Set<BoardKey>>) {
+export async function recordPlayerPoints(players: PlayerState[], at: string, fresh?: Map<string, Set<BoardKey>>, freshDetail?: Set<string>) {
   await ensureLoaded();
   const db = await getDb();
   const t = Date.parse(at);
@@ -898,6 +901,13 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
     const hasData = p.online || p.live || p.followersAt !== null || Object.keys(p.stats).length > 0;
     if (!hasData) continue;
     const isFresh = (key: BoardKey) => !fresh || (fresh.get(p.id)?.has(key) ?? false);
+    const extra: Record<string, number> = {};
+    if (p.detail && (!freshDetail || freshDetail.has(p.id))) {
+      for (const key of EXTRA_STAT_KEYS) {
+        const v = p.detail.stats[key];
+        if (typeof v === "number") extra[key] = v;
+      }
+    }
     const point: PlayerPoint = {
       at,
       online: p.online,
@@ -917,6 +927,7 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
       ranks: p.ranks ?? {},
       streamGameId: p.live?.gameId ?? null,
       streamGameName: p.live?.gameName ?? null,
+      extra,
     };
     const sig = pointSignature(point);
     const last = lastPoint.get(p.id);
@@ -940,6 +951,7 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
         JSON.stringify(point.ranks),
         point.streamGameId,
         point.streamGameName,
+        Object.keys(extra).length ? JSON.stringify(extra) : null,
     ]);
     signatures.push({ id: p.id, sig });
   }
@@ -948,7 +960,7 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
     "player_history",
     [
       "player", "at", "online", "viewers", "playtime_seconds", "deaths", "diamonds", "blocks_broken",
-      "mobs_killed", "distance", "damage_dealt", "totems_used", "food_eaten", "followers_on_server", "followers_total", "ranks", "stream_game_id", "stream_game_name",
+      "mobs_killed", "distance", "damage_dealt", "totems_used", "food_eaten", "followers_on_server", "followers_total", "ranks", "stream_game_id", "stream_game_name", "extra",
     ],
     rows,
     "ON CONFLICT (player, at) DO NOTHING",
@@ -974,6 +986,7 @@ interface PlayerPointRow {
   ranks?: PlayerPoint["ranks"] | null;
   stream_game_id?: string | null;
   stream_game_name?: string | null;
+  extra?: Record<string, number> | null;
 }
 
 export async function getPlayerHistory(id: string, limit = 3000): Promise<PlayerPoint[]> {
@@ -1000,6 +1013,7 @@ export async function getPlayerHistory(id: string, limit = 3000): Promise<Player
     ranks: r.ranks ?? {},
     streamGameId: r.stream_game_id ?? null,
     streamGameName: r.stream_game_name ?? null,
+    extra: r.extra ?? {},
   }));
 }
 
@@ -1251,7 +1265,7 @@ export async function getBiggestEvents(type: TrackerEvent["type"], limit = 1): P
 
 /* ---------- Eigener Graph: beliebige Zeitreihen ---------- */
 
-export const SERIES_METRICS = [
+const BASE_SERIES_METRICS = [
   "onlineCount",
   "liveCount",
   "viewers",
@@ -1271,7 +1285,8 @@ export const SERIES_METRICS = [
   "afkMobsSeconds",
   "afkBlocksSeconds",
 ] as const;
-export type SeriesMetric = (typeof SERIES_METRICS)[number];
+export type SeriesMetric = (typeof BASE_SERIES_METRICS)[number] | ExtraMetric;
+export const SERIES_METRICS: readonly SeriesMetric[] = [...BASE_SERIES_METRICS, ...EXTRA_METRICS];
 
 export interface SeriesLine {
   id: string;
@@ -1312,6 +1327,8 @@ const PLAYER_COL: Partial<Record<SeriesMetric, string>> = {
   foodEaten: "food_eaten",
   followers: "followers_on_server",
   online: "(CASE WHEN online THEN 1 ELSE 0 END)",
+  // Zusatzwerte: Keys stammen aus der festen Liste in lib/playerStats.ts, nie aus der Anfrage
+  ...Object.fromEntries(EXTRA_METRICS.map((m) => [m, `(extra->>'${EXTRA_KEY_OF_METRIC[m]}')::double precision`])),
 };
 
 function toDelta(points: { at: string; v: number }[]) {

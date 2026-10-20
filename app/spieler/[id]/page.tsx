@@ -387,7 +387,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
 
       <PlayerInsights p={p} history={history} sessions={allSessions.filter((s) => s.player === id)} events={mine} rates={rates.players[id]} server={rates.server} now={now} />
       <PlayerActivity id={id} sessions={allSessions.filter((s) => s.player === id)} afk={afkSpans} ranks={rankHistory} now={now} />
-      <PlayerDetails detail={p.detail} name={p.name} now={now} />
+      <PlayerDetails id={id} detail={p.detail} name={p.name} now={now} />
 
       <section className="block" data-tone="paper">
         <div className="wrap">

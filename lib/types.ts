@@ -303,6 +303,8 @@ export interface PlayerPoint {
   ranks: Partial<Record<ExtKey, PlayerRank>>;
   streamGameId: string | null;
   streamGameName: string | null;
+  /** Zusatzwerte aus /api/player/<id> zu diesem Zeitpunkt (API-Keys); leer = nicht frisch abgefragt */
+  extra?: Record<string, number>;
   /** Vom Tracker gezählte Twitch-Abos; separate Ereignis-Zeitreihe kann dieses Feld ergänzen */
   twitchSubs?: number | null;
 }
