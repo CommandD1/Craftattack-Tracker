@@ -37,6 +37,20 @@ npm run dev      # http://localhost:3000
 
 Der Poller startet automatisch mit dem Server (`instrumentation.ts`).
 
+### Nur Website oder nur Tracker
+
+`TRACKER_MODE` legt fest, was ein Prozess übernimmt:
+
+| Modus | Befehl | Verhalten |
+| --- | --- | --- |
+| `all` (Standard) | `npm run dev` / `npm start` | Website und Tracker im selben Prozess |
+| `web` | `npm run dev:web` / `npm run start:web` | Nur die Website. Poller, Twitch-IRC und Nachträge starten nicht. `/api/tracker/poll` und `/api/cron/poll` bleiben für einen externen Cron nutzbar. |
+| `tracker` | `npm run dev:tracker` / `npm run start:tracker` | Nur der Tracker. Alle Seiten antworten mit HTTP 503; erreichbar bleiben `/api/tracker` (Status) sowie die Poll-Endpunkte. |
+
+Beide Modi gleichzeitig auf einem Rechner brauchen verschiedene Ports, z. B. `PORT=3001 npm run start:tracker`.
+Sie teilen sich dieselbe Datenbank (`DATABASE_URL`); der Tracker schreibt, die Website liest.
+Auf Render lässt sich der Tracker so als eigener Worker-Service mit `npm run start:tracker` betreiben.
+
 ## Render (512 MB)
 
 `render.yaml` richtet einen Render-Starter-Web-Service ein. Der Produktionsserver
@@ -115,6 +129,7 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3` und `AWS_REGION` für den privaten Neon-Object-Storage-Bucket `assets`.
 - `CA_EXT_URL` Basis-Adresse der Einzelstatistik (Standard `https://craftattack.one/api/ext`)
 - `CA_POLL_INTERVAL_MS` mittleres Abfrageintervall in Millisekunden (Standard 60000, mit ±25 % Jitter; nicht unter die Vorgaben des API-Betreibers setzen)
+- `TRACKER_MODE` `all` (Standard), `web` oder `tracker`; siehe [Nur Website oder nur Tracker](#nur-website-oder-nur-tracker).
 - `CA_AFK_MINUTES` Minuten ohne Streckenzuwachs, bevor ein Online-Spieler als AFK gilt (Standard 20); historische AFK-Zeiten und Ereignisse werden beim Start neu bewertet.
 - `CRON_SECRET` zufälliges Geheimnis für cron-job.org, mit `openssl rand -hex 32` erzeugen. In cron-job.org einen GET-Aufruf an `https://<deine-domain>/api/cron/poll` mit dem Header `Authorization: Bearer <CRON_SECRET>` einrichten. Bereits laufende oder wegen Poll-Abstand pausierte Abfragen antworten mit HTTP 200 und `status: "skipped"`; echte Fehler liefern HTTP 502.
 - `TWITCH_IRC_NICK` und `TWITCH_IRC_TOKEN` optional für Twitch-IRC mit `chat:read`; alle bekannten Kanäle werden mit höchstens 20 JOINs in 10 Sekunden (einer alle 500 ms) abonniert. Erfasst werden bekannte Sub-`USERNOTICE`s sowie Raids, wenn sowohl der raidende Spieler als auch der Zielkanal einem Spieler zugeordnet sind.
