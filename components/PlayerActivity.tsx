@@ -4,6 +4,7 @@ import { RANK_KEYS } from "@/lib/analytics";
 import { duration, num } from "@/lib/format";
 import { Sparkline } from "./Sparkline";
 import { BOARD_ICON, Icon } from "./Icons";
+import { EXTRA_HISTORY_KEYS, EXTRA_STATS, STAT_GROUPS } from "@/lib/playerStats";
 
 const LABEL: Record<RankKey, string> = { deaths: "Friedhof", diamonds: "Diamantenbank", blocksBroken: "Abrissbirne", mobsKilled: "Monsterjäger", distance: "Weltenbummler" };
 const TONE: Record<RankKey, string> = { deaths: "redstone", diamonds: "diamond", blocksBroken: "gold", mobsKilled: "grass", distance: "pink" };
@@ -62,6 +63,14 @@ export function PlayerActivity({
     return { k, points, best, worst, nowRank };
   });
   const hasRanks = rankCharts.some((c) => c.points.length >= 2);
+  // Zusatzwerte: kompakt als Tabelle nach Rubriken, standardmäßig eingeklappt
+  const mineExtra = ranks.extra?.[id] ?? {};
+  const extraCharts = EXTRA_HISTORY_KEYS.map((k) => {
+    const series = mineExtra[k] ?? [];
+    const points = ranks.buckets.map((at, i) => ({ at: new Date(at).toISOString(), v: series[i] ?? null })).filter((p): p is { at: string; v: number } => p.v !== null);
+    return { k, points, best: points.length ? Math.min(...points.map((p) => p.v)) : null, nowRank: points.length ? points[points.length - 1].v : null };
+  }).filter((c) => c.points.length > 0);
+  const extraGroups = STAT_GROUPS.map((g) => ({ ...g, charts: extraCharts.filter((c) => EXTRA_STATS[c.k].group === g.key) })).filter((g) => g.charts.length > 0);
 
   /* ---- Heatmap ---- */
   const grid = heat(sessions, now);
@@ -133,6 +142,34 @@ export function PlayerActivity({
                   );
                 })}
               </div>
+            )}
+            {extraGroups.length > 0 && (
+              <details className="rankmore">
+                <summary>
+                  Weitere Ränge <span className="muted num">({extraCharts.length})</span>
+                </summary>
+                <div className="rankmore__body">
+                  {extraGroups.map((g) => (
+                    <div key={g.key} className="rankmore__group">
+                      <p className="rankmore__label">{g.label}</p>
+                      <ul className="rankmore__rows">
+                        {g.charts.map((c) => (
+                          <li key={c.k} className="rankmore__row">
+                            <span className="rankmore__name">{EXTRA_STATS[c.k].label}</span>
+                            <span className="rankmore__spark">
+                              {c.points.length >= 2 ? <Sparkline points={c.points} width={160} height={28} kind="rank" invert label={`Platz ${EXTRA_STATS[c.k].label}`} /> : <span className="muted">–</span>}
+                            </span>
+                            <span className="rankmore__now num" data-top={c.nowRank !== null && c.nowRank <= 3 ? "true" : undefined}>
+                              {c.nowRank === null ? "–" : `#${c.nowRank}`}
+                            </span>
+                            <span className="rankmore__best muted num">{c.best === null ? "" : `bester #${c.best}`}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </details>
             )}
           </div>
 

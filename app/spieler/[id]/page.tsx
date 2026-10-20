@@ -8,7 +8,8 @@ import { EventFeed } from "@/components/EventFeed";
 import { BOARD_ICON, Icon } from "@/components/Icons";
 import { FigValue } from "@/components/FigValue";
 import { StatSpark } from "@/components/StatSpark";
-import { getAllSessions, getFullBoard, getPlayerHistory, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
+import { getAllSessions, getFullBoard, getPlayerHistory, getPlayerTopHistory, getPlayerTwitchChat, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
+import { ChatFeed, ChatPartners } from "@/components/ChatFeed";
 import { companionsOf, overlapsFor } from "@/lib/overlap";
 import { TwitchEmbed } from "@/components/TwitchEmbed";
 import { PlayerInsights } from "@/components/PlayerInsights";
@@ -129,7 +130,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const { state, events, now } = await loadTracker();
   const p = state.players[id];
   if (!p) notFound();
-  const [history, allSessions, rates, rankHistory, afkSpans, subscriptions, subscriptionBoard, followerBoard] = await Promise.all([
+  const [history, allSessions, rates, rankHistory, afkSpans, subscriptions, subscriptionBoard, followerBoard, chat, topHistory] = await Promise.all([
     getPlayerHistory(id),
     getAllSessions(),
     getPlayerRates(),
@@ -138,6 +139,8 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
     getTwitchSubscriptionProfile(id, p.live ? p.liveSince ?? p.live.startedAt ?? null : null),
     getTwitchSubscriptionBoard(),
     getFullBoard("followers"),
+    getPlayerTwitchChat(id),
+    getPlayerTopHistory(id),
   ]);
   const overlaps = overlapsFor(id, allSessions, now);
   const nameOf = (pid: string) => state.players[pid]?.name ?? pid;
@@ -387,7 +390,58 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
 
       <PlayerInsights p={p} history={history} sessions={allSessions.filter((s) => s.player === id)} events={mine} rates={rates.players[id]} server={rates.server} now={now} />
       <PlayerActivity id={id} sessions={allSessions.filter((s) => s.player === id)} afk={afkSpans} ranks={rankHistory} now={now} />
-      <PlayerDetails id={id} detail={p.detail} name={p.name} now={now} />
+      <PlayerDetails id={id} detail={p.detail} name={p.name} now={now} topHistory={topHistory} />
+
+      {(chat.sentTotal > 0 || chat.receivedTotal > 0) && (
+        <section className="block block--tight" data-tone="paper" aria-labelledby="chat-h">
+          <div className="wrap">
+            <div className="section-head">
+              <h2 className="t-2" id="chat-h">
+                Chat
+              </h2>
+              <p className="muted">Nachrichten zwischen {p.name} und anderen Spielern in Twitch-Chats.</p>
+            </div>
+            <div className="chatpair">
+              <div className="box chatbox" data-tone="white">
+                <div className="chatbox__head">
+                  <p className="eyebrow">
+                    Schreibt bei anderen <span className="num">({num(chat.sentTotal)})</span>
+                  </p>
+                  <ChatPartners partners={chat.writesIn} label={`In wessen Chat ${p.name} schreibt`} />
+                </div>
+                <div className="chatbox__scroll">
+                  <ChatFeed
+                    messages={chat.sent}
+                    uuidOf={(pid) => state.players[pid]?.uuid}
+                    now={now}
+                    show="channel"
+                    empty={`${p.name} hat noch in keinem Spieler-Chat geschrieben.`}
+                    label={`Nachrichten von ${p.name}`}
+                  />
+                </div>
+              </div>
+              <div className="box chatbox" data-tone="white">
+                <div className="chatbox__head">
+                  <p className="eyebrow">
+                    Im eigenen Chat <span className="num">({num(chat.receivedTotal)})</span>
+                  </p>
+                  <ChatPartners partners={chat.visitors} label={`Wer im Chat von ${p.name} schreibt`} />
+                </div>
+                <div className="chatbox__scroll">
+                  <ChatFeed
+                    messages={chat.received}
+                    uuidOf={(pid) => state.players[pid]?.uuid}
+                    now={now}
+                    show="sender"
+                    empty={`Im Chat von ${p.name} hat noch kein Spieler geschrieben.`}
+                    label={`Nachrichten im Chat von ${p.name}`}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="block" data-tone="paper">
         <div className="wrap">

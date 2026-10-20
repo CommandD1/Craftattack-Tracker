@@ -139,6 +139,9 @@ async function migrate(db: Db) {
       message      text NOT NULL
     )`);
   await db.query(`CREATE INDEX IF NOT EXISTS twitch_chat_messages_at_idx ON twitch_chat_messages (at DESC, id DESC)`);
+  // Chat je Spieler im Profil (Tabelle ist auf 10.000 Nachrichten begrenzt, die Indizes bleiben klein)
+  await db.query(`CREATE INDEX IF NOT EXISTS twitch_chat_messages_sender_idx ON twitch_chat_messages (sender_id, at DESC)`);
+  await db.query(`CREATE INDEX IF NOT EXISTS twitch_chat_messages_channel_idx ON twitch_chat_messages (channel_id, at DESC)`);
   await db.query(`
     CREATE TABLE IF NOT EXISTS player_history (
       player           text NOT NULL,
@@ -165,8 +168,18 @@ async function migrate(db: Db) {
   await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS ranks jsonb`);
   await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS stream_game_id text`);
   await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS stream_game_name text`);
-  // Zusatzwerte aus /api/player/<id> (Keys siehe lib/playerStats.ts), nur bei frischer Abfrage gesetzt
-  await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS extra jsonb`);
+  // Zusatzwerte aus /api/player/<id> als kompaktes integer[] (Reihenfolge: EXTRA_HISTORY_KEYS in lib/playerStats.ts),
+  // höchstens alle 5 Minuten je Spieler gesetzt, sonst NULL (kostet dann nur ein Bit)
+  await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS extra_stats integer[]`);
+  // Top-Listen je Spieler (meistabgebaute Blöcke usw.): höchstens stündlich und nur bei Änderung,
+  // kompakt als {"liste": {"item": anzahl}} ohne Anzeigenamen
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS player_top_history (
+      player text NOT NULL,
+      at     timestamptz NOT NULL,
+      tops   jsonb NOT NULL,
+      PRIMARY KEY (player, at)
+    )`);
   await db.query(`
     CREATE TABLE IF NOT EXISTS history (
       at               timestamptz PRIMARY KEY,

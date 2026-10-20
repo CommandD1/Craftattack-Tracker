@@ -70,3 +70,34 @@ export const TOP_LABELS: Record<string, string> = {
   mobsKilled: "Meistgetötete Mobs",
   animalsKilled: "Meistgetötete Tiere",
 };
+
+/**
+ * Feste Reihenfolge der Zusatzwerte in `player_history.extra_stats` (integer[], 1-basiert in SQL).
+ * NUR ANHÄNGEN, nie umsortieren oder löschen: alte Zeilen behalten sonst falsche Zuordnungen.
+ */
+export const EXTRA_HISTORY_KEYS: readonly ExtraStatKey[] = [
+  "blocksPlaced",
+  "damageTaken",
+  "raidsWon",
+  "jumps",
+  "distanceFallen",
+  "sneakSeconds",
+  "itemsCrafted",
+  "itemsPickedUp",
+  "itemsDropped",
+  "itemsEnchanted",
+  "chestsOpened",
+  "tradedWithVillagers",
+  "animalsKilled",
+  "animalsBred",
+  "fishCaught",
+  "bellsRung",
+  "afkSeconds",
+];
+
+/** SQL-Ausdruck für einen Zusatzwert aus `player_history.extra_stats` */
+export function extraStatSql(key: ExtraStatKey): string {
+  const index = EXTRA_HISTORY_KEYS.indexOf(key);
+  if (index === -1) throw new Error(`Zusatzwert ${key} fehlt in EXTRA_HISTORY_KEYS`);
+  return `extra_stats[${index + 1}]`;
+}

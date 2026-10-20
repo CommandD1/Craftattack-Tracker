@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { appendEvents, appendFeedItems, enrichDeathEvents, getState, recordPlayerPoints, saveState } from "./store";
+import { appendEvents, appendFeedItems, enrichDeathEvents, getState, recordPlayerPoints, recordTopSnapshots, saveState } from "./store";
 import { fetchFollowerCounts, fetchLiveStreams, TWITCH_ENABLED, type TwitchFollowerChannel, type TwitchStream } from "./twitch";
 import { fetchCraftAttack, getCraftAttackPauseMs, maxCraftAttackTimerDelay } from "./craftattackFetch";
 import { trackedSecondsOf } from "./playtime";
@@ -1023,6 +1023,7 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       await saveState(state);
       feedCheckpointSaved = true;
       await recordPlayerPoints(Object.values(state.players), now.toISOString(), freshStats, freshDetail);
+      await recordTopSnapshots(Object.values(state.players), now.toISOString(), freshDetail);
       return { ok: true, events: events.length };
     } catch (err) {
       if (!feedCheckpointSaved) state.latestFeed = previousFeed;

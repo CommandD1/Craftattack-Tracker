@@ -6,6 +6,7 @@ import { EVENT_META } from "./events";
 import { AFK_MS, AFK_FARM_WINDOW_MS, POLL_INTERVAL_MS, farmKindOf } from "./tracker";
 import type { BoardKey, TrackerEvent, TrackerState, AfkKind } from "./types";
 import { BOARD_KEYS } from "./types";
+import { EXTRA_HISTORY_KEYS, type ExtraStatKey } from "./playerStats";
 
 /* ============================================================ Tage (Europe/Berlin) */
 
@@ -1140,6 +1141,8 @@ export interface RankHistory {
   bucketMinutes: number;
   /** Spieler → Liste → Rang je Bündel (null = damals noch kein Wert) */
   players: Record<string, Record<RankKey, (number | null)[]>>;
+  /** Wie `players`, für die Zusatzwerte aus /api/player (nur Spieler mit Wert werden gerankt) */
+  extra: Record<string, Partial<Record<ExtraStatKey, (number | null)[]>>>;
 }
 
 interface RankRow {
@@ -1161,7 +1164,7 @@ export async function getRankHistory(): Promise<RankHistory> {
     await ensureLoaded();
     const db = await getDb();
     const first = (await db.query<{ at: Date | null }>(`SELECT min(at) AS at FROM player_history WHERE deaths IS NOT NULL`)).rows[0]?.at ?? null;
-    if (!first) return { buckets: [], bucketMinutes: 60, players: {} };
+    if (!first) return { buckets: [], bucketMinutes: 60, players: {}, extra: {} };
     const spanMin = (Date.now() - new Date(first).getTime()) / 60_000;
     const steps = [30, 60, 120, 180, 360, 720, 1440];
     const minutes = steps.find((s) => spanMin / s <= 120) ?? 1440;
@@ -1200,6 +1203,39 @@ export async function getRankHistory(): Promise<RankHistory> {
         });
       }
     }
-    return { buckets, bucketMinutes: minutes, players };
+
+    // Zusatzwerte: gleiche Bündel, Werte aus dem kompakten integer[] (nur jede ~5. Zeile hat es)
+    const extraRows = (
+      await db.query<{ player: string; bucket: Date; extra_stats: (number | null)[] }>(
+        `SELECT DISTINCT ON (player, bucket) player, bucket, extra_stats
+           FROM (SELECT player, at, extra_stats,
+                        to_timestamp(floor(extract(epoch FROM at) / ($1 * 60)) * ($1 * 60)) AS bucket
+                   FROM player_history WHERE extra_stats IS NOT NULL) x
+          ORDER BY player, bucket, at DESC`,
+        [minutes],
+      )
+    ).rows;
+    const extraByBucket = new Map<number, typeof extraRows>();
+    for (const r of extraRows) {
+      const t = new Date(r.bucket).getTime();
+      (extraByBucket.get(t) ?? extraByBucket.set(t, []).get(t)!).push(r);
+    }
+    const extra: RankHistory["extra"] = {};
+    const lastExtra = new Map<string, (number | null)[]>();
+    buckets.forEach((t, bi) => {
+      for (const r of extraByBucket.get(t) ?? []) lastExtra.set(r.player, r.extra_stats);
+      if (lastExtra.size === 0) return;
+      EXTRA_HISTORY_KEYS.forEach((key, ki) => {
+        const order = [...lastExtra.entries()]
+          .filter(([, values]) => values[ki] !== null && values[ki] !== undefined)
+          .sort((a, b) => Number(b[1][ki]) - Number(a[1][ki]));
+        order.forEach(([pid], idx) => {
+          const series = ((extra[pid] ??= {})[key] ??= []);
+          while (series.length < bi) series.push(null);
+          series.push(idx + 1);
+        });
+      });
+    });
+    return { buckets, bucketMinutes: minutes, players, extra };
   });
 }
