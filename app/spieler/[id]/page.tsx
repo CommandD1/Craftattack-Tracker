@@ -14,6 +14,7 @@ import { TwitchEmbed } from "@/components/TwitchEmbed";
 import { PlayerInsights } from "@/components/PlayerInsights";
 import { getPlayerAfkSpans, getPlayerRates, getRankHistory, spanSeconds } from "@/lib/analytics";
 import { PlayerActivity } from "@/components/PlayerActivity";
+import { PlayerDetails } from "@/components/PlayerDetails";
 import { playtimeOf, trackedSecondsOf } from "@/lib/playtime";
 import { getPlayerEventTimeState } from "@/lib/playerEventStatus";
 
@@ -173,10 +174,10 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
     now,
   });
   const deaths = mine.filter((e) => e.type === "death").reduce((s, e) => s + (e.delta ?? 0), 0);
-  // Rang: bevorzugt aus /api/ext/<login> (für alle Spieler), sonst Position in der Top 10 der Haupt-API
+  // Rang: bevorzugt aus /api/player/<id> (für alle Spieler), sonst Position in der Top 10 der Haupt-API
   const ranks = Object.fromEntries(
     BOARD_KEYS.map((k) => {
-      const ext = k !== "playtimeSeconds" && k !== "damageDealt" && k !== "totemsUsed" && k !== "foodEaten" ? p.ranks?.[k] : undefined;
+      const ext = p.ranks?.[k];
       if (ext) return [k, { rank: ext.rank, of: ext.of }];
       const pos = (state.latest?.boards?.[k] ?? []).findIndex((e) => e.id === id) + 1;
       return [k, pos > 0 ? { rank: pos, of: null } : null];
@@ -335,14 +336,14 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                 );
               }
               const IconCmp = Icon[BOARD_ICON[k]];
-              // Spielzeit gibt es von der API nur für die Top 10 – sonst geschätzt bzw. die vom Tracker gemessene Online-Zeit
+              // Spielzeit: letzter API-Wert, zwischen zwei Abfragen hochgerechnet, sonst die vom Tracker gemessene Online-Zeit
               const isPlaytime = k === "playtimeSeconds";
               const v = isPlaytime ? (playtime.seconds > 0 ? playtime.seconds : undefined) : p.stats[k];
               const fromTracker = isPlaytime && playtime.source !== "api" && v !== undefined;
               const trackerTitle =
                 playtime.source === "estimate"
-                  ? "Von der API gibt es Spielzeit nur für die Top 10. Das hier ist der letzte API-Wert plus die seitdem vom Tracker gemessene Online-Zeit."
-                  : "Von der API gibt es Spielzeit nur für die Top 10. Das hier ist die vom Tracker seit seinem Start gemessene Online-Zeit.";
+                  ? "Letzter API-Wert plus die seitdem vom Tracker gemessene Online-Zeit. Die API wird je Spieler höchstens alle 15 Minuten abgefragt."
+                  : "Die API hat für diesen Spieler noch keine Spielzeit geliefert. Das hier ist die vom Tracker seit seinem Start gemessene Online-Zeit.";
               return (
                 <div key={k} className="box st-fig st-fig--spark" data-tone={TONE[k]}>
                   <dt className="pstat">
@@ -376,9 +377,9 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
             })}
           </dl>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
-            Tode, Diamanten, Blöcke, Mobs und Strecke kommen aus der Einzelstatistik der API (inklusive Rang unter allen
-            Teilnehmenden). Herzen, Totems und Essen liefert die API nur für die Top 10; Schaden wird für Herzen durch 20 geteilt.
-            Die Spielzeit liefert die API ebenfalls nur für die Top 10. Steht „Tracker“ dabei, ist es die seit Tracker-Start gemessene Online-Zeit.
+            Alle Werte kommen aus der Einzelstatistik der API (inklusive Rang unter allen Teilnehmenden), die je Spieler
+            höchstens alle 15 Minuten abgefragt wird; für die Top 10 aktualisieren sie sich jede Minute. Schaden wird für Herzen durch 20 geteilt.
+            Steht „geschätzt“ bei der Spielzeit, ist es der letzte API-Wert plus die seitdem gemessene Online-Zeit; „Tracker“ ist die seit Tracker-Start gemessene Online-Zeit.
             Follower-Zuwachs zählt nur zwischen aufeinanderfolgenden Messungen, bei denen der Streamer auf dem Server war; globale Twitch-Followerstände werden nicht angezeigt. Ein Zuwachs von mehr als 20 Followern pro Minute auf dem Server erscheint als Ereignis. Twitch-Subs werden nur gezählt, wenn der Streamer während des Sub-Events auf dem Spielserver online war (auch AFK). Die Kurven zeigen den Verlauf seit Tracker-Start ({num(history.length)} Messpunkte). Mit der Maus über die Kurve fahren zeigt Zeitpunkt und Wert. Ein Klick auf Beschriftung oder Wert öffnet den großen Graphen auf der Statistik-Seite.
           </p>
         </div>
@@ -386,6 +387,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
 
       <PlayerInsights p={p} history={history} sessions={allSessions.filter((s) => s.player === id)} events={mine} rates={rates.players[id]} server={rates.server} now={now} />
       <PlayerActivity id={id} sessions={allSessions.filter((s) => s.player === id)} afk={afkSpans} ranks={rankHistory} now={now} />
+      <PlayerDetails detail={p.detail} name={p.name} now={now} />
 
       <section className="block" data-tone="paper">
         <div className="wrap">

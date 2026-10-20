@@ -129,6 +129,7 @@ interface PlayerRow {
   afk_blocks_at: number | null;
   afk_check: AfkCheck | null;
   playtime_tracked: number | null;
+  detail: PlayerState["detail"] | null;
 }
 
 interface EventRow {
@@ -163,6 +164,7 @@ function rowToPlayer(r: PlayerRow): PlayerState {
     live: r.live,
     stats: r.stats ?? {},
     ranks: r.ranks ?? {},
+    detail: r.detail ?? null,
     twitchLogin: r.twitch_login ?? null,
     followers: r.followers ?? null,
     followersAt: iso(r.followers_at),
@@ -281,6 +283,7 @@ export async function getState(): Promise<TrackerState> {
   for (const p of Object.values(state.players)) {
     p.longestSession ??= 0;
     p.ranks ??= {};
+    p.detail ??= null;
     p.twitchLogin ??= p.live?.login ?? null;
     p.followers ??= null;
     p.followersAt ??= null;
@@ -354,7 +357,7 @@ export async function saveState(state: TrackerState, { savePlayers = true }: { s
         "peak_viewers_on_server", "stream_on_server_seconds", "stream_off_server_seconds", "last_move_at", "afk_since",
         "afk_seconds", "afk_farm", "afk_mobs_at", "afk_blocks_at", "playtime_tracked", "afk_check", "followers",
         "followers_at", "followers_online_at_sample", "followers_on_server", "followers_on_live_stream",
-        "followers_live_at_sample", "live_peak_viewers",
+        "followers_live_at_sample", "live_peak_viewers", "detail",
       ],
       players.map((p) => [
         p.id,
@@ -391,6 +394,7 @@ export async function saveState(state: TrackerState, { savePlayers = true }: { s
         p.followersOnLiveStream,
         p.followersLiveAtSample,
         p.livePeakViewers,
+        p.detail ? JSON.stringify(p.detail) : null,
       ]),
       `ON CONFLICT (id) DO UPDATE SET
        name = EXCLUDED.name, uuid = EXCLUDED.uuid, online = EXCLUDED.online, live = EXCLUDED.live,
@@ -406,7 +410,7 @@ export async function saveState(state: TrackerState, { savePlayers = true }: { s
        followers = EXCLUDED.followers, followers_at = EXCLUDED.followers_at,
        followers_online_at_sample = EXCLUDED.followers_online_at_sample, followers_on_server = EXCLUDED.followers_on_server,
        followers_on_live_stream = EXCLUDED.followers_on_live_stream, followers_live_at_sample = EXCLUDED.followers_live_at_sample,
-       live_peak_viewers = EXCLUDED.live_peak_viewers`,
+       live_peak_viewers = EXCLUDED.live_peak_viewers, detail = EXCLUDED.detail`,
     );
   }
 
