@@ -1,0 +1,72 @@
+import { distance, duration, hearts, num } from "./format";
+
+/**
+ * Zusatzwerte aus /api/player/<id>, die über die Board-Keys hinausgehen. Eine Quelle für Tracker (Verlauf),
+ * Graph-Baukasten und Spielerprofil. Der Key ist der API-Name; `metric` ist der Name im Graphen, falls er
+ * sich mit einer bestehenden Kennzahl überschneiden würde (die Tracker-AFK-Zeit heißt dort schon `afkSeconds`).
+ */
+export type StatGroup = "allgemein" | "abbau" | "kampf" | "bewegung" | "items" | "tiere" | "afk";
+
+export const STAT_GROUPS: { key: StatGroup; label: string }[] = [
+  { key: "allgemein", label: "Allgemein" },
+  { key: "abbau", label: "Abbau & Bau" },
+  { key: "kampf", label: "Kampf" },
+  { key: "bewegung", label: "Bewegung" },
+  { key: "items", label: "Items & Handel" },
+  { key: "tiere", label: "Tiere & Natur" },
+  { key: "afk", label: "AFK" },
+];
+
+export type StatFormat = "num" | "distance" | "duration" | "hearts";
+export const FORMATTERS: Record<StatFormat, (v: number) => string> = { num, distance, duration, hearts };
+
+export interface ExtraStatMeta {
+  label: string;
+  group: StatGroup;
+  format: StatFormat;
+  /** Icon-Name aus `Icon` */
+  icon: string;
+  tone: string;
+  /** Kennzahl-Name im Graphen */
+  metric: string;
+}
+
+export const EXTRA_STATS = {
+  blocksPlaced: { label: "Blöcke platziert", group: "abbau", format: "num", icon: "pickaxe", tone: "gold", metric: "blocksPlaced" },
+  damageTaken: { label: "Schaden erlitten", group: "kampf", format: "hearts", icon: "heart", tone: "redstone", metric: "damageTaken" },
+  raidsWon: { label: "Überfälle gewonnen", group: "kampf", format: "num", icon: "trophy", tone: "redstone", metric: "raidsWon" },
+  jumps: { label: "Sprünge", group: "bewegung", format: "num", icon: "boots", tone: "pink", metric: "jumps" },
+  distanceFallen: { label: "Gefallen", group: "bewegung", format: "distance", icon: "boots", tone: "pink", metric: "distanceFallen" },
+  sneakSeconds: { label: "Geschlichen", group: "bewegung", format: "duration", icon: "clock", tone: "pink", metric: "sneakSeconds" },
+  itemsCrafted: { label: "Items hergestellt", group: "items", format: "num", icon: "bolt", tone: "sky", metric: "itemsCrafted" },
+  itemsPickedUp: { label: "Items aufgehoben", group: "items", format: "num", icon: "bolt", tone: "sky", metric: "itemsPickedUp" },
+  itemsDropped: { label: "Items fallen gelassen", group: "items", format: "num", icon: "bolt", tone: "sky", metric: "itemsDropped" },
+  itemsEnchanted: { label: "Items verzaubert", group: "items", format: "num", icon: "bolt", tone: "amethyst", metric: "itemsEnchanted" },
+  chestsOpened: { label: "Truhen geöffnet", group: "items", format: "num", icon: "gift", tone: "gold", metric: "chestsOpened" },
+  tradedWithVillagers: { label: "Handel mit Dorfbewohnern", group: "items", format: "num", icon: "users", tone: "diamond", metric: "tradedWithVillagers" },
+  animalsKilled: { label: "Tiere getötet", group: "tiere", format: "num", icon: "sword", tone: "grass", metric: "animalsKilled" },
+  animalsBred: { label: "Tiere gezüchtet", group: "tiere", format: "num", icon: "heart", tone: "grass", metric: "animalsBred" },
+  fishCaught: { label: "Fische gefangen", group: "tiere", format: "num", icon: "food", tone: "diamond", metric: "fishCaught" },
+  bellsRung: { label: "Glocken geläutet", group: "tiere", format: "num", icon: "flag", tone: "gold", metric: "bellsRung" },
+  afkSeconds: { label: "AFK laut Server", group: "afk", format: "duration", icon: "clock", tone: "gold", metric: "serverAfkSeconds" },
+} as const satisfies Record<string, ExtraStatMeta>;
+
+export type ExtraStatKey = keyof typeof EXTRA_STATS;
+export const EXTRA_STAT_KEYS = Object.keys(EXTRA_STATS) as ExtraStatKey[];
+export type ExtraMetric = (typeof EXTRA_STATS)[ExtraStatKey]["metric"];
+export const EXTRA_METRICS = EXTRA_STAT_KEYS.map((k) => EXTRA_STATS[k].metric) as ExtraMetric[];
+
+/** Graph-Kennzahl → API-Key (für die Abfrage der jsonb-Spalte `player_history.extra`) */
+export const EXTRA_KEY_OF_METRIC = Object.fromEntries(EXTRA_STAT_KEYS.map((k) => [EXTRA_STATS[k].metric, k])) as Record<ExtraMetric, ExtraStatKey>;
+
+export function isExtraStatKey(key: string): key is ExtraStatKey {
+  return Object.hasOwn(EXTRA_STATS, key);
+}
+
+/** Top-Listen je Spieler laut API */
+export const TOP_LABELS: Record<string, string> = {
+  blocksBroken: "Meistabgebaute Blöcke",
+  blocksPlaced: "Meistplatzierte Blöcke",
+  mobsKilled: "Meistgetötete Mobs",
+  animalsKilled: "Meistgetötete Tiere",
+};

@@ -17,8 +17,10 @@ Ideen, die noch offen sind: Twitch-API-Anbindung (Clips, Kategorie), Discord-Ben
 
 Inoffizieller Tracker für CraftAttack 14. Fragt `https://craftattack.one/api/stats` standardmäßig in zufälligen Abständen
 von 45 bis 75 Sekunden ab (Mittelwert: eine Minute).
-Einzelstatistiken (`/api/ext/<id>`) werden höchstens zehn pro Poll und mit mindestens einer Sekunde Abstand angefragt;
-erfolgreiche Antworten werden 15 Minuten wiederverwendet. Bei Cloudflare-Challenges, HTTP 403/429 oder Cloudflare-5xx-
+Einzelstatistiken (`/api/player/<spieler-id>`) werden für Spieler, die online sind oder es beim vorigen Poll waren,
+bei jedem Poll neu angefragt, für Offline-Spieler höchstens alle 15 Minuten (deren Werte ändern sich nicht).
+Pro Poll gehen höchstens 80 solcher Anfragen raus, mit mindestens 500 ms Abstand;
+kann eine Antwort nicht rechtzeitig erneuert werden, bleibt sie 15 Minuten gültig. Bei Cloudflare-Challenges, HTTP 403/429 oder Cloudflare-5xx-
 Antworten pausiert der Tracker Anfragen an den betroffenen Origin mindestens fünf Minuten. Wiederholte Sperren
 verlängern die Pause exponentiell bis höchstens sechs Stunden; `Retry-After` wird zusätzlich als Mindestwartezeit
 beachtet. Während der Pause werden keine automatischen Probe-Anfragen gesendet, danach wird automatisch vorsichtig
@@ -90,7 +92,8 @@ Geöffnete Seiten aktualisieren ihre Daten höchstens einmal pro Minute und nur 
 | Ereignis | Quelle | Wo |
 | --- | --- | --- |
 | Join / Leave (inkl. Session-Dauer) | `online[]` | Server |
-| Tod, Diamanten, Blöcke, Mobs, Strecke | Anstieg in `/api/ext/<id>` bzw. den Top-10-Boards | Server |
+| Tod, Diamanten, Blöcke, Mobs, Strecke, Spielzeit, Herzen, Totems, Essen | Anstieg in `/api/player/<id>` bzw. den Top-10-Boards | Server |
+| Weitere Werte (platzierte Blöcke, Sprünge, Truhen, Handel, …), Top-Blöcke und -Mobs, erster Join | `/api/player/<id>`, nur der letzte Stand | Spielerprofil |
 | Tode, die keinem bekannten Spieler zuzuordnen sind | `totals.deaths` | Server (ohne Spieler) |
 | Stream an / aus / Titel geändert, Peak-Zuschauer | `live[]` | Twitch |
 | Twitch-Abos (inkl. Resubs und Geschenk-Abos; normale Summen ab 10 Subs, Geschenke von bekannten Streamern im Feed je Geber und Minute zusammengefasst; nur wenn der Kanal-Streamer auf dem Spielserver online ist) | Twitch IRC `USERNOTICE` | Twitch |
@@ -127,7 +130,9 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 - `CA_STATS_URL` andere API-Adresse
 - `NEON_AUTH_BASE_URL` Neon Managed Auth URL; `NEON_AUTH_COOKIE_SECRET` lokales Next.js-Cookie-Secret (mindestens 32 Zeichen).
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3` und `AWS_REGION` für den privaten Neon-Object-Storage-Bucket `assets`.
-- `CA_EXT_URL` Basis-Adresse der Einzelstatistik (Standard `https://craftattack.one/api/ext`)
+- `CA_PLAYER_URL` Basis-Adresse der Einzelstatistik je Spieler-ID (Standard `https://craftattack.one/api/player`; ersetzt das frühere `CA_EXT_URL`)
+- `CA_PLAYER_OFFLINE_REFRESH_MINUTES` wie oft Offline-Spieler neu abgefragt werden (Standard 15, mindestens 1). Online-Spieler kommen immer jede Minute.
+- `CA_PLAYER_MAX_PER_POLL` höchstens so viele Einzelstatistik-Anfragen pro Poll (Standard 80); `CA_PLAYER_REQUEST_INTERVAL_MS` Abstand zwischen ihnen (Standard 500, mindestens 250).
 - `CA_POLL_INTERVAL_MS` mittleres Abfrageintervall in Millisekunden (Standard 60000, mit ±25 % Jitter; nicht unter die Vorgaben des API-Betreibers setzen)
 - `TRACKER_MODE` `all` (Standard), `web` oder `tracker`; siehe [Nur Website oder nur Tracker](#nur-website-oder-nur-tracker).
 - `CA_AFK_MINUTES` Minuten ohne Streckenzuwachs, bevor ein Online-Spieler als AFK gilt (Standard 20); historische AFK-Zeiten und Ereignisse werden beim Start neu bewertet.

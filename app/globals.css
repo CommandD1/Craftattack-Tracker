@@ -2023,9 +2023,31 @@ a.spark-card--link:hover .eyebrow {
 }
 .gb__metric-group {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
+  grid-template-columns: 112px minmax(0, 1fr);
   gap: 8px;
   align-items: start;
+}
+.gb__metric-group + .gb__metric-group {
+  padding-top: 8px;
+  border-top: 2px dashed color-mix(in srgb, var(--ink) 14%, transparent);
+}
+.gb__metric-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-bottom: 4px;
+}
+.gb__metric-search input {
+  font: inherit;
+  font-weight: 600;
+  padding: 6px 10px;
+  background: var(--white);
+  color: var(--ink);
+  border: 0;
+  box-shadow: 0 0 0 3px var(--line);
+  margin: 3px;
+  width: min(320px, 100%);
 }
 .gb__group-label {
   font-family: var(--font-display);
@@ -2033,7 +2055,7 @@ a.spark-card--link:hover .eyebrow {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   opacity: 0.55;
-  padding-top: 14px;
+  padding-top: 12px;
 }
 .gb__tiles,
 .gb__chips {
@@ -2048,14 +2070,14 @@ a.spark-card--link:hover .eyebrow {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
-  padding: 6px 12px 6px 8px;
+  min-height: 36px;
+  padding: 4px 10px 4px 6px;
   background: var(--bg, var(--white));
   color: var(--fg, var(--ink));
   border: 0;
   box-shadow: var(--outline);
   font-family: var(--font-display);
-  font-size: 0.9375rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -2084,8 +2106,8 @@ a.spark-card--link:hover .eyebrow {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   background: var(--white);
   color: var(--ink);
   box-shadow: 0 0 0 2px var(--line);
@@ -3302,4 +3324,124 @@ a.spark-card--link:hover .eyebrow {
     align-items: flex-start;
     flex-direction: column;
   }
+}
+
+/* ---------- Spielerprofil: Weitere Statistiken (/api/player) ---------- */
+.pdetail__stamp {
+  font-size: 0.875rem;
+}
+/* Spalten statt Raster: Karten unterschiedlicher Höhe lassen so keine Lücken */
+.pdetail__grid {
+  columns: 4 290px;
+  column-gap: 16px;
+}
+/* Top-Listen sind gleich hoch: normales Raster, damit sie nicht 3 + 1 umbrechen */
+.pdetail__tops {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
+  gap: 16px;
+}
+.pdetail__tops .pdetail__card {
+  margin-bottom: 0;
+}
+.pdetail__card {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  break-inside: avoid;
+}
+.pdetail__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -14px -16px 2px;
+  padding: 8px 16px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.pdetail__rows {
+  display: grid;
+  margin: 0;
+}
+.pdetail__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 3rem;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 0.9375rem;
+}
+.pdetail__row + .pdetail__row {
+  border-top: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+}
+.pdetail__row dt {
+  font-weight: 600;
+  min-width: 0;
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
+.pdetail__row dt a {
+  color: inherit;
+  text-decoration: none;
+}
+@media (hover: hover) {
+  .pdetail__row dt a:hover {
+    text-decoration: underline;
+  }
+}
+.pdetail__row dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+.pdetail__rank .tag {
+  font-size: 0.75rem;
+}
+.pdetail__subhead {
+  margin: 12px 0 12px;
+}
+.ptop {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: ptop;
+}
+.ptop__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  font-size: 0.875rem;
+  counter-increment: ptop;
+}
+.ptop__name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ptop__name::before {
+  content: counter(ptop) ". ";
+  opacity: 0.5;
+}
+.ptop__count {
+  font-weight: 700;
+}
+.ptop__bar {
+  grid-column: 1 / -1;
+  height: 6px;
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+.ptop__bar span {
+  display: block;
+  height: 100%;
+  background: var(--ink);
 }

@@ -6,7 +6,9 @@ import { fetchCraftAttack, getCraftAttackPauseMs, maxCraftAttackTimerDelay } fro
 import { trackedSecondsOf } from "./playtime";
 import {
   BOARD_KEYS,
-  type ApiExtPlayer,
+  type ApiPlayerDetail,
+  type PlayerDetail,
+  type PlayerRank,
   type ApiFeed,
   type ApiStats,
   type FeedItem,
@@ -21,16 +23,29 @@ import {
 } from "./types";
 
 export const STATS_URL = process.env.CA_STATS_URL ?? "https://craftattack.one/api/stats";
-export const EXT_URL = process.env.CA_EXT_URL ?? "https://craftattack.one/api/ext";
+/** Einzelstatistik je Spieler-ID (ersetzt /api/ext/<twitch-login>) */
+export const PLAYER_URL = process.env.CA_PLAYER_URL ?? "https://craftattack.one/api/player";
 export const FEED_URL = process.env.CA_FEED_URL ?? "https://craftattack.one/api/feed";
 export const POLL_INTERVAL_MS = Number(process.env.CA_POLL_INTERVAL_MS ?? 60_000);
 const POLL_JITTER_RATIO = 0.25;
 const MIN_POLL_INTERVAL_MS = Math.floor(POLL_INTERVAL_MS * (1 - POLL_JITTER_RATIO));
 const MAX_POLL_INTERVAL_MS = Math.ceil(POLL_INTERVAL_MS * (1 + POLL_JITTER_RATIO));
 export const FOLLOWER_POLL_INTERVAL_MS = 60_000;
-const EXT_CACHE_TTL_MS = 15 * 60_000;
-const EXT_REQUEST_INTERVAL_MS = 1_000;
-const EXT_MAX_PER_POLL = 10;
+const envNumber = (name: string, fallback: number, min: number) => {
+  const v = Number(process.env[name]);
+  return Number.isFinite(v) && v >= min ? v : fallback;
+};
+/**
+ * Einzelstatistik: Spieler, die online sind (oder es im vorigen Poll waren), werden bei jedem Poll neu
+ * abgefragt. Offline ändern sich die Werte nicht, deshalb reicht dort ein langsamerer Abgleich.
+ */
+const EXT_ONLINE_TTL_MS = Math.min(30_000, MIN_POLL_INTERVAL_MS / 2);
+const EXT_OFFLINE_TTL_MS = envNumber("CA_PLAYER_OFFLINE_REFRESH_MINUTES", 15, 1) * 60_000;
+/** So lange bleibt eine Antwort verwendbar, wenn sie nicht rechtzeitig erneuert werden konnte */
+const EXT_CACHE_TTL_MS = Math.max(15 * 60_000, EXT_OFFLINE_TTL_MS);
+const EXT_REQUEST_INTERVAL_MS = envNumber("CA_PLAYER_REQUEST_INTERVAL_MS", 500, 250);
+const EXT_MAX_PER_POLL = envNumber("CA_PLAYER_MAX_PER_POLL", 80, 1);
+/** Cache je Spieler-ID */
 const extCache = new Map<string, { player: ExtPlayer | null; at: number; failed: boolean }>();
 
 /** Board-Keys, deren Anstieg als Ereignis protokolliert wird */
@@ -135,6 +150,8 @@ let seq = 0;
  * Stillstand (AFK) zählen noch als unveränderte Strecke im Verlauf landen.
  */
 export let freshStats = new Map<string, Set<BoardKey>>();
+/** Spieler, deren Zusatzwerte (/api/player) im letzten Poll frisch abgefragt wurden */
+export let freshDetail = new Set<string>();
 function eventId(at: string) {
   seq = (seq + 1) % 100000;
   return `${Date.parse(at).toString(36)}-${seq.toString(36)}`;
@@ -177,62 +194,118 @@ function newFeedItems(previousFeed: FeedItem[] | null, currentFeed: FeedItem[]):
   return firstKnownIndex === -1 ? currentFeed.slice(0, 10) : currentFeed.slice(0, firstKnownIndex);
 }
 
-export type ExtPlayer = NonNullable<ApiExtPlayer["player"]>;
+/** Einzelstatistik eines Spielers, aufbereitet aus /api/player/<id> */
+export interface ExtPlayer {
+  id: string;
+  name: string;
+  online: boolean;
+  /** Twitch-Login laut API; null, wenn dort keiner hinterlegt ist */
+  twitch: string | null;
+  /** Werte für die Board-Keys */
+  stats: Partial<Record<BoardKey, number>>;
+  ranks: Partial<Record<BoardKey, PlayerRank>>;
+  /** Alle übrigen Werte und Top-Listen */
+  detail: PlayerDetail;
+  /** In diesem Poll abgefragt (nicht aus dem Cache) */
+  fresh: boolean;
+}
 
-/** Holt die Einzelstatistik eines Spielers per Twitch-Login; `null`, wenn die API ihn nicht kennt. */
-export async function fetchExtPlayer(login: string): Promise<ExtPlayer | null> {
-  const res = await fetchCraftAttack(`${EXT_URL}/${encodeURIComponent(login)}`, {
+const BOARD_KEY_SET = new Set<string>(BOARD_KEYS);
+
+/** Teilt die API-Antwort in Board-Werte (für Ereignisse und Verlauf) und Zusatzwerte (nur Profil). */
+export function toExtPlayer(data: ApiPlayerDetail, fetchedAt: string): ExtPlayer | null {
+  if (!data.participant || !data.player) return null;
+  const stats: Partial<Record<BoardKey, number>> = {};
+  const ranks: Partial<Record<BoardKey, PlayerRank>> = {};
+  const extraStats: Record<string, number> = {};
+  const extraRanks: Record<string, PlayerRank> = {};
+  for (const [key, value] of Object.entries(data.player.stats ?? {})) {
+    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    if (BOARD_KEY_SET.has(key)) stats[key as BoardKey] = value;
+    else extraStats[key] = value;
+  }
+  for (const [key, rank] of Object.entries(data.player.ranks ?? {})) {
+    if (!rank || typeof rank.rank !== "number") continue;
+    const clean = { rank: rank.rank, of: rank.of };
+    if (BOARD_KEY_SET.has(key)) ranks[key as BoardKey] = clean;
+    else extraRanks[key] = clean;
+  }
+  return {
+    id: data.participant.id,
+    name: data.participant.name,
+    online: data.player.online,
+    twitch: data.participant.twitch ?? null,
+    stats,
+    ranks,
+    detail: {
+      fetchedAt,
+      firstJoin: data.player.firstJoin ?? null,
+      lastSeen: data.player.lastSeen ?? null,
+      stats: extraStats,
+      ranks: extraRanks,
+      tops: data.player.tops ?? {},
+    },
+    fresh: true,
+  };
+}
+
+/** Holt die Einzelstatistik eines Spielers per Spieler-ID; `null`, wenn die API ihn nicht kennt (HTTP 404). */
+export async function fetchExtPlayer(id: string): Promise<ExtPlayer | null> {
+  const res = await fetchCraftAttack(`${PLAYER_URL}/${encodeURIComponent(id)}`, {
     headers: { accept: "application/json", "user-agent": "actracker/1.0" },
     cache: "no-store",
     signal: AbortSignal.timeout(15_000),
   });
+  if (res.status === 404) return null;
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = (await res.json()) as ApiExtPlayer;
-  return data.player ?? null;
+  return toExtPlayer((await res.json()) as ApiPlayerDetail, new Date().toISOString());
 }
 
 /**
- * Fragt höchstens zehn veraltete Logins pro Poll einzeln ab und cached sie 15 Minuten.
- * Ergebnis ist nach Spieler-ID (aus der Antwort) abgelegt.
+ * Fragt fällige Spieler einzeln ab: online jede Abfrage, offline alle `CA_PLAYER_OFFLINE_REFRESH_MINUTES`.
+ * Online-Spieler und noch nie abgefragte kommen zuerst, danach die ältesten Einträge.
+ * Ergebnis ist nach Spieler-ID abgelegt; `loginOf` enthält den Twitch-Login laut API.
  */
 export async function fetchExtAll(
-  logins: Iterable<string>,
+  ids: Iterable<string>,
+  online: Set<string> = new Set(),
 ): Promise<{ players: Map<string, ExtPlayer>; loginOf: Map<string, string>; missing: Set<string>; failed: number }> {
-  const all = [...new Set(logins)];
+  const all = [...new Set(ids)];
   const now = Date.now();
+  const age = (id: string) => now - (extCache.get(id)?.at ?? 0);
   const queue = all
-    .filter((login) => {
-      const cached = extCache.get(login);
-      return !cached || now - cached.at >= EXT_CACHE_TTL_MS;
-    })
+    .filter((id) => age(id) >= (online.has(id) ? EXT_ONLINE_TTL_MS : EXT_OFFLINE_TTL_MS))
+    .sort((a, b) => Number(online.has(b)) - Number(online.has(a)) || age(b) - age(a))
     .slice(0, EXT_MAX_PER_POLL);
+  const fetched = new Set<string>();
   const players = new Map<string, ExtPlayer>();
   const loginOf = new Map<string, string>();
-  /** Logins, die die API nicht kennt (im Gegensatz zu Fehlern/Timeouts) */
+  /** Spieler-IDs, die die API nicht kennt (im Gegensatz zu Fehlern/Timeouts) */
   const missing = new Set<string>();
   let failed = 0;
-  for (const [index, login] of queue.entries()) {
-    if (getCraftAttackPauseMs(EXT_URL) > 0) break;
+  for (const [index, id] of queue.entries()) {
+    if (getCraftAttackPauseMs(PLAYER_URL) > 0) break;
     if (index > 0) await new Promise((resolve) => setTimeout(resolve, EXT_REQUEST_INTERVAL_MS));
     try {
-      const player = await fetchExtPlayer(login);
-      extCache.set(login, { player, at: Date.now(), failed: false });
+      const player = await fetchExtPlayer(id);
+      extCache.set(id, { player, at: Date.now(), failed: false });
+      fetched.add(id);
     } catch {
       failed += 1;
-      extCache.set(login, { player: null, at: Date.now(), failed: true });
+      extCache.set(id, { player: null, at: Date.now(), failed: true });
     }
   }
 
-  for (const login of all) {
-    const cached = extCache.get(login);
+  for (const id of all) {
+    const cached = extCache.get(id);
     if (!cached || Date.now() - cached.at >= EXT_CACHE_TTL_MS) continue;
     if (cached.failed) {
       continue;
     } else if (cached.player) {
-      players.set(cached.player.id, cached.player);
-      loginOf.set(cached.player.id, login);
+      players.set(cached.player.id, { ...cached.player, fresh: fetched.has(id) });
+      if (cached.player.twitch) loginOf.set(cached.player.id, cached.player.twitch);
     } else {
-      missing.add(login);
+      missing.add(id);
     }
   }
   return { players, loginOf, missing, failed };
@@ -248,8 +321,8 @@ export function knownPlayerIds(state: TrackerState, stats: ApiStats): Set<string
 }
 
 /**
- * Twitch-Logins für die ext-Abfrage: gespeicherter Login des Spielers, sonst der Login aus dem aktuellen
- * Live-Status, sonst die Spieler-ID (stimmt bei den meisten Spielern mit dem Login überein).
+ * Twitch-Logins für Live-Status und Follower: gespeicherter Login des Spielers, sonst der Login aus dem
+ * aktuellen Live-Status, sonst die Spieler-ID (stimmt bei den meisten Spielern mit dem Login überein).
  */
 export function extLogins(state: TrackerState, stats: ApiStats, ids: Iterable<string>): Map<string, string> {
   const liveLogin = new Map<string, string>();
@@ -262,13 +335,12 @@ export function extLogins(state: TrackerState, stats: ApiStats, ids: Iterable<st
 
 /**
  * Spieler, denen nicht zuordenbare Tode per Ausschluss zugeschrieben werden könnten: gerade online,
- * nicht in der Tode-Top-10 und von /api/ext nicht gekannt (nicht bloß ein Timeout). Nur bei genau
+ * nicht in der Tode-Top-10 und von /api/player nicht gekannt (nicht bloß ein Timeout). Nur bei genau
  * einem Kandidaten ist die Zuordnung eindeutig.
  */
 export function deathCandidates(state: TrackerState, stats: ApiStats, ext: Map<string, ExtPlayer>, extMissing: Set<string>): string[] {
   const inBoard = new Set((stats.boards?.deaths ?? []).map((e) => e.id));
-  const logins = extLogins(state, stats, stats.online.map((p) => p.id));
-  return stats.online.map((p) => p.id).filter((id) => !ext.has(id) && !inBoard.has(id) && extMissing.has(logins.get(id) ?? id));
+  return stats.online.map((p) => p.id).filter((id) => !ext.has(id) && !inBoard.has(id) && extMissing.has(id));
 }
 
 /**
@@ -345,6 +417,7 @@ function ensurePlayer(
       followersOnLiveStream: 0,
       followersLiveAtSample: null,
       livePeakViewers: 0,
+      detail: null,
     };
     state.players[p.id] = ps;
     newPlayers.add(p.id);
@@ -364,9 +437,9 @@ export function diffSnapshot(
   ext: Map<string, ExtPlayer> = new Map(),
   /** Live-Streams laut Twitch (Login → Stream); `null` = nicht abgefragt/fehlgeschlagen, dann zählt die API */
   twitch: Map<string, TwitchStream> | null = null,
-  /** Twitch-Login je Spieler-ID, mit dem die ext-Abfrage erfolgreich war */
+  /** Twitch-Login je Spieler-ID laut /api/player */
   extLoginOf: Map<string, string> = new Map(),
-  /** Logins, die /api/ext nicht kennt (für die Zuordnung per Ausschluss, siehe `deathCandidates`) */
+  /** Spieler-IDs, die /api/player nicht kennt (für die Zuordnung per Ausschluss, siehe `deathCandidates`) */
   extMissing: Set<string> = new Set(),
   followerCounts: Map<string, number> = new Map(),
 ): TrackerEvent[] {
@@ -571,11 +644,13 @@ export function diffSnapshot(
       : null;
   }
 
-  // --- Einzelstatistiken (/api/ext/<login>): Name und Ränge für alle abgefragten Spieler übernehmen
+  // --- Einzelstatistiken (/api/player/<id>): Name, Ränge und Zusatzwerte für alle abgefragten Spieler übernehmen
+  freshDetail = new Set([...ext.values()].filter((x) => x.fresh).map((x) => x.id));
   for (const [id, x] of ext) {
     const ps = ensurePlayer(state, { id, name: x.name, uuid: state.players[id]?.uuid ?? "" }, now);
     ps.ranks = { ...x.ranks };
-    // /api/ext wird per Twitch-Login abgefragt: eine erfolgreiche Antwort bestätigt den Login des Spielers
+    ps.detail = x.detail;
+    // Die API kennt den Twitch-Login, wenn der Spieler einen hinterlegt hat
     const login = extLoginOf.get(id);
     if (login && !ps.twitchLogin) ps.twitchLogin = login;
   }
@@ -621,14 +696,17 @@ export function diffSnapshot(
     // (bzw. bei 0, wenn die Liste noch nicht voll war). So wird z. B. der erste Tod eines Spielers
     // ihm zugeordnet statt als "unbekannt" zu landen.
     const floor = prevList.length >= 10 ? prevList[prevList.length - 1].value : 0;
-    // Alle Spieler außerhalb der Top 10 kommen über die Einzelstatistik dazu (außer Spielzeit, die gibt es dort nicht).
+    // Alle Spieler außerhalb der Top 10 kommen über die Einzelstatistik dazu.
     const inList = new Set(list.map((e) => e.id));
     const extEntries: (BoardEntry & { fromExt: true })[] = [];
     const extKey = EXT_KEYS.find((candidate) => candidate === key);
     if (extKey) {
       for (const [id, x] of ext) {
         if (inList.has(id)) continue;
-        const value = x[extKey];
+        // Spielzeit nur aus frischen Antworten: ein Cache-Treffer würde den Bezugspunkt für die Hochrechnung
+        // (playtimeTracked) bei jedem Poll auf "jetzt" setzen, obwohl der Wert bis zu 15 Minuten alt ist.
+        if (extKey === "playtimeSeconds" && !x.fresh) continue;
+        const value = x.stats[extKey];
         if (typeof value !== "number") continue;
         extEntries.push({ id, name: x.name, uuid: state.players[id]?.uuid ?? "", value, fromExt: true });
       }
@@ -636,6 +714,9 @@ export function diffSnapshot(
     for (const entry of [...list, ...extEntries] as (BoardEntry & { fromExt?: true })[]) {
       const ps = ensurePlayer(state, entry, now);
       const known = ps.stats[key];
+      // Zähler steigen nur. Ein älterer Cache-Wert (z. B. direkt nach dem Herausfallen aus der Top 10) darf den
+      // Stand nicht senken, sonst würde der nächste frische Wert denselben Zuwachs ein zweites Mal melden.
+      if (entry.fromExt && known !== undefined && entry.value < known) continue;
       ps.stats[key] = entry.value;
       (freshStats.get(entry.id) ?? freshStats.set(entry.id, new Set()).get(entry.id)!).add(key);
       // Frische Spielzeit: Bezugspunkt merken, damit sie außerhalb der Top 10 aus Join/Leave weitergerechnet werden kann
@@ -644,7 +725,7 @@ export function diffSnapshot(
       if (key === "distance" && (known === undefined || entry.value > known)) ps.lastMoveAt = now;
       const type = COUNTER_EVENTS[key];
       if (!type || first) continue;
-      // Erster ext-Wert eines Spielers: nur merken, kein Ereignis (wir wissen nicht, wann das passiert ist)
+      // Erster Wert aus der Einzelstatistik: nur merken, kein Ereignis (wir wissen nicht, wann das passiert ist)
       if (entry.fromExt && known === undefined) continue;
       const prev = known ?? floor;
       const delta = entry.value - prev;
@@ -774,7 +855,7 @@ export function diffSnapshot(
   if (!first && state.latest) {
     const prevDeaths = state.latest.totals?.deaths ?? 0;
     const explained = events.filter((e) => e.type === "death").reduce((s, e) => s + (e.delta ?? 0), 0);
-    // Nicht sofort melden: oft liefert /api/ext den Tod erst einen Poll später (Timeout, Reihenfolge).
+    // Nicht sofort melden: oft liefert /api/player den Tod erst einen Poll später (Timeout, Reihenfolge, Cache).
     // Offene Tode werden gesammelt und mit später erklärten verrechnet; erst was nach der Wartezeit übrig
     // bleibt, wird als „unbekannt“ gemeldet.
     const unexplained = (stats.totals?.deaths ?? 0) - prevDeaths - explained;
@@ -899,10 +980,13 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       const feed = await fetchFeed();
       const freshFeedItems = newFeedItems(state.latestFeed, feed.feed.slice(0, 10));
       // Einzelstatistiken für alle bekannten Spieler – Fehler hier sind nicht fatal, dann gibt es eben nur die Top 10
-      const logins = extLogins(state, stats, knownPlayerIds(state, stats));
+      const ids = knownPlayerIds(state, stats);
+      const logins = extLogins(state, stats, ids);
+      // Wer jetzt oder beim vorigen Poll online war, bekommt frische Einzelwerte (auch die letzte Minute vor dem Leave)
+      const onlineIds = new Set([...stats.online, ...(state.latest?.online ?? [])].map((p) => p.id));
       // Live-Status direkt bei Twitch für alle bekannten Logins; schlägt das fehl, zählt die Haupt-API
       const [ext, twitch, followers] = await Promise.all([
-        fetchExtAll(logins.values()),
+        fetchExtAll(ids, onlineIds),
         TWITCH_ENABLED
           ? fetchLiveStreams(logins.values()).catch((err: unknown) => {
               console.warn("[tracker] Twitch-Live-Abfrage fehlgeschlagen:", err instanceof Error ? err.message : err);
@@ -918,7 +1002,7 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
             .map(([id, login]): TwitchFollowerChannel => ({ id, login })),
         ),
       ]);
-      if (ext.failed > 0) console.warn(`[tracker] ${ext.failed} ext-Anfragen fehlgeschlagen`);
+      if (ext.failed > 0) console.warn(`[tracker] ${ext.failed} Spieler-Anfragen (/api/player) fehlgeschlagen`);
       const first = state.latest === null;
       const events = diffSnapshot(state, stats, feed, now, ext.players, twitch, ext.loginOf, ext.missing, followers);
       snapshotApplied = true;
@@ -938,7 +1022,7 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       await enrichDeathEvents(feed.feed.slice(0, 10).filter((item): item is Extract<FeedItem, { type: "death" }> => item.type === "death"));
       await saveState(state);
       feedCheckpointSaved = true;
-      await recordPlayerPoints(Object.values(state.players), now.toISOString(), freshStats);
+      await recordPlayerPoints(Object.values(state.players), now.toISOString(), freshStats, freshDetail);
       return { ok: true, events: events.length };
     } catch (err) {
       if (!feedCheckpointSaved) state.latestFeed = previousFeed;

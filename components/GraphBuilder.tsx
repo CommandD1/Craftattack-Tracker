@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icons";
 import { COLORS, MAX_METRICS, METRICS, METRIC_KEYS, RANGES, RASTER, toSearch, type GraphQuery, type Metric, type PlayerOption } from "@/lib/graphQuery";
+import { STAT_GROUPS } from "@/lib/playerStats";
+
+/** Rubriken der Kennzahl-Auswahl: Server zuerst, dann die Spieler-Rubriken */
+const METRIC_GROUPS = [{ key: "server", label: "Server" }, ...STAT_GROUPS] as const;
 
 /** `datetime-local`-Wert (lokale Zeit des Browsers) → Millisekunden */
 const localMs = (s: string) => (s ? Date.parse(s) : NaN);
@@ -257,6 +261,7 @@ function MultiChart({ lines, hidden, dataKey }: { lines: Line[]; hidden: Set<str
 export function GraphBuilder({ players, initial }: { players: PlayerOption[]; initial: GraphQuery }) {
   const [q, setQ] = useState<GraphQuery>(initial);
   const [search, setSearch] = useState("");
+  const [metricSearch, setMetricSearch] = useState("");
   const [playerScores, setPlayerScores] = useState<{ key: string; scores: Record<string, number>; error?: string } | null>(null);
   // Ergebnis samt der Abfrage, zu der es gehört – „lädt“ heißt: Ergebnis passt noch nicht zur aktuellen Abfrage
   const [result, setResult] = useState<{ key: string; lines?: Line[]; bucketMinutes?: number; error?: string } | null>(null);
@@ -371,34 +376,56 @@ export function GraphBuilder({ players, initial }: { players: PlayerOption[]; in
         <div className="gb__row">
           <p className="eyebrow">Kennzahlen</p>
           <div className="gb__metrics">
-            {(["server", "player"] as const).map((grp) => (
-              <div key={grp} className="gb__metric-group">
-                <span className="gb__group-label">{grp === "server" ? "Server" : "Spieler"}</span>
-                <ul className="gb__tiles" aria-label={grp === "server" ? "Server-Kennzahlen" : "Spieler-Kennzahlen"}>
-                  {METRIC_KEYS.filter((k) => METRICS[k].perPlayer === (grp === "player")).map((k) => {
-                    const m = METRICS[k];
-                    const IconCmp = Icon[m.icon as keyof typeof Icon];
-                    const on = q.metrics.includes(k);
-                    const full = !on && q.metrics.length >= MAX_METRICS;
-                    return (
-                      <li key={k}>
-                        <button type="button" className="gb__tile" data-tone={on ? m.tone : "white"} aria-pressed={on} disabled={full} onClick={() => toggleMetric(k)} title={m.hint}>
-                          <span className="gb__tile-icon">
-                            <IconCmp width={18} height={18} aria-hidden="true" />
-                          </span>
-                          <span>{m.label}</span>
-                          {on && (
-                            <span className="gb__tile-check" aria-hidden="true">
-                              ✓
+            <div className="gb__metric-search">
+              <input
+                type="search"
+                placeholder="Kennzahl suchen …"
+                value={metricSearch}
+                onChange={(e) => setMetricSearch(e.target.value)}
+                aria-label="Kennzahl suchen"
+              />
+              {q.metrics.length > 1 && (
+                <button type="button" className="gb__chip" data-tone="white" onClick={() => set({ metrics: [q.metrics[0]] })}>
+                  Auswahl zurücksetzen
+                </button>
+              )}
+            </div>
+            {(() => {
+              const needle = metricSearch.trim().toLowerCase();
+              const groups = METRIC_GROUPS.map((grp) => ({
+                ...grp,
+                keys: METRIC_KEYS.filter((k) => METRICS[k].group === grp.key && (!needle || METRICS[k].label.toLowerCase().includes(needle) || grp.label.toLowerCase().includes(needle))),
+              })).filter((grp) => grp.keys.length > 0);
+              if (groups.length === 0) return <p className="muted gb__hint">Keine Kennzahl passt zu „{metricSearch}“.</p>;
+              return groups.map((grp) => (
+                <div key={grp.key} className="gb__metric-group">
+                  <span className="gb__group-label">{grp.label}</span>
+                  <ul className="gb__tiles" aria-label={`Kennzahlen: ${grp.label}`}>
+                    {grp.keys.map((k) => {
+                      const m = METRICS[k];
+                      const IconCmp = Icon[m.icon as keyof typeof Icon] ?? Icon.bolt;
+                      const on = q.metrics.includes(k);
+                      const full = !on && q.metrics.length >= MAX_METRICS;
+                      return (
+                        <li key={k}>
+                          <button type="button" className="gb__tile" data-tone={on ? m.tone : "white"} aria-pressed={on} disabled={full} onClick={() => toggleMetric(k)} title={m.hint}>
+                            <span className="gb__tile-icon">
+                              <IconCmp width={16} height={16} aria-hidden="true" />
                             </span>
-                          )}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ))}
+                            <span>{m.label}</span>
+                            {on && (
+                              <span className="gb__tile-check" aria-hidden="true">
+                                ✓
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ));
+            })()}
             <span className="muted gb__hint">
               {q.metrics.length} von {MAX_METRICS} gewählt.{hints.map((h) => ` ${h}.`)}
             </span>

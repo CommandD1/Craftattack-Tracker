@@ -55,7 +55,7 @@ function trackedSeries(points: PlayerPoint[]) {
 export function StatSpark({ points, k, label, height = 56, href }: { points: PlayerPoint[]; k: SparkKey; label: string; height?: number; href?: string }) {
   const format = FORMAT[k];
   let data = points.filter((p) => p[k] !== null).map((p) => ({ at: p.at, v: p[k] as number }));
-  // Spielzeit gibt es von der API nur für die Top 10 – sonst die Tracker-Online-Zeit zeigen
+  // Noch keine (oder nur eine) API-Spielzeit im Verlauf: die Tracker-Online-Zeit zeigen
   if (k === "playtimeSeconds" && data.length < 2 && points.length >= 2) data = trackedSeries(points);
   if (k === "twitchSubs" && data.length === 1) {
     data = [{ at: new Date(Date.parse(data[0].at) - 24 * 60 * 60_000).toISOString(), v: 0 }, data[0]];
