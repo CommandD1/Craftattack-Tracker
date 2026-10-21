@@ -18,7 +18,7 @@ const partsFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", h
 export const dayKey = (ms: number) => dayFmt.format(new Date(ms));
 
 /** Mitternacht (Berlin) eines Tages als Millisekunden – robust gegen Sommer-/Winterzeit */
-export function dayStart(day: string): number {
+function dayStart(day: string): number {
   let t = Date.parse(`${day}T00:00:00Z`) - 2 * 3600_000; // Startschätzung (MESZ)
   for (let i = 0; i < 3; i++) {
     const hour = Number(partsFmt.formatToParts(new Date(t)).find((p) => p.type === "hour")?.value ?? 0);
@@ -31,11 +31,11 @@ export function dayStart(day: string): number {
   return t;
 }
 
-export function shiftDay(day: string, days: number): string {
+function shiftDay(day: string, days: number): string {
   return dayKey(dayStart(day) + 12 * 3600_000 + days * 86400_000);
 }
 
-export const isValidDay = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T12:00:00Z`));
+const isValidDay = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T12:00:00Z`));
 
 /** Berliner Wochentag (0 = Montag) und Stunde eines Zeitpunkts */
 function berlinSlot(ms: number): { dow: number; hour: number } {
@@ -57,7 +57,7 @@ async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Pr
 /* ============================================================ Streams als Sessions */
 
 /** Live-Phasen aller Spieler aus Stream-an/aus-Ereignissen (laufende Streams: end = null). */
-export async function getLiveSessions(): Promise<StoredSession[]> {
+async function getLiveSessions(): Promise<StoredSession[]> {
   await ensureLoaded();
   const db = await getDb();
   const rows = (
@@ -165,7 +165,6 @@ async function dayNav(day: string | undefined, now: number): Promise<DayNav> {
 type AfkRow = { player: string; at: Date; online: boolean; distance: number | string | null; mobs: number | string | null; blocks: number | string | null };
 const AFK_COLS = "player, at, online, distance, mobs_killed AS mobs, blocks_broken AS blocks";
 
-export const AFK_KIND_LABEL: Record<AfkKind, string> = { mobs: "Mobs farmen", blocks: "Blöcke farmen" };
 
 /** Liegen zwei Verlaufspunkte weiter auseinander, hat der Tracker nichts aufgezeichnet (sonst alle 5 Min ein Punkt) */
 const AFK_GAP_MS = 15 * 60_000;
@@ -355,7 +354,7 @@ function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, stat
  * letzten Bewegung und endet mit dem letzten Punkt vor der nächsten Bewegung bzw. mit dem Leave; läuft sie noch,
  * endet sie bei `now`.
  */
-export async function getAfkSpans(from: number, to: number, now: number): Promise<Map<string, Span[]>> {
+async function getAfkSpans(from: number, to: number, now: number): Promise<Map<string, Span[]>> {
   return cached(`afk:${from}:${to}`, 60_000, () => loadAfkSpans(from, to, now));
 }
 
@@ -374,7 +373,7 @@ export async function loadAfkSpans(from: number, to: number, now: number): Promi
 }
 
 /** AFK-Phasen aller Spieler über die gesamte Laufzeit (für Bestenliste und Graph). */
-export async function getAllAfkSpans(): Promise<Map<string, Span[]>> {
+async function getAllAfkSpans(): Promise<Map<string, Span[]>> {
   return cached("afk:all", 60_000, async () => {
     const now = Date.now();
     return getAfkSpans(0, now, now);
@@ -473,7 +472,7 @@ export async function getPlayerAfkSpans(id: string): Promise<Span[]> {
 
 /* ============================================================ Zeitstrahl */
 
-export interface TimelineRow {
+interface TimelineRow {
   id: string;
   name: string;
   uuid: string;
@@ -1137,22 +1136,20 @@ export async function getPlayerRates(): Promise<{ players: Record<string, Player
 
 /* ---------- Spielerprofil: Rang-Verlauf ---------- */
 
-export type RankKey = BoardKey;
-export const RANK_KEYS: RankKey[] = BOARD_KEYS;
 
 export interface RankHistory {
   /** Bündel-Zeitpunkte (ms) */
   buckets: number[];
   bucketMinutes: number;
   /** Spieler → Liste → Rang je Bündel (null = damals noch kein Wert) */
-  players: Record<string, Partial<Record<RankKey, (number | null)[]>>>;
+  players: Record<string, Partial<Record<BoardKey, (number | null)[]>>>;
   /** Liste → Anzahl gerankter Spieler je Bündel */
-  of: Partial<Record<RankKey, number[]>>;
+  of: Partial<Record<BoardKey, number[]>>;
   /** Wie `players`, für die Zusatzwerte aus /api/player (nur Spieler mit Wert werden gerankt) */
   extra: Record<string, Partial<Record<ExtraStatKey, (number | null)[]>>>;
 }
 
-const RANK_COL: Record<RankKey, string> = {
+const RANK_COL: Record<BoardKey, string> = {
   playtimeSeconds: "playtime_seconds",
   diamonds: "diamonds",
   deaths: "deaths",
@@ -1173,7 +1170,7 @@ export async function getRankHistory(): Promise<RankHistory> {
   return cached("rankHistory", 600_000, async () => {
     await ensureLoaded();
     const db = await getDb();
-    const cols = RANK_KEYS.map((k) => RANK_COL[k]);
+    const cols = BOARD_KEYS.map((k) => RANK_COL[k]);
     const anyValue = cols.map((c) => `${c} IS NOT NULL`).join(" OR ");
     // Ältester Messpunkt: je Spieler ein Index-Zugriff statt eines Durchlaufs über die ganze Tabelle
     const first = (
@@ -1203,7 +1200,7 @@ export async function getRankHistory(): Promise<RankHistory> {
       )
     ).rows;
     const buckets: number[] = [];
-    const last = new Map<string, Partial<Record<RankKey, number>>>();
+    const last = new Map<string, Partial<Record<BoardKey, number>>>();
     const players: RankHistory["players"] = {};
     const of: RankHistory["of"] = {};
     let i = 0;
@@ -1212,7 +1209,7 @@ export async function getRankHistory(): Promise<RankHistory> {
       for (; i < rows.length && new Date(rows[i].bucket).getTime() === t; i++) {
         const r = rows[i];
         const cur = { ...(last.get(r.player) ?? {}) };
-        for (const k of RANK_KEYS) {
+        for (const k of BOARD_KEYS) {
           const v = r[RANK_COL[k]];
           if (v !== null && v !== undefined) cur[k] = Number(v);
         }
@@ -1220,7 +1217,7 @@ export async function getRankHistory(): Promise<RankHistory> {
       }
       const bi = buckets.length;
       buckets.push(t);
-      for (const k of RANK_KEYS) {
+      for (const k of BOARD_KEYS) {
         const order = [...last.entries()].filter(([, v]) => v[k] !== undefined).sort((a, b) => b[1][k]! - a[1][k]!);
         (of[k] ??= []).push(order.length);
         // Gleichstand teilt sich den Platz (wie die API): Platz = 1 + Anzahl echt besserer Spieler

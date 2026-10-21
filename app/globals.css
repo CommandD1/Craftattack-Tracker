@@ -17,8 +17,6 @@ select {
   color: inherit;
 }
 
-
-
 /* ---------- Design-Tokens (angelehnt an craftattack.one) ---------- */
 :root {
   --ink: #16120f;
@@ -150,9 +148,6 @@ p {
   padding-inline: var(--gutter);
   margin-inline: auto;
 }
-.wrap--narrow {
-  max-width: calc(760px + var(--gutter) * 2);
-}
 .block {
   background: var(--bg, var(--paper));
   color: var(--fg, var(--ink));
@@ -228,19 +223,13 @@ p {
   margin: var(--px) calc(var(--px) * 2) calc(var(--px) * 2) var(--px);
   padding: clamp(16px, 3vw, 24px);
 }
-.box--flat {
-  box-shadow: var(--outline);
-  margin: var(--px);
-}
-a.box,
-.box--link {
+a.box {
   text-decoration: none;
   transition: transform 0.12s;
   display: block;
 }
 @media (hover: hover) {
-  a.box:hover,
-  .box--link:hover {
+  a.box:hover {
     transform: translate(-2px, -3px);
   }
 }
@@ -324,30 +313,6 @@ a.box,
     opacity: 0.25;
   }
 }
-.marquee {
-  background: var(--bg, var(--ink));
-  color: var(--fg, var(--paper));
-  font-family: var(--font-display);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-  padding-block: 12px;
-  font-size: clamp(1.125rem, 2.5vw, 1.5rem);
-  font-weight: 600;
-  overflow: hidden;
-}
-.marquee__track {
-  will-change: transform;
-  gap: 2.5em;
-  padding-right: 2.5em;
-  animation: 40s linear infinite marquee;
-  display: inline-flex;
-}
-@keyframes marquee {
-  to {
-    transform: translate(-50%);
-  }
-}
 .head {
   image-rendering: pixelated;
   box-shadow: 0 0 0 3px var(--line);
@@ -364,9 +329,6 @@ a.box,
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-  }
-  .marquee__track {
-    animation: none;
   }
 }
 
@@ -715,7 +677,7 @@ a.box,
   list-style: none;
   display: flex;
 }
-.st-chip,
+
 .st-chip-in {
   background: var(--white);
   min-height: 44px;
@@ -729,9 +691,6 @@ a.box,
   line-height: 1.1;
   text-decoration: none;
   display: flex;
-}
-.st-chip.st-sk-row {
-  width: 140px;
 }
 .st-chips img {
   flex: none;
@@ -1185,12 +1144,6 @@ a.st-chip-in[data-live="true"] {
   width: 100%;
   height: 90px;
   display: block;
-}
-.chart__grid {
-  stroke: var(--ink);
-  stroke-opacity: 0.15;
-  stroke-width: 1;
-  stroke-dasharray: 2 4;
 }
 .chart__max {
   font-family: var(--font-display);
@@ -2201,8 +2154,7 @@ a.spark-card--link:hover .eyebrow {
   }
 }
 
-
-/* ---------- Zeitstrahl / Zeitraffer / Netz / Staffel-Statistik ---------- */
+/* ---------- Zeitstrahl / Zeitraffer / Staffel-Statistik ---------- */
 .daynav {
   display: flex;
   align-items: center;
@@ -2526,69 +2478,6 @@ a.spark-card--link:hover .eyebrow {
   margin-right: 6px;
 }
 
-/* Netz */
-.netz {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-@media (width <= 900px) {
-  .netz {
-    grid-template-columns: 1fr;
-  }
-}
-.netz__graph {
-  padding: 8px;
-}
-.netz__canvas {
-  width: 100%;
-  height: min(70vh, 640px);
-  touch-action: none;
-  display: block;
-}
-.netz__hint {
-  font-size: 0.875rem;
-  padding: 8px 8px 2px;
-}
-.netz__list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 2px;
-}
-.netz__list li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 6px;
-  padding: 6px 0;
-  border-top: 2px solid color-mix(in srgb, var(--ink) 12%, transparent);
-  font-size: 0.9375rem;
-}
-.netz__list li[data-now]::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  background: var(--grass);
-  box-shadow: 0 0 0 2px var(--line);
-  flex: none;
-}
-.netz__person {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  text-decoration: none;
-  font-weight: 600;
-}
-.netz__val {
-  margin-left: auto;
-  white-space: nowrap;
-  font-weight: 700;
-  font-size: 0.875rem;
-}
-
 /* Verlauf (Startseite) */
 .trend__plot {
   position: relative;
@@ -2877,92 +2766,6 @@ a.spark-card--link:hover .eyebrow {
   }
 }
 
-
-/* Netz v2: Köpfe, Tooltip, Clans */
-.netz__stage {
-  position: relative;
-}
-.netz__canvas {
-  height: min(75vh, 720px);
-}
-.netz__tip {
-  position: absolute;
-  translate: -50% -100%;
-  background: var(--ink);
-  color: var(--paper);
-  box-shadow: 0 0 0 2px var(--line), 3px 3px 0 0 var(--line);
-  padding: 6px 10px;
-  font-size: 0.8125rem;
-  line-height: 1.3;
-  white-space: nowrap;
-  pointer-events: none;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.netz__tipline {
-  opacity: 0.9;
-}
-.netz__legend {
-  padding: 8px 8px 0;
-}
-.netz__person[data-online]::after {
-  content: "";
-  width: 7px;
-  height: 7px;
-  background: var(--grass);
-  box-shadow: 0 0 0 2px var(--line);
-  flex: none;
-}
-.clan__head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.clan__head h3 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.clan__swatch {
-  width: 14px;
-  height: 14px;
-  background: var(--ring);
-  box-shadow: 0 0 0 2px var(--line);
-  display: inline-block;
-}
-.clan__members {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
-}
-.clan__members li {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.clan__stats {
-  margin-top: 14px;
-  padding-top: 10px;
-  border-top: 2px solid color-mix(in srgb, var(--ink) 20%, transparent);
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 12px;
-  font-size: 0.9375rem;
-}
-.clan__stats dt {
-  font-family: var(--font-display);
-  text-transform: uppercase;
-  font-size: 0.8125rem;
-  letter-spacing: 0.04em;
-}
-
 /* Bewegung in der kompletten Bestenliste */
 .st-board__row--full:has(.st-board__mv) {
   grid-template-columns: 2.5rem 28px minmax(0, 1fr) auto auto 2.4rem;
@@ -3162,53 +2965,7 @@ a.spark-card--link:hover .eyebrow {
 }
 
 /* ---------- Spielerprofil: Rang-Verlauf & Heatmap ---------- */
-.rankgrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
-}
-.rankcard {
-  padding: 8px 10px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 20%, transparent);
-  border-left: 5px solid var(--bg, var(--gold));
-}
-.rankcard__head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-.rankcard__icon {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  background: var(--bg, var(--gold));
-  color: var(--fg, var(--ink));
-  box-shadow: 0 0 0 2px var(--line);
-}
-.rankcard__icon svg {
-  width: 13px;
-  height: 13px;
-}
-.rankcard__label {
-  font-weight: 600;
-  font-size: 0.875rem;
-  flex: 1;
-  opacity: 0.8;
-}
-.rankcard__now {
-  font-weight: 700;
-}
-.rankcard__foot {
-  font-size: 0.75rem;
-  opacity: 0.65;
-  margin-top: 4px;
-}
-.rankcard .spark {
-  width: 100%;
-  height: 56px;
-}
+
 .heat {
   display: grid;
   grid-template-columns: 2rem repeat(24, minmax(0, 1fr));
@@ -3373,20 +3130,7 @@ a.spark-card--link:hover .eyebrow {
 }
 
 /* ---------- Spielerprofil: weitere Ränge (Zusatzwerte) ---------- */
-.rankmore {
-  margin-top: 14px;
-  border-top: 2px solid color-mix(in srgb, var(--ink) 14%, transparent);
-  padding-top: 10px;
-}
-.rankmore > summary {
-  cursor: pointer;
-  font-family: var(--font-display);
-  font-size: 0.8125rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  list-style-position: inside;
-}
+
 .rankmore__body {
   columns: 2 320px;
   column-gap: 28px;
@@ -3503,10 +3247,6 @@ a.spark-card--link:hover .eyebrow {
   align-items: end;
   justify-content: space-between;
   gap: 6px 20px;
-}
-.chatbox__note {
-  font-size: 0.8125rem;
-  max-width: 46ch;
 }
 /* Kompakt: höchstens ~6 Nachrichten sichtbar, der Rest scrollt */
 .chatbox__scroll {

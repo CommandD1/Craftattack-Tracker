@@ -53,7 +53,7 @@ async function rebuildAfkEventsIfNeeded(): Promise<void> {
  * in der Tode-Top-10 stand, bekommt er die Tode. Online-Zeit kommt aus den Join/Leave-Sessions, die Top-10-
  * Zugehörigkeit aus dem Spielerverlauf (dort steht ein Tode-Wert nur, wenn die API ihn geliefert hat).
  */
-export async function assignUnknownDeaths(): Promise<number> {
+async function assignUnknownDeaths(): Promise<number> {
   await ensureLoaded();
   const db = await getDb();
   const unknowns = (
@@ -109,7 +109,7 @@ function onlineBetween(sessions: StoredSession[], player: string, from: number, 
  *    seitdem laut Join/Leave gemessene Online-Zeit“ ersetzt und der Bezugspunkt je Spieler gesetzt.
  * Danach werden bereits nachgetragene AFK-Farm-Ereignisse verworfen (sie beruhten auf den alten Daten).
  */
-export async function fixHistoryOnce(): Promise<void> {
+async function fixHistoryOnce(): Promise<void> {
   await ensureLoaded();
   const db = await getDb();
   const meta = (await db.query<{ history_fix: number }>(`SELECT history_fix FROM tracker_meta WHERE id = 1`)).rows[0];
@@ -231,7 +231,7 @@ async function fixCountersAndPlaytime(): Promise<void> {
  * nach, wo der Live-Tracker noch keine erzeugt hat – z. B. für die Zeit vor Einführung der Farm-Erkennung oder für
  * alte „afk_farm“-Ereignisse ohne Ende. Idempotent über feste IDs; läuft einmal beim Prozessstart.
  */
-export async function backfillAfkFarmEvents(): Promise<number> {
+async function backfillAfkFarmEvents(): Promise<number> {
   await ensureLoaded();
   const state = await getState();
   const db = await getDb();
@@ -295,7 +295,7 @@ export async function backfillAfkFarmEvents(): Promise<number> {
 }
 
 /** Baut die allgemeinen AFK-Start-/Ende-Ereignisse aus den mit der aktuellen Schwelle erkannten Phasen neu auf. */
-export async function backfillAfkEvents(): Promise<number> {
+async function backfillAfkEvents(): Promise<number> {
   await ensureLoaded();
   const [state, sessions] = await Promise.all([getState(), loadAllSessions()]);
   const db = await getDb();

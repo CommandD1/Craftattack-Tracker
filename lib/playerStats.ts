@@ -17,10 +17,10 @@ export const STAT_GROUPS: { key: StatGroup; label: string }[] = [
   { key: "afk", label: "AFK" },
 ];
 
-export type StatFormat = "num" | "distance" | "duration" | "hearts";
+type StatFormat = "num" | "distance" | "duration" | "hearts";
 export const FORMATTERS: Record<StatFormat, (v: number) => string> = { num, distance, duration, hearts: (v) => `${hearts(v)} Herzen` };
 
-export interface ExtraStatMeta {
+interface ExtraStatMeta {
   label: string;
   group: StatGroup;
   format: StatFormat;
@@ -58,10 +58,6 @@ export const EXTRA_METRICS = EXTRA_STAT_KEYS.map((k) => EXTRA_STATS[k].metric) a
 
 /** Graph-Kennzahl → API-Key (für die Abfrage der jsonb-Spalte `player_history.extra`) */
 export const EXTRA_KEY_OF_METRIC = Object.fromEntries(EXTRA_STAT_KEYS.map((k) => [EXTRA_STATS[k].metric, k])) as Record<ExtraMetric, ExtraStatKey>;
-
-export function isExtraStatKey(key: string): key is ExtraStatKey {
-  return Object.hasOwn(EXTRA_STATS, key);
-}
 
 /** Top-Listen je Spieler laut API */
 export const TOP_LABELS: Record<string, string> = {

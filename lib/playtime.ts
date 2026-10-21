@@ -5,7 +5,7 @@ export function trackedSecondsOf(p: Pick<PlayerState, "trackedSeconds" | "online
   return p.trackedSeconds + (p.online && p.sessionStart ? Math.max(0, nowMs - Date.parse(p.sessionStart)) / 1000 : 0);
 }
 
-export type PlaytimeSource = "api" | "estimate" | "tracker";
+type PlaytimeSource = "api" | "estimate" | "tracker";
 
 /**
  * Spielzeit eines Spielers. Die Top 10 liefert die API jede Minute, alle anderen über /api/player höchstens alle

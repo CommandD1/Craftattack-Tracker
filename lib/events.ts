@@ -1,7 +1,7 @@
 import type { EventType, TrackerEvent } from "./types";
 import { duration, hearts, num, distance } from "./format";
 
-export interface EventMeta {
+interface EventMeta {
   label: string;
   tone: string;
   /** Verb/Satz hinter dem Spielernamen */
@@ -406,7 +406,7 @@ export function isShownEvent(e: Pick<TrackerEvent, "type" | "delta">): boolean {
 }
 
 /** Beteiligte eines geteilten Chats als Text, z. B. „Papaplatte, Trymacs und 1 weiterer Kanal" */
-export function sharedChatWho(e: Pick<TrackerEvent, "meta" | "player">): string {
+function sharedChatWho(e: Pick<TrackerEvent, "meta" | "player">): string {
   // Der Spieler des Ereignisses steht schon vorne im Satz
   const ids = sharedChatPlayers(e);
   const names = String(e.meta?.sharedChatNames ?? "").split(", ").filter((name, i) => name && ids[i] !== e.player);

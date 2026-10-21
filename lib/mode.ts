@@ -8,7 +8,7 @@
  *
  * Kein `server-only`, damit `proxy.ts` den Modus lesen kann.
  */
-export type TrackerMode = "all" | "web" | "tracker";
+type TrackerMode = "all" | "web" | "tracker";
 
 function parseMode(raw: string | undefined): TrackerMode {
   const value = (raw ?? "").trim().toLowerCase();
