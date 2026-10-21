@@ -1344,6 +1344,23 @@ a.spark-card--link:hover .eyebrow {
   margin-left: auto;
   font-weight: 700;
 }
+.event-card__heads {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+}
+.event-card__heads .head {
+  display: block;
+}
+.event-card__more {
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
 
 /* ---------- Footer-Social-Links ---------- */
 .site-foot__social {
