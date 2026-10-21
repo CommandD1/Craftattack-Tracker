@@ -3742,3 +3742,11 @@ a.spark-card--link:hover .eyebrow {
   grid-template-columns: minmax(0, 1fr) auto;
   height: 40px;
 }
+
+/* Einheit hinter einem Wert (z. B. „Herzen"): kleiner, damit Namen und große Zahlen Platz behalten */
+.unit {
+  font-size: 0.7em;
+  font-weight: 600;
+  opacity: 0.85;
+  white-space: nowrap;
+}

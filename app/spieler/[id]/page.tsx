@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { BOARD_KEYS, type BoardKey, type TrackerEvent } from "@/lib/types";
-import { ago, boardValue, dateTime, duration, headUrl, num, skinUrl } from "@/lib/format";
+import { ago, boardParts, dateTime, duration, headUrl, num, skinUrl } from "@/lib/format";
 import { EventFeed } from "@/components/EventFeed";
 import { BOARD_ICON, Icon } from "@/components/Icons";
 import { FigValue } from "@/components/FigValue";
@@ -34,7 +34,7 @@ const LABEL: Record<BoardKey, string> = {
   blocksBroken: "Blöcke",
   mobsKilled: "Mobs",
   distance: "Strecke",
-  damageDealt: "Herzen",
+  damageDealt: "Schaden",
   totemsUsed: "Totems",
   foodEaten: "Essen",
 };
@@ -372,7 +372,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                     )}
                   </dt>
                   <Link className="pstat__val" href={graphHref(k)} tabIndex={-1} aria-hidden="true">
-                    <FigValue>{v !== undefined ? boardValue(k, v) : "–"}</FigValue>
+                    {v !== undefined ? <FigValue unit={boardParts(k, v).unit}>{boardParts(k, v).value}</FigValue> : <FigValue>–</FigValue>}
                   </Link>
                   <StatSpark points={history} k={k} label={LABEL[k]} href={graphHref(k)} />
                 </div>
@@ -381,7 +381,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
           </dl>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
             Alle Werte kommen aus der Einzelstatistik der API (inklusive Rang unter allen Teilnehmenden), die je Spieler
-            höchstens alle 15 Minuten abgefragt wird; für die Top 10 aktualisieren sie sich jede Minute. Schaden wird für Herzen durch 20 geteilt.
+            höchstens alle 15 Minuten abgefragt wird; für die Top 10 aktualisieren sie sich jede Minute. Schaden steht in Herzen (Rohwert der API geteilt durch 20).
             Steht „geschätzt“ bei der Spielzeit, ist es der letzte API-Wert plus die seitdem gemessene Online-Zeit; „Tracker“ ist die seit Tracker-Start gemessene Online-Zeit.
             Follower-Zuwachs zählt nur zwischen aufeinanderfolgenden Messungen, bei denen der Streamer auf dem Server war; globale Twitch-Followerstände werden nicht angezeigt. Ein Zuwachs von mehr als 20 Followern pro Minute auf dem Server erscheint als Ereignis. Twitch-Subs werden nur gezählt, wenn der Streamer während des Sub-Events auf dem Spielserver online war (auch AFK). Die Kurven zeigen den Verlauf seit Tracker-Start ({num(history.length)} Messpunkte). Mit der Maus über die Kurve fahren zeigt Zeitpunkt und Wert. Ein Klick auf Beschriftung oder Wert öffnet den großen Graphen auf der Statistik-Seite.
           </p>

@@ -18,7 +18,7 @@ export const STAT_GROUPS: { key: StatGroup; label: string }[] = [
 ];
 
 export type StatFormat = "num" | "distance" | "duration" | "hearts";
-export const FORMATTERS: Record<StatFormat, (v: number) => string> = { num, distance, duration, hearts };
+export const FORMATTERS: Record<StatFormat, (v: number) => string> = { num, distance, duration, hearts: (v) => `${hearts(v)} Herzen` };
 
 export interface ExtraStatMeta {
   label: string;

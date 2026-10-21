@@ -1,9 +1,10 @@
 import type { StoredSession } from "@/lib/store";
 import type { RankHistory, Span } from "@/lib/analytics";
 import type { BoardKey, PlayerRank } from "@/lib/types";
-import { boardValue, duration, num } from "@/lib/format";
+import { duration, num } from "@/lib/format";
 import { BOARD_ORDER, BOARD_STYLE } from "@/lib/boards";
 import { Sparkline } from "./Sparkline";
+import { BoardValue } from "./BoardValue";
 import { BOARD_ICON, Icon } from "./Icons";
 import { EXTRA_HISTORY_KEYS, EXTRA_STATS, STAT_GROUPS } from "@/lib/playerStats";
 
@@ -153,7 +154,7 @@ export function PlayerActivity({
                   <ol className="st-board__list">
                     <li className="st-board__row rankboard__row">
                       <span className="st-board__name">Aktueller Wert</span>
-                      <span className="st-board__val num">{value === undefined ? "–" : boardValue(c.k, value)}</span>
+                      <span className="st-board__val num">{value === undefined ? "–" : <BoardValue k={c.k} v={value} />}</span>
                     </li>
                     <li className="st-board__row rankboard__row">
                       <span className="st-board__name">Bester Platz</span>

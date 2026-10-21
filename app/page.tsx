@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { loadTracker } from "@/lib/data";
 import { getHistoryAll, getTwitchSubscriptionBoard } from "@/lib/store";
-import { BOARD_KEYS, type BoardKey } from "@/lib/types";
+import { BOARD_KEYS } from "@/lib/types";
 import { boardValue, headUrl, num, duration, dateTime } from "@/lib/format";
 import { StatusLine } from "@/components/StatusLine";
 import { EventFeed } from "@/components/EventFeed";
@@ -11,18 +11,11 @@ import { FigValue } from "@/components/FigValue";
 import { TrendChart } from "@/components/TrendChart";
 import { getBoardRanksBefore, getHistoryRange } from "@/lib/analytics";
 import { EVENT_GROUPS } from "@/lib/events";
+import { BOARD_STYLE } from "@/lib/boards";
+import { BoardValue } from "@/components/BoardValue";
 
-const BOARDS: Record<BoardKey, { title: string; sub: string; tone: string }> = {
-  playtimeSeconds: { title: "Dauerzocker", sub: "Meiste Spielzeit", tone: "sky" },
-  diamonds: { title: "Diamantenbank", sub: "Wer hat, der hat", tone: "diamond" },
-  deaths: { title: "Friedhof", sub: "Hier liegen sie. Immer wieder.", tone: "ender" },
-  blocksBroken: { title: "Abrissbirne", sub: "Meiste Blöcke abgebaut", tone: "gold" },
-  mobsKilled: { title: "Monsterjäger", sub: "Meiste Mobs erledigt", tone: "grass" },
-  distance: { title: "Weltenbummler", sub: "Weiteste Strecke", tone: "pink" },
-  damageDealt: { title: "Herzen", sub: "Schaden geteilt durch 20", tone: "redstone" },
-  totemsUsed: { title: "Totems", sub: "Meiste Totems benutzt", tone: "amethyst" },
-  foodEaten: { title: "Essen", sub: "Meiste Nahrung gegessen", tone: "gold" },
-};
+// Titel, Untertitel und Farben wie auf craftattack.one/stats
+const BOARDS = BOARD_STYLE;
 
 // Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
 export const instant = false;
@@ -302,7 +295,9 @@ async function Dashboard() {
                               <span className="st-board__rank num">{i + 1}</span>
                               <img className="head" src={headUrl(e.uuid, 28, e.id)} alt="" width={28} height={28} loading="lazy" />
                               <span className="st-board__name">{e.name}</span>
-                              <span className="st-board__val num">{boardValue(key, e.value)}</span>
+                              <span className="st-board__val num" title={boardValue(key, e.value)}>
+                                <BoardValue k={key} v={e.value} />
+                              </span>
                               {diff === null ? (
                                 <span className="st-board__mv st-board__mv--new" title="Vor 24 Stunden noch nicht erfasst">
                                   neu

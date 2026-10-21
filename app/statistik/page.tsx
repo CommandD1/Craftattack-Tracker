@@ -227,7 +227,7 @@ export default async function Page(props: PageProps<"/statistik">) {
             <Record label="Weitester Marsch am Stück" tone="pink" value={bigDistance[0]?.delta ? boardValue("distance", bigDistance[0].delta) : "–"} who={bigDistance[0]?.player ? { id: bigDistance[0].player, name: bigDistance[0].playerName ?? bigDistance[0].player } : null} uuid={bigDistance[0]?.uuid} when={bigDistance[0]?.at} />
             <Record label="Größter Abriss am Stück" tone="gold" value={bigBlocks[0]?.delta ? `${num(bigBlocks[0].delta)} Blöcke` : "–"} who={bigBlocks[0]?.player ? { id: bigBlocks[0].player, name: bigBlocks[0].playerName ?? bigBlocks[0].player } : null} uuid={bigBlocks[0]?.uuid} when={bigBlocks[0]?.at} />
             <Record label="Größte Mob-Schlacht am Stück" tone="grass" value={bigMobs[0]?.delta ? `${num(bigMobs[0].delta)} Mobs` : "–"} who={bigMobs[0]?.player ? { id: bigMobs[0].player, name: bigMobs[0].playerName ?? bigMobs[0].player } : null} uuid={bigMobs[0]?.uuid} when={bigMobs[0]?.at} />
-            <Record label="Größter Herzen-Schaden am Stück" tone="redstone" value={bigDamage[0]?.delta ? `${boardValue("damageDealt", bigDamage[0].delta)} Herzen` : "–"} who={bigDamage[0]?.player ? { id: bigDamage[0].player, name: bigDamage[0].playerName ?? bigDamage[0].player } : null} uuid={bigDamage[0]?.uuid} when={bigDamage[0]?.at} />
+            <Record label="Größter Schaden am Stück" tone="redstone" value={bigDamage[0]?.delta ? boardValue("damageDealt", bigDamage[0].delta) : "–"} who={bigDamage[0]?.player ? { id: bigDamage[0].player, name: bigDamage[0].playerName ?? bigDamage[0].player } : null} uuid={bigDamage[0]?.uuid} when={bigDamage[0]?.at} />
             <Record label="Meiste Totems am Stück" tone="amethyst" value={bigTotems[0]?.delta ? `${num(bigTotems[0].delta)} Totems` : "–"} who={bigTotems[0]?.player ? { id: bigTotems[0].player, name: bigTotems[0].playerName ?? bigTotems[0].player } : null} uuid={bigTotems[0]?.uuid} when={bigTotems[0]?.at} />
             <Record label="Meistes Essen am Stück" tone="gold" value={bigFood[0]?.delta ? `${num(bigFood[0].delta)} Essen` : "–"} who={bigFood[0]?.player ? { id: bigFood[0].player, name: bigFood[0].playerName ?? bigFood[0].player } : null} uuid={bigFood[0]?.uuid} when={bigFood[0]?.at} />
           </dl>
@@ -271,7 +271,7 @@ export default async function Page(props: PageProps<"/statistik">) {
             <Chart label="Abgebaute Blöcke" tone="gold" points={tseries("blocksBroken")} step />
             <Chart label="Erledigte Mobs" tone="grass" points={tseries("mobsKilled")} step />
             <Chart label="Gelaufene Strecke" tone="pink" points={tseries("distance")} kind="distance" step />
-            <Chart label="Herzen" tone="redstone" points={tseries("damageDealt")} kind="damageDealt" step sub="Schaden geteilt durch 20" />
+            <Chart label="Schaden" tone="redstone" points={tseries("damageDealt")} kind="damageDealt" step sub="Ausgeteilter Schaden in Herzen" />
             <Chart label="Totems benutzt" tone="amethyst" points={tseries("totemsUsed")} step />
             <Chart label="Essen gegessen" tone="gold" points={tseries("foodEaten")} step />
             <Chart label="Twitch Subs" tone="amethyst" points={subscriptionSeries.series[0]?.points ?? []} step sub="während Spieler online waren" />
