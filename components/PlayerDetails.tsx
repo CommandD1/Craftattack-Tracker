@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { PlayerDetail } from "@/lib/types";
+import type { TopSnapshot } from "@/lib/store";
 import { ago, dateTime, num } from "@/lib/format";
 import { EXTRA_STATS, EXTRA_STAT_KEYS, FORMATTERS, STAT_GROUPS, TOP_LABELS } from "@/lib/playerStats";
 import { Icon } from "@/components/Icons";
@@ -21,9 +22,40 @@ const GROUP_TONE: Record<string, string> = {
   afk: "paper",
 };
 
+/** Winzige Verlaufslinie (serverseitig, ohne JavaScript) */
+function MiniTrend({ values }: { values: number[] }) {
+  if (values.length < 2) return null;
+  const min = Math.min(...values);
+  const span = Math.max(1, Math.max(...values) - min);
+  const pts = values.map((v, i) => `${((i / (values.length - 1)) * 60).toFixed(1)},${(14 - ((v - min) / span) * 12).toFixed(1)}`).join(" ");
+  return (
+    <svg className="ptop__trend" viewBox="0 0 60 16" width={60} height={16} aria-hidden="true">
+      <polyline points={pts} fill="none" stroke="currentColor" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+const DAY_MS = 24 * 3600_000;
+
 /** Zusatzwerte aus /api/player/<id> im Profil: nach Rubrik gruppiert, jede Zeile öffnet den Graphen. */
-export function PlayerDetails({ id, detail, name, now }: { id: string; detail: PlayerDetail | null; name: string; now: number }) {
+export function PlayerDetails({
+  id,
+  detail,
+  name,
+  now,
+  topHistory = [],
+}: {
+  id: string;
+  detail: PlayerDetail | null;
+  name: string;
+  now: number;
+  /** Gespeicherte Stände der Top-Listen, älteste zuerst */
+  topHistory?: { at: string; tops: TopSnapshot }[];
+}) {
   if (!detail) return null;
+  // Vergleichsstand: der letzte vor 24 Stunden, sonst der älteste (mindestens eine Stunde alt)
+  const older = topHistory.filter((h) => now - Date.parse(h.at) >= 3600_000);
+  const compare = [...older].reverse().find((h) => now - Date.parse(h.at) >= DAY_MS) ?? older[0] ?? null;
   const graphHref = (metric: string) => `/statistik?metric=${metric}&spieler=${encodeURIComponent(id)}&zeit=alle#graph`;
   const groups = STAT_GROUPS.map((g) => ({
     ...g,
@@ -83,7 +115,10 @@ export function PlayerDetails({ id, detail, name, now }: { id: string; detail: P
 
         {tops.length > 0 && (
           <>
-            <h3 className="t-3 pdetail__subhead">Top-Listen</h3>
+            <h3 className="t-3 pdetail__subhead">
+              Top-Listen
+              {compare && <span className="muted pdetail__since"> · Zuwachs seit {ago(compare.at, now)}</span>}
+            </h3>
             <div className="pdetail__tops">
               {tops.map(([key, list]) => {
                 const max = Math.max(1, ...list.map((e) => e.count));
@@ -93,15 +128,24 @@ export function PlayerDetails({ id, detail, name, now }: { id: string; detail: P
                       <span>{TOP_LABELS[key] ?? key}</span>
                     </p>
                     <ol className="ptop">
-                      {list.map((entry) => (
+                      {list.map((entry) => {
+                        const before = compare?.tops[key]?.[entry.key];
+                        const delta = before === undefined ? null : entry.count - before;
+                        const trend = [...topHistory.map((h) => h.tops[key]?.[entry.key]).filter((v): v is number => typeof v === "number"), entry.count];
+                        return (
                         <li key={entry.key} className="ptop__row">
                           <span className="ptop__name">{entry.name}</span>
                           <span className="ptop__count num">{num(entry.count)}</span>
-                          <span className="ptop__bar" aria-hidden="true">
-                            <span style={{ width: `${(entry.count / max) * 100}%` }} />
+                          <span className="ptop__track">
+                            <span className="ptop__bar" aria-hidden="true">
+                              <span style={{ width: `${(entry.count / max) * 100}%` }} />
+                            </span>
+                            <MiniTrend values={trend.slice(-48)} />
+                            {compare && (delta === null ? <span className="ptop__delta" data-new="true">neu</span> : delta > 0 ? <span className="ptop__delta num">+{num(delta)}</span> : <span className="ptop__delta" data-zero="true">±0</span>)}
                           </span>
                         </li>
-                      ))}
+                        );
+                      })}
                     </ol>
                   </div>
                 );
@@ -112,6 +156,7 @@ export function PlayerDetails({ id, detail, name, now }: { id: string; detail: P
 
         <p className="muted" style={{ marginTop: 16, fontSize: ".875rem" }}>
           Aus der Einzelstatistik der API. Solange {name} online ist, kommen die Werte jede Minute neu, sonst höchstens alle 15 Minuten.
+          Die Top-Listen werden jede Minute gesichert, solange der Spieler online ist; daraus kommen Zuwachs und die Verlaufslinie der letzten 24 Stunden.
           #-Zahlen sind der Rang unter allen Teilnehmenden, Gold markiert die Top 3. Ein Klick auf eine Kennzahl öffnet ihren Verlauf.
           {detail.firstJoin && <> Erster Join: {dateTime(detail.firstJoin)}.</>}
         </p>

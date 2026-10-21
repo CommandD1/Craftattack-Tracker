@@ -139,7 +139,7 @@ export const EVENT_META: Record<EventType, EventMeta> = {
     sub: (e) => (e.value !== undefined ? `Jetzt ${distance(e.value)} insgesamt` : null),
   },
   damageDealt: {
-    label: "Herzen",
+    label: "Schaden",
     tone: "redstone",
     text: (e) => `hat ${hearts(e.delta ?? 0)} Herzen Schaden verursacht`,
     sub: (e) => (e.value !== undefined ? `Jetzt ${hearts(e.value)} Herzen insgesamt` : null),
@@ -322,7 +322,7 @@ export function eventBadge(e: TrackerEvent): string | null {
     case "rank":
       return `#${e.value}`;
     case "milestone":
-      return e.meta?.board === "playtimeSeconds" ? `${Math.round((e.value ?? 0) / 3600)} h` : e.meta?.board === "distance" ? distance(e.value ?? 0) : e.meta?.board === "damageDealt" ? hearts(e.value ?? 0) : num(e.value ?? 0);
+      return e.meta?.board === "playtimeSeconds" ? `${Math.round((e.value ?? 0) / 3600)} h` : e.meta?.board === "distance" ? distance(e.value ?? 0) : e.meta?.board === "damageDealt" ? `${hearts(e.value ?? 0)} Herzen` : num(e.value ?? 0);
     case "record":
       return num(e.value ?? 0);
     case "server_online":

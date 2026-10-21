@@ -1,9 +1,10 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
-import { duration, headUrl, num, ago, dateTime } from "@/lib/format";
+import { duration, headUrl, num, ago } from "@/lib/format";
 import { playtimeOf, trackedSecondsOf } from "@/lib/playtime";
 import { getRecentTwitchChatMessages, getTwitchSubscriptionBoard } from "@/lib/store";
+import { ChatFeed } from "@/components/ChatFeed";
 
 // Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
 export const instant = false;
@@ -22,7 +23,7 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
   const [{ state, now }, subscriptionBoard, chatMessages] = await Promise.all([
     loadTracker(),
     getTwitchSubscriptionBoard(),
-    getRecentTwitchChatMessages(),
+    getRecentTwitchChatMessages(40),
   ]);
   const subscriptions = new Map(subscriptionBoard.map((entry) => [entry.id, entry.value]));
 
@@ -61,33 +62,25 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
 
       <section className="block block--tight" data-tone="paper">
         <div className="wrap">
-          <section aria-labelledby="recent-twitch-chat" style={{ marginBottom: 32 }}>
-            <div className="section-head">
+          <section className="box chatbox" data-tone="white" aria-labelledby="recent-twitch-chat">
+            <div className="chatbox__head">
               <div>
-                <p className="eyebrow" style={{ marginBottom: 4 }}>Twitch</p>
-                <h2 className="t-3" id="recent-twitch-chat">Neueste Spielernachrichten</h2>
+                <p className="eyebrow">Twitch</p>
+                <h2 className="t-3" id="recent-twitch-chat">Spieler-Chat</h2>
               </div>
-              <p className="muted num">{num(chatMessages.length)} Nachrichten</p>
+              <p className="muted chatbox__note">
+                Was Spieler in den Twitch-Chats anderer Spieler schreiben. Die neuesten {num(chatMessages.length)}; mehr im Profil jedes Spielers.
+              </p>
             </div>
-            {chatMessages.length === 0 ? (
-              <p className="muted">Noch keine Nachrichten zwischen erfassten Spielern.</p>
-            ) : (
-              <ol aria-label="Neueste Nachrichten von Spielern in Twitch-Chats" style={{ listStyle: "none", margin: 0, padding: 0 }}>
-                {chatMessages.map((message) => (
-                  <li key={message.id} style={{ padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
-                    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "4px 10px" }}>
-                      <span>
-                        <Link href={`/spieler/${encodeURIComponent(message.senderId)}`}>{message.senderName}</Link>
-                        {" → "}
-                        <Link href={`/spieler/${encodeURIComponent(message.channelId)}`}>{message.channelName}</Link>
-                      </span>
-                      <time className="muted num" dateTime={message.at}>{dateTime(message.at)}</time>
-                    </div>
-                    <p style={{ margin: "4px 0 0", overflowWrap: "anywhere" }}>{message.message}</p>
-                  </li>
-                ))}
-              </ol>
-            )}
+            <div className="chatbox__scroll">
+              <ChatFeed
+                messages={chatMessages}
+                uuidOf={(id) => state.players[id]?.uuid}
+                now={now}
+                empty="Noch keine Nachrichten zwischen erfassten Spielern."
+                label="Neueste Nachrichten von Spielern in Twitch-Chats"
+              />
+            </div>
           </section>
           <div className="section-head">
             <ul className="filters" aria-label="Filter">

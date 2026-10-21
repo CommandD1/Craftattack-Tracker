@@ -36,7 +36,7 @@ const BASE_METRICS: Record<BaseMetric, MetricMeta> = {
   blocksBroken: { label: "Blöcke abgebaut", perPlayer: true, counter: true, format: num, tone: "gold", icon: "pickaxe", group: "abbau" },
   deaths: { label: "Tode", perPlayer: true, counter: true, format: num, tone: "redstone", icon: "skull", group: "kampf" },
   mobsKilled: { label: "Mobs", perPlayer: true, counter: true, format: num, tone: "grass", icon: "sword", group: "kampf" },
-  damageDealt: { label: "Herzen", perPlayer: true, counter: true, format: (v) => boardValue("damageDealt", v), hint: "Ausgeteilter Schaden, geteilt durch 20", tone: "redstone", icon: "heart", group: "kampf" },
+  damageDealt: { label: "Schaden", perPlayer: true, counter: true, format: (v) => boardValue("damageDealt", v), hint: "Ausgeteilter Schaden in Herzen", tone: "redstone", icon: "heart", group: "kampf" },
   totemsUsed: { label: "Totems", perPlayer: true, counter: true, format: num, tone: "amethyst", icon: "totem", group: "kampf" },
   distance: { label: "Strecke", perPlayer: true, counter: true, format: (v) => boardValue("distance", v), tone: "pink", icon: "boots", group: "bewegung" },
   foodEaten: { label: "Essen", perPlayer: true, counter: true, format: num, tone: "gold", icon: "food", group: "items" },

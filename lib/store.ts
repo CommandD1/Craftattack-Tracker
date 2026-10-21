@@ -2,7 +2,7 @@ import "server-only";
 import { connection } from "next/server";
 import { getDb, type Db } from "./db";
 import { playtimeOf } from "./playtime";
-import { EXTRA_KEY_OF_METRIC, EXTRA_METRICS, EXTRA_STAT_KEYS, type ExtraMetric } from "./playerStats";
+import { EXTRA_HISTORY_KEYS, EXTRA_KEY_OF_METRIC, EXTRA_METRICS, extraStatSql, type ExtraMetric } from "./playerStats";
 import type { BoardKey, DeathFeedItem, FeedItem, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind, AfkCheck } from "./types";
 
 const MAX_EVENTS_IN_MEMORY = 20000;
@@ -602,6 +602,167 @@ export async function saveTwitchChatMessage(message: TwitchChatMessage): Promise
   }
 }
 
+type ChatRow = {
+  id: string;
+  at: Date;
+  sender_id: string;
+  sender_name: string;
+  channel_id: string;
+  channel_name: string;
+  message: string;
+};
+const chatFromRow = (row: ChatRow): TwitchChatMessage => ({
+  id: row.id,
+  at: iso(row.at)!,
+  senderId: row.sender_id,
+  senderName: row.sender_name,
+  channelId: row.channel_id,
+  channelName: row.channel_name,
+  message: row.message,
+});
+
+export interface ChatPartner {
+  id: string;
+  name: string;
+  count: number;
+}
+
+export interface PlayerChat {
+  /** Nachrichten des Spielers in fremden Chats */
+  sent: TwitchChatMessage[];
+  /** Nachrichten anderer Spieler im Chat dieses Spielers */
+  received: TwitchChatMessage[];
+  sentTotal: number;
+  receivedTotal: number;
+  /** In wessen Chat schreibt der Spieler am meisten? */
+  writesIn: ChatPartner[];
+  /** Wer schreibt am meisten in seinem Chat? */
+  visitors: ChatPartner[];
+}
+
+/** Chat eines Spielers fürs Profil: beide Richtungen plus die häufigsten Partner. Nutzt die Indizes auf sender_id/channel_id. */
+export async function getPlayerTwitchChat(id: string, limit = 30): Promise<PlayerChat> {
+  const db = await getDb();
+  const cols = "id, at, sender_id, sender_name, channel_id, channel_name, message";
+  const [sent, received, writesIn, visitors] = await Promise.all([
+    db.query<ChatRow>(`SELECT ${cols} FROM twitch_chat_messages WHERE sender_id = $1 ORDER BY at DESC, id DESC LIMIT $2`, [id, limit]),
+    db.query<ChatRow>(`SELECT ${cols} FROM twitch_chat_messages WHERE channel_id = $1 ORDER BY at DESC, id DESC LIMIT $2`, [id, limit]),
+    db.query<{ id: string; name: string; count: string }>(
+      `SELECT channel_id AS id, max(channel_name) AS name, count(*) AS count FROM twitch_chat_messages
+        WHERE sender_id = $1 GROUP BY channel_id ORDER BY count(*) DESC, max(at) DESC`,
+      [id],
+    ),
+    db.query<{ id: string; name: string; count: string }>(
+      `SELECT sender_id AS id, max(sender_name) AS name, count(*) AS count FROM twitch_chat_messages
+        WHERE channel_id = $1 GROUP BY sender_id ORDER BY count(*) DESC, max(at) DESC`,
+      [id],
+    ),
+  ]);
+  const partners = (rows: { id: string; name: string; count: string }[]) => rows.map((r) => ({ id: r.id, name: r.name, count: Number(r.count) }));
+  const w = partners(writesIn.rows);
+  const v = partners(visitors.rows);
+  return {
+    sent: sent.rows.map(chatFromRow),
+    received: received.rows.map(chatFromRow),
+    sentTotal: w.reduce((sum, p) => sum + p.count, 0),
+    receivedTotal: v.reduce((sum, p) => sum + p.count, 0),
+    writesIn: w.slice(0, 6),
+    visitors: v.slice(0, 6),
+  };
+}
+
+/* ---------- Top-Listen je Spieler (Verlauf) ---------- */
+
+/** Kompakter Stand: Liste → Item-Key → Anzahl */
+export type TopSnapshot = Record<string, Record<string, number>>;
+/** Spätestens nach dieser Zeit wird statt einer Änderung wieder ein vollständiger Stand gespeichert (Anker) */
+const TOP_FULL_INTERVAL_MS = 60 * 60_000;
+/** Letzter gespeicherter Stand je Spieler (vollständig rekonstruiert) und Zeit des letzten Ankers */
+const lastTopSnapshot = new Map<string, { fullAt: number; counts: TopSnapshot }>();
+
+/**
+ * Speichert die Top-Listen frisch abgefragter (also online) Spieler bei jedem Poll, aber platzsparend:
+ * - nur wenn sich etwas geändert hat,
+ * - meist nur die geänderten Einträge (`anchor = false`, oft unter 100 Byte),
+ * - höchstens stündlich und nach jedem Neustart ein vollständiger Stand als Anker (`anchor = true`, ~1 KB).
+ * Ohne Anzeigenamen (die stehen im aktuellen `players.detail`).
+ */
+export async function recordTopSnapshots(players: PlayerState[], at: string, freshDetail: Set<string>) {
+  const t = Date.parse(at);
+  const rows: unknown[][] = [];
+  const written: { id: string; fullAt: number; counts: TopSnapshot }[] = [];
+  for (const p of players) {
+    if (!p.detail || !freshDetail.has(p.id)) continue;
+    const snapshot: TopSnapshot = {};
+    for (const [list, entries] of Object.entries(p.detail.tops)) {
+      if (entries.length) snapshot[list] = Object.fromEntries(entries.map((e) => [e.key, e.count]));
+    }
+    if (Object.keys(snapshot).length === 0) continue;
+    const last = lastTopSnapshot.get(p.id);
+    const changes: TopSnapshot = {};
+    let changed = 0;
+    for (const [list, items] of Object.entries(snapshot)) {
+      for (const [key, count] of Object.entries(items)) {
+        if (last?.counts[list]?.[key] === count) continue;
+        (changes[list] ??= {})[key] = count;
+        changed += 1;
+      }
+    }
+    if (last && changed === 0) continue;
+    const full = !last || t - last.fullAt >= TOP_FULL_INTERVAL_MS;
+    rows.push([p.id, toDate(at), JSON.stringify(full ? snapshot : changes), full]);
+    // Auch nach einer Änderung bleibt der Gesamtstand bekannt: alte Werte plus Änderungen
+    const counts: TopSnapshot = full ? snapshot : { ...last!.counts };
+    if (!full) for (const [list, items] of Object.entries(changes)) counts[list] = { ...(counts[list] ?? {}), ...items };
+    written.push({ id: p.id, fullAt: full ? t : last!.fullAt, counts });
+  }
+  if (rows.length === 0) return;
+  const db = await getDb();
+  await insertRows(db, "player_top_history", ["player", "at", "tops", "anchor"], rows, "ON CONFLICT (player, at) DO NOTHING");
+  for (const { id, fullAt, counts } of written) lastTopSnapshot.set(id, { fullAt, counts });
+}
+
+/**
+ * Verlauf der Top-Listen eines Spielers über die letzten `hours` Stunden, älteste zuerst.
+ * Ab dem letzten Anker vor dem Zeitfenster werden die Änderungen aufaddiert; zurück kommt je
+ * `bucketMinutes` der letzte Gesamtstand, damit das Profil nicht tausende Minutenpunkte verarbeiten muss.
+ */
+export async function getPlayerTopHistory(id: string, hours = 25, bucketMinutes = 30): Promise<{ at: string; tops: TopSnapshot }[]> {
+  const db = await getDb();
+  const since = new Date(Date.now() - hours * 3600_000);
+  const rows = (
+    await db.query<{ at: Date; tops: TopSnapshot; anchor: boolean }>(
+      `SELECT at, tops, anchor FROM player_top_history
+        WHERE player = $1
+          AND at >= COALESCE(
+                (SELECT max(at) FROM player_top_history WHERE player = $1 AND anchor AND at <= $2),
+                (SELECT min(at) FROM player_top_history WHERE player = $1 AND anchor),
+                $2)
+        ORDER BY at`,
+      [id, since],
+    )
+  ).rows;
+  const bucketMs = bucketMinutes * 60_000;
+  const out: { at: string; tops: TopSnapshot }[] = [];
+  let state: TopSnapshot | null = null;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (r.anchor) state = r.tops;
+    else if (state) {
+      const merged: TopSnapshot = { ...state };
+      for (const [list, items] of Object.entries(r.tops)) merged[list] = { ...(merged[list] ?? {}), ...items };
+      state = merged;
+    }
+    // Änderungen ohne vorherigen Anker lassen sich nicht einordnen
+    if (!state) continue;
+    const t = new Date(r.at).getTime();
+    const next = rows[i + 1] ? new Date(rows[i + 1].at).getTime() : null;
+    // Letzter Stand je Bündel (und immer der allerletzte)
+    if (next === null || Math.floor(next / bucketMs) !== Math.floor(t / bucketMs)) out.push({ at: iso(r.at)!, tops: state });
+  }
+  return out;
+}
+
 export async function getRecentTwitchChatMessages(limit = 50): Promise<TwitchChatMessage[]> {
   const db = await getDb();
   const rows = await db.query<{
@@ -861,7 +1022,10 @@ export async function updateEventMeta(e: TrackerEvent, patch: NonNullable<Tracke
 /* ---------- Spieler-Zeitreihe ---------- */
 
 const PLAYER_POINT_MAX_GAP_MS = 5 * 60_000;
+/** Zusatzwerte landen höchstens so oft im Verlauf (Speicherplatz); für Graph und Rang-Verlauf reicht das */
+const EXTRA_HISTORY_INTERVAL_MS = 5 * 60_000;
 const lastPoint = new Map<string, { at: number; sig: string }>();
+const lastExtraAt = new Map<string, number>();
 
 function pointSignature(p: PlayerPoint) {
   return [
@@ -878,7 +1042,6 @@ function pointSignature(p: PlayerPoint) {
     p.foodEaten,
     p.followersOnServer,
     p.followersTotal,
-    JSON.stringify(p.ranks),
     p.streamGameId,
     p.streamGameName,
     JSON.stringify(p.extra ?? {}),
@@ -901,12 +1064,17 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
     const hasData = p.online || p.live || p.followersAt !== null || Object.keys(p.stats).length > 0;
     if (!hasData) continue;
     const isFresh = (key: BoardKey) => !fresh || (fresh.get(p.id)?.has(key) ?? false);
+    // Zusatzwerte nur aus frischer Abfrage und höchstens alle 5 Minuten, als integer[] in fester Reihenfolge
+    let extraStats: (number | null)[] | null = null;
     const extra: Record<string, number> = {};
-    if (p.detail && (!freshDetail || freshDetail.has(p.id))) {
-      for (const key of EXTRA_STAT_KEYS) {
-        const v = p.detail.stats[key];
-        if (typeof v === "number") extra[key] = v;
-      }
+    if (p.detail && (!freshDetail || freshDetail.has(p.id)) && t - (lastExtraAt.get(p.id) ?? 0) >= EXTRA_HISTORY_INTERVAL_MS) {
+      extraStats = EXTRA_HISTORY_KEYS.map((key) => {
+        const v = p.detail!.stats[key];
+        if (typeof v !== "number" || !Number.isFinite(v)) return null;
+        extra[key] = v;
+        return Math.max(-2147483648, Math.min(2147483647, Math.round(v)));
+      });
+      if (extraStats.every((v) => v === null)) extraStats = null;
     }
     const point: PlayerPoint = {
       at,
@@ -931,6 +1099,9 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
     };
     const sig = pointSignature(point);
     const last = lastPoint.get(p.id);
+    // Weder auf dem Server noch live: nichts kann sich ändern. Nur der Wechsel (z. B. der Leave) wird gespeichert,
+    // keine Auffrischung alle 5 Minuten; nach einem Neustart gar nichts, der letzte Stand liegt schon in der DB.
+    if (!p.online && !p.live && (!last || last.sig === sig)) continue;
     if (last && last.sig === sig && t - last.at < PLAYER_POINT_MAX_GAP_MS) continue;
     rows.push([
         p.id,
@@ -948,19 +1119,22 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
         point.foodEaten,
         point.followersOnServer,
         point.followersTotal,
-        JSON.stringify(point.ranks),
+        // Ränge werden nicht mehr je Messpunkt gespeichert: niemand liest sie, der Rang-Verlauf wird aus den
+        // Werten berechnet. Das spart gut 400 Byte pro Zeile; alte Zeilen behalten ihre Werte.
+        null,
         point.streamGameId,
         point.streamGameName,
-        Object.keys(extra).length ? JSON.stringify(extra) : null,
+        extraStats,
     ]);
     signatures.push({ id: p.id, sig });
+    if (extraStats) lastExtraAt.set(p.id, t);
   }
   await insertRows(
     db,
     "player_history",
     [
       "player", "at", "online", "viewers", "playtime_seconds", "deaths", "diamonds", "blocks_broken",
-      "mobs_killed", "distance", "damage_dealt", "totems_used", "food_eaten", "followers_on_server", "followers_total", "ranks", "stream_game_id", "stream_game_name", "extra",
+      "mobs_killed", "distance", "damage_dealt", "totems_used", "food_eaten", "followers_on_server", "followers_total", "ranks", "stream_game_id", "stream_game_name", "extra_stats",
     ],
     rows,
     "ON CONFLICT (player, at) DO NOTHING",
@@ -986,7 +1160,18 @@ interface PlayerPointRow {
   ranks?: PlayerPoint["ranks"] | null;
   stream_game_id?: string | null;
   stream_game_name?: string | null;
-  extra?: Record<string, number> | null;
+  extra_stats?: (number | null)[] | null;
+}
+
+/** integer[] aus `player_history.extra_stats` → {key: wert} */
+function decodeExtraStats(values: (number | null)[] | null | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!values) return out;
+  EXTRA_HISTORY_KEYS.forEach((key, i) => {
+    const v = values[i];
+    if (v !== null && v !== undefined) out[key] = Number(v);
+  });
+  return out;
 }
 
 export async function getPlayerHistory(id: string, limit = 3000): Promise<PlayerPoint[]> {
@@ -1013,7 +1198,7 @@ export async function getPlayerHistory(id: string, limit = 3000): Promise<Player
     ranks: r.ranks ?? {},
     streamGameId: r.stream_game_id ?? null,
     streamGameName: r.stream_game_name ?? null,
-    extra: r.extra ?? {},
+    extra: decodeExtraStats(r.extra_stats),
   }));
 }
 
@@ -1328,7 +1513,7 @@ const PLAYER_COL: Partial<Record<SeriesMetric, string>> = {
   followers: "followers_on_server",
   online: "(CASE WHEN online THEN 1 ELSE 0 END)",
   // Zusatzwerte: Keys stammen aus der festen Liste in lib/playerStats.ts, nie aus der Anfrage
-  ...Object.fromEntries(EXTRA_METRICS.map((m) => [m, `(extra->>'${EXTRA_KEY_OF_METRIC[m]}')::double precision`])),
+  ...Object.fromEntries(EXTRA_METRICS.map((m) => [m, extraStatSql(EXTRA_KEY_OF_METRIC[m])])),
 };
 
 function toDelta(points: { at: string; v: number }[]) {

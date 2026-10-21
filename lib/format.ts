@@ -45,6 +45,12 @@ export function ago(iso: string | null | undefined, now = Date.now()) {
 export const dateTime = (iso: string) => dtf.format(new Date(iso));
 export const time = (iso: string) => tf.format(new Date(iso));
 
+/** Wert und Einheit getrennt, damit die Einheit in engen Listen kleiner gesetzt werden kann */
+export function boardParts(key: string, v: number): { value: string; unit: string | null } {
+  if (key === "damageDealt") return { value: hearts(v), unit: "Herzen" };
+  return { value: boardValue(key, v), unit: null };
+}
+
 export function boardValue(key: string, v: number) {
   switch (key) {
     case "playtimeSeconds":
@@ -52,7 +58,7 @@ export function boardValue(key: string, v: number) {
     case "distance":
       return distance(v);
     case "damageDealt":
-      return hearts(v);
+      return `${hearts(v)} Herzen`;
     default:
       return num(v);
   }

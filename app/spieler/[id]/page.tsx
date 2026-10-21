@@ -3,12 +3,13 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { BOARD_KEYS, type BoardKey, type TrackerEvent } from "@/lib/types";
-import { ago, boardValue, dateTime, duration, headUrl, num, skinUrl } from "@/lib/format";
+import { ago, boardParts, dateTime, duration, headUrl, num, skinUrl } from "@/lib/format";
 import { EventFeed } from "@/components/EventFeed";
 import { BOARD_ICON, Icon } from "@/components/Icons";
 import { FigValue } from "@/components/FigValue";
 import { StatSpark } from "@/components/StatSpark";
-import { getAllSessions, getFullBoard, getPlayerHistory, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
+import { getAllSessions, getFullBoard, getPlayerHistory, getPlayerTopHistory, getPlayerTwitchChat, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
+import { ChatFeed, ChatPartners } from "@/components/ChatFeed";
 import { companionsOf, overlapsFor } from "@/lib/overlap";
 import { TwitchEmbed } from "@/components/TwitchEmbed";
 import { PlayerInsights } from "@/components/PlayerInsights";
@@ -33,7 +34,7 @@ const LABEL: Record<BoardKey, string> = {
   blocksBroken: "Blöcke",
   mobsKilled: "Mobs",
   distance: "Strecke",
-  damageDealt: "Herzen",
+  damageDealt: "Schaden",
   totemsUsed: "Totems",
   foodEaten: "Essen",
 };
@@ -129,7 +130,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const { state, events, now } = await loadTracker();
   const p = state.players[id];
   if (!p) notFound();
-  const [history, allSessions, rates, rankHistory, afkSpans, subscriptions, subscriptionBoard, followerBoard] = await Promise.all([
+  const [history, allSessions, rates, rankHistory, afkSpans, subscriptions, subscriptionBoard, followerBoard, chat, topHistory] = await Promise.all([
     getPlayerHistory(id),
     getAllSessions(),
     getPlayerRates(),
@@ -138,6 +139,8 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
     getTwitchSubscriptionProfile(id, p.live ? p.liveSince ?? p.live.startedAt ?? null : null),
     getTwitchSubscriptionBoard(),
     getFullBoard("followers"),
+    getPlayerTwitchChat(id),
+    getPlayerTopHistory(id),
   ]);
   const overlaps = overlapsFor(id, allSessions, now);
   const nameOf = (pid: string) => state.players[pid]?.name ?? pid;
@@ -369,7 +372,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                     )}
                   </dt>
                   <Link className="pstat__val" href={graphHref(k)} tabIndex={-1} aria-hidden="true">
-                    <FigValue>{v !== undefined ? boardValue(k, v) : "–"}</FigValue>
+                    {v !== undefined ? <FigValue unit={boardParts(k, v).unit}>{boardParts(k, v).value}</FigValue> : <FigValue>–</FigValue>}
                   </Link>
                   <StatSpark points={history} k={k} label={LABEL[k]} href={graphHref(k)} />
                 </div>
@@ -378,7 +381,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
           </dl>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
             Alle Werte kommen aus der Einzelstatistik der API (inklusive Rang unter allen Teilnehmenden), die je Spieler
-            höchstens alle 15 Minuten abgefragt wird; für die Top 10 aktualisieren sie sich jede Minute. Schaden wird für Herzen durch 20 geteilt.
+            höchstens alle 15 Minuten abgefragt wird; für die Top 10 aktualisieren sie sich jede Minute. Schaden steht in Herzen (Rohwert der API geteilt durch 20).
             Steht „geschätzt“ bei der Spielzeit, ist es der letzte API-Wert plus die seitdem gemessene Online-Zeit; „Tracker“ ist die seit Tracker-Start gemessene Online-Zeit.
             Follower-Zuwachs zählt nur zwischen aufeinanderfolgenden Messungen, bei denen der Streamer auf dem Server war; globale Twitch-Followerstände werden nicht angezeigt. Ein Zuwachs von mehr als 20 Followern pro Minute auf dem Server erscheint als Ereignis. Twitch-Subs werden nur gezählt, wenn der Streamer während des Sub-Events auf dem Spielserver online war (auch AFK). Die Kurven zeigen den Verlauf seit Tracker-Start ({num(history.length)} Messpunkte). Mit der Maus über die Kurve fahren zeigt Zeitpunkt und Wert. Ein Klick auf Beschriftung oder Wert öffnet den großen Graphen auf der Statistik-Seite.
           </p>
@@ -386,8 +389,67 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
       </section>
 
       <PlayerInsights p={p} history={history} sessions={allSessions.filter((s) => s.player === id)} events={mine} rates={rates.players[id]} server={rates.server} now={now} />
-      <PlayerActivity id={id} sessions={allSessions.filter((s) => s.player === id)} afk={afkSpans} ranks={rankHistory} now={now} />
-      <PlayerDetails id={id} detail={p.detail} name={p.name} now={now} />
+      <PlayerActivity
+        id={id}
+        sessions={allSessions.filter((s) => s.player === id)}
+        afk={afkSpans}
+        ranks={rankHistory}
+        values={{ ...p.stats, ...(playtime.seconds > 0 ? { playtimeSeconds: playtime.seconds } : {}) }}
+        apiRanks={p.ranks ?? {}}
+        now={now}
+      />
+      <PlayerDetails id={id} detail={p.detail} name={p.name} now={now} topHistory={topHistory} />
+
+      {(chat.sentTotal > 0 || chat.receivedTotal > 0) && (
+        <section className="block block--tight" data-tone="paper" aria-labelledby="chat-h">
+          <div className="wrap">
+            <div className="section-head">
+              <h2 className="t-2" id="chat-h">
+                Chat
+              </h2>
+              <p className="muted">Nachrichten zwischen {p.name} und anderen Spielern in Twitch-Chats.</p>
+            </div>
+            <div className="chatpair">
+              <div className="box chatbox" data-tone="white">
+                <div className="chatbox__head">
+                  <p className="eyebrow">
+                    Schreibt bei anderen <span className="num">({num(chat.sentTotal)})</span>
+                  </p>
+                  <ChatPartners partners={chat.writesIn} label={`In wessen Chat ${p.name} schreibt`} />
+                </div>
+                <div className="chatbox__scroll">
+                  <ChatFeed
+                    messages={chat.sent}
+                    uuidOf={(pid) => state.players[pid]?.uuid}
+                    now={now}
+                    show="channel"
+                    empty={`${p.name} hat noch in keinem Spieler-Chat geschrieben.`}
+                    label={`Nachrichten von ${p.name}`}
+                  />
+                </div>
+              </div>
+              <div className="box chatbox" data-tone="white">
+                <div className="chatbox__head">
+                  <p className="eyebrow">
+                    Im eigenen Chat <span className="num">({num(chat.receivedTotal)})</span>
+                  </p>
+                  <ChatPartners partners={chat.visitors} label={`Wer im Chat von ${p.name} schreibt`} />
+                </div>
+                <div className="chatbox__scroll">
+                  <ChatFeed
+                    messages={chat.received}
+                    uuidOf={(pid) => state.players[pid]?.uuid}
+                    now={now}
+                    show="sender"
+                    empty={`Im Chat von ${p.name} hat noch kein Spieler geschrieben.`}
+                    label={`Nachrichten im Chat von ${p.name}`}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="block" data-tone="paper">
         <div className="wrap">

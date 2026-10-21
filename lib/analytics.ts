@@ -6,6 +6,7 @@ import { EVENT_META } from "./events";
 import { AFK_MS, AFK_FARM_WINDOW_MS, POLL_INTERVAL_MS, farmKindOf } from "./tracker";
 import type { BoardKey, TrackerEvent, TrackerState, AfkKind } from "./types";
 import { BOARD_KEYS } from "./types";
+import { EXTRA_HISTORY_KEYS, type ExtraStatKey } from "./playerStats";
 
 /* ============================================================ Tage (Europe/Berlin) */
 
@@ -1131,75 +1132,126 @@ export async function getPlayerRates(): Promise<{ players: Record<string, Player
 
 /* ---------- Spielerprofil: Rang-Verlauf ---------- */
 
-export type RankKey = "deaths" | "diamonds" | "blocksBroken" | "mobsKilled" | "distance";
-export const RANK_KEYS: RankKey[] = ["deaths", "diamonds", "blocksBroken", "mobsKilled", "distance"];
+export type RankKey = BoardKey;
+export const RANK_KEYS: RankKey[] = BOARD_KEYS;
 
 export interface RankHistory {
   /** Bündel-Zeitpunkte (ms) */
   buckets: number[];
   bucketMinutes: number;
   /** Spieler → Liste → Rang je Bündel (null = damals noch kein Wert) */
-  players: Record<string, Record<RankKey, (number | null)[]>>;
+  players: Record<string, Partial<Record<RankKey, (number | null)[]>>>;
+  /** Liste → Anzahl gerankter Spieler je Bündel */
+  of: Partial<Record<RankKey, number[]>>;
+  /** Wie `players`, für die Zusatzwerte aus /api/player (nur Spieler mit Wert werden gerankt) */
+  extra: Record<string, Partial<Record<ExtraStatKey, (number | null)[]>>>;
 }
 
-interface RankRow {
-  player: string;
-  bucket: Date;
-  deaths: number | null;
-  diamonds: number | null;
-  blocks_broken: number | null;
-  mobs_killed: number | null;
-  distance: number | string | null;
-}
+const RANK_COL: Record<RankKey, string> = {
+  playtimeSeconds: "playtime_seconds",
+  diamonds: "diamonds",
+  deaths: "deaths",
+  blocksBroken: "blocks_broken",
+  mobsKilled: "mobs_killed",
+  distance: "distance",
+  damageDealt: "damage_dealt",
+  totemsUsed: "totems_used",
+  foodEaten: "food_eaten",
+};
 
 /**
- * Rang aller Spieler in den fünf ext-Listen über die Zeit: je Bündel der letzte bekannte Wert pro Spieler,
- * fortgeschrieben, daraus die Platzierung. Ein Durchlauf für alle Spieler, 10 Minuten gecacht.
+ * Rang aller Spieler in den neun Hauptlisten über die Zeit: je Bündel der letzte bekannte Wert pro Spieler,
+ * fortgeschrieben, daraus die Platzierung. Gerankt wird nur, wer in der Liste einen Wert hat.
+ * Ein Durchlauf für alle Spieler, 10 Minuten gecacht.
  */
 export async function getRankHistory(): Promise<RankHistory> {
   return cached("rankHistory", 600_000, async () => {
     await ensureLoaded();
     const db = await getDb();
-    const first = (await db.query<{ at: Date | null }>(`SELECT min(at) AS at FROM player_history WHERE deaths IS NOT NULL`)).rows[0]?.at ?? null;
-    if (!first) return { buckets: [], bucketMinutes: 60, players: {} };
+    const cols = RANK_KEYS.map((k) => RANK_COL[k]);
+    const anyValue = cols.map((c) => `${c} IS NOT NULL`).join(" OR ");
+    const first = (await db.query<{ at: Date | null }>(`SELECT min(at) AS at FROM player_history WHERE ${anyValue}`)).rows[0]?.at ?? null;
+    if (!first) return { buckets: [], bucketMinutes: 60, players: {}, of: {}, extra: {} };
     const spanMin = (Date.now() - new Date(first).getTime()) / 60_000;
     const steps = [30, 60, 120, 180, 360, 720, 1440];
     const minutes = steps.find((s) => spanMin / s <= 120) ?? 1440;
+    // Je Spieler, Bündel und Liste der letzte Nicht-NULL-Wert im Bündel
     const rows = (
-      await db.query<RankRow>(
-        `SELECT DISTINCT ON (player, bucket) player, bucket, deaths, diamonds, blocks_broken, mobs_killed, distance
-           FROM (SELECT player, at, deaths, diamonds, blocks_broken, mobs_killed, distance,
-                        to_timestamp(floor(extract(epoch FROM at) / ($1 * 60)) * ($1 * 60)) AS bucket
-                   FROM player_history WHERE deaths IS NOT NULL) x
-          ORDER BY player, bucket, at DESC`,
+      await db.query<Record<string, unknown> & { player: string; bucket: Date }>(
+        `SELECT player, bucket, ${cols.map((c) => `(array_agg(${c} ORDER BY at DESC) FILTER (WHERE ${c} IS NOT NULL))[1] AS ${c}`).join(", ")}
+           FROM (SELECT *, to_timestamp(floor(extract(epoch FROM at) / ($1 * 60)) * ($1 * 60)) AS bucket
+                   FROM player_history WHERE ${anyValue}) x
+          GROUP BY player, bucket
+          ORDER BY bucket`,
         [minutes],
       )
     ).rows;
-    rows.sort((a, b) => new Date(a.bucket).getTime() - new Date(b.bucket).getTime());
-    const col: Record<RankKey, keyof RankRow> = { deaths: "deaths", diamonds: "diamonds", blocksBroken: "blocks_broken", mobsKilled: "mobs_killed", distance: "distance" };
     const buckets: number[] = [];
-    const last = new Map<string, Record<RankKey, number>>();
-    const players: Record<string, Record<RankKey, (number | null)[]>> = {};
+    const last = new Map<string, Partial<Record<RankKey, number>>>();
+    const players: RankHistory["players"] = {};
+    const of: RankHistory["of"] = {};
     let i = 0;
     while (i < rows.length) {
       const t = new Date(rows[i].bucket).getTime();
       for (; i < rows.length && new Date(rows[i].bucket).getTime() === t; i++) {
         const r = rows[i];
-        const prev = last.get(r.player);
-        const cur = Object.fromEntries(RANK_KEYS.map((k) => [k, r[col[k]] === null ? (prev?.[k] ?? 0) : Number(r[col[k]])])) as Record<RankKey, number>;
+        const cur = { ...(last.get(r.player) ?? {}) };
+        for (const k of RANK_KEYS) {
+          const v = r[RANK_COL[k]];
+          if (v !== null && v !== undefined) cur[k] = Number(v);
+        }
         last.set(r.player, cur);
       }
       const bi = buckets.length;
       buckets.push(t);
       for (const k of RANK_KEYS) {
-        const order = [...last.entries()].sort((a, b) => b[1][k] - a[1][k]);
-        order.forEach(([pid], idx) => {
-          const p = (players[pid] ??= { deaths: [], diamonds: [], blocksBroken: [], mobsKilled: [], distance: [] });
-          while (p[k].length < bi) p[k].push(null);
-          p[k].push(idx + 1);
+        const order = [...last.entries()].filter(([, v]) => v[k] !== undefined).sort((a, b) => b[1][k]! - a[1][k]!);
+        (of[k] ??= []).push(order.length);
+        // Gleichstand teilt sich den Platz (wie die API): Platz = 1 + Anzahl echt besserer Spieler
+        let place = 0;
+        order.forEach(([pid, v], idx) => {
+          if (idx === 0 || v[k] !== order[idx - 1][1][k]) place = idx + 1;
+          const series = ((players[pid] ??= {})[k] ??= []);
+          while (series.length < bi) series.push(null);
+          series.push(place);
         });
       }
     }
-    return { buckets, bucketMinutes: minutes, players };
+
+    // Zusatzwerte: gleiche Bündel, Werte aus dem kompakten integer[] (nur jede ~5. Zeile hat es)
+    const extraRows = (
+      await db.query<{ player: string; bucket: Date; extra_stats: (number | null)[] }>(
+        `SELECT DISTINCT ON (player, bucket) player, bucket, extra_stats
+           FROM (SELECT player, at, extra_stats,
+                        to_timestamp(floor(extract(epoch FROM at) / ($1 * 60)) * ($1 * 60)) AS bucket
+                   FROM player_history WHERE extra_stats IS NOT NULL) x
+          ORDER BY player, bucket, at DESC`,
+        [minutes],
+      )
+    ).rows;
+    const extraByBucket = new Map<number, typeof extraRows>();
+    for (const r of extraRows) {
+      const t = new Date(r.bucket).getTime();
+      (extraByBucket.get(t) ?? extraByBucket.set(t, []).get(t)!).push(r);
+    }
+    const extra: RankHistory["extra"] = {};
+    const lastExtra = new Map<string, (number | null)[]>();
+    buckets.forEach((t, bi) => {
+      for (const r of extraByBucket.get(t) ?? []) lastExtra.set(r.player, r.extra_stats);
+      if (lastExtra.size === 0) return;
+      EXTRA_HISTORY_KEYS.forEach((key, ki) => {
+        const order = [...lastExtra.entries()]
+          .filter(([, values]) => values[ki] !== null && values[ki] !== undefined)
+          .sort((a, b) => Number(b[1][ki]) - Number(a[1][ki]));
+        let place = 0;
+        order.forEach(([pid, values], idx) => {
+          if (idx === 0 || Number(values[ki]) !== Number(order[idx - 1][1][ki])) place = idx + 1;
+          const series = ((extra[pid] ??= {})[key] ??= []);
+          while (series.length < bi) series.push(null);
+          series.push(place);
+        });
+      });
+    });
+    return { buckets, bucketMinutes: minutes, players, of, extra };
   });
 }

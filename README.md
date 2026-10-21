@@ -17,8 +17,8 @@ Ideen, die noch offen sind: Twitch-API-Anbindung (Clips, Kategorie), Discord-Ben
 
 Inoffizieller Tracker für CraftAttack 14. Fragt `https://craftattack.one/api/stats` standardmäßig in zufälligen Abständen
 von 45 bis 75 Sekunden ab (Mittelwert: eine Minute).
-Einzelstatistiken (`/api/player/<spieler-id>`) werden für Spieler, die online sind oder es beim vorigen Poll waren,
-bei jedem Poll neu angefragt, für Offline-Spieler höchstens alle 15 Minuten (deren Werte ändern sich nicht).
+Einzelstatistiken (`/api/player/<spieler-id>`) werden nur für Spieler angefragt, die online sind oder es beim vorigen
+Poll waren, dann aber bei jedem Poll. Offline ändern sich die Werte nicht, der gespeicherte Stand bleibt gültig.
 Pro Poll gehen höchstens 80 solcher Anfragen raus, mit mindestens 500 ms Abstand;
 kann eine Antwort nicht rechtzeitig erneuert werden, bleibt sie 15 Minuten gültig. Bei Cloudflare-Challenges, HTTP 403/429 oder Cloudflare-5xx-
 Antworten pausiert der Tracker Anfragen an den betroffenen Origin mindestens fünf Minuten. Wiederholte Sperren
@@ -82,7 +82,7 @@ verwendet, wird das Zertifikat dabei nicht verifiziert.
 - Der Datenbankwechsel betrifft PostgreSQL; Kontoauthentifizierung und Datei-Uploads verwenden weiterhin Neon. Die Auth- und Object-Storage-Umgebungsvariablen kommen über `neon env pull`; `NEON_AUTH_COOKIE_SECRET` muss lokal einmalig mit `openssl rand -base64 32` erzeugt werden.
 - `/konto` bietet Neon-Managed-Auth (E-Mail/Passwort) und private persönliche Datei-Uploads. Dateien bis 10 MiB werden im privaten Neon-Bucket `assets` gespeichert; Metadaten und Besitzer-ID liegen in PostgreSQL. Die API prüft den angemeldeten Besitzer bei jedem Aufruf.
 
-Tabellen: `tracker_meta` (Status, Rekorde, letzter API-Snapshot), `players`, `events` (Chronik), `history` (Zeitreihe gesamt, einschließlich Spielerzahl), `player_history` (Spielerwerte, Follower-Gesamtstand, Rang-Snapshot und Twitch-Kategorie je Messpunkt) und `user_files` (Metadaten privater Uploads). Neue Verlaufsfelder werden mit additiven `IF NOT EXISTS`-Spalten ergänzt; bestehende Daten bleiben erhalten.
+Tabellen: `tracker_meta` (Status, Rekorde, letzter API-Snapshot), `players`, `events` (Chronik), `history` (Zeitreihe gesamt, einschließlich Spielerzahl), `player_history` (Spielerwerte, Follower-Gesamtstand und Twitch-Kategorie je Messpunkt; Zusatzwerte aus `/api/player` höchstens alle 5 Minuten als kompaktes `extra_stats integer[]`, Reihenfolge in `lib/playerStats.ts`), `player_top_history` (Top-Listen je Spieler: jede Minute nur die geänderten Einträge, stündlich ein vollständiger Stand als Anker), `twitch_chat_messages` (höchstens 10.000 Nachrichten zwischen Spielern) und `user_files` (Metadaten privater Uploads). Neue Verlaufsfelder werden mit additiven `IF NOT EXISTS`-Spalten ergänzt; bestehende Daten bleiben erhalten.
 
 Die Tracker-Datenseiten werden serverseitig gerendert (SSR, `instant = false`), ohne Lade-Skeleton. Das Konto ergänzt die Oberfläche clientseitig um Anmeldung und Dateiaktionen.
 Geöffnete Seiten aktualisieren ihre Daten höchstens einmal pro Minute und nur solange der Tab sichtbar ist.
@@ -131,7 +131,6 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 - `NEON_AUTH_BASE_URL` Neon Managed Auth URL; `NEON_AUTH_COOKIE_SECRET` lokales Next.js-Cookie-Secret (mindestens 32 Zeichen).
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3` und `AWS_REGION` für den privaten Neon-Object-Storage-Bucket `assets`.
 - `CA_PLAYER_URL` Basis-Adresse der Einzelstatistik je Spieler-ID (Standard `https://craftattack.one/api/player`; ersetzt das frühere `CA_EXT_URL`)
-- `CA_PLAYER_OFFLINE_REFRESH_MINUTES` wie oft Offline-Spieler neu abgefragt werden (Standard 15, mindestens 1). Online-Spieler kommen immer jede Minute.
 - `CA_PLAYER_MAX_PER_POLL` höchstens so viele Einzelstatistik-Anfragen pro Poll (Standard 80); `CA_PLAYER_REQUEST_INTERVAL_MS` Abstand zwischen ihnen (Standard 500, mindestens 250).
 - `CA_POLL_INTERVAL_MS` mittleres Abfrageintervall in Millisekunden (Standard 60000, mit ±25 % Jitter; nicht unter die Vorgaben des API-Betreibers setzen)
 - `TRACKER_MODE` `all` (Standard), `web` oder `tracker`; siehe [Nur Website oder nur Tracker](#nur-website-oder-nur-tracker).

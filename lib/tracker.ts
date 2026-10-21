@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { appendEvents, appendFeedItems, enrichDeathEvents, getState, recordPlayerPoints, saveState } from "./store";
+import { appendEvents, appendFeedItems, enrichDeathEvents, getState, recordPlayerPoints, recordTopSnapshots, saveState } from "./store";
 import { fetchFollowerCounts, fetchLiveStreams, TWITCH_ENABLED, type TwitchFollowerChannel, type TwitchStream } from "./twitch";
 import { fetchCraftAttack, getCraftAttackPauseMs, maxCraftAttackTimerDelay } from "./craftattackFetch";
 import { trackedSecondsOf } from "./playtime";
@@ -36,13 +36,12 @@ const envNumber = (name: string, fallback: number, min: number) => {
   return Number.isFinite(v) && v >= min ? v : fallback;
 };
 /**
- * Einzelstatistik: Spieler, die online sind (oder es im vorigen Poll waren), werden bei jedem Poll neu
- * abgefragt. Offline ändern sich die Werte nicht, deshalb reicht dort ein langsamerer Abgleich.
+ * Einzelstatistik: nur Spieler, die online sind (oder es im vorigen Poll waren), werden abgefragt, dafür bei
+ * jedem Poll. Offline können sich die Werte nicht ändern; der zuletzt gespeicherte Stand bleibt gültig.
  */
 const EXT_ONLINE_TTL_MS = Math.min(30_000, MIN_POLL_INTERVAL_MS / 2);
-const EXT_OFFLINE_TTL_MS = envNumber("CA_PLAYER_OFFLINE_REFRESH_MINUTES", 15, 1) * 60_000;
 /** So lange bleibt eine Antwort verwendbar, wenn sie nicht rechtzeitig erneuert werden konnte */
-const EXT_CACHE_TTL_MS = Math.max(15 * 60_000, EXT_OFFLINE_TTL_MS);
+const EXT_CACHE_TTL_MS = 15 * 60_000;
 const EXT_REQUEST_INTERVAL_MS = envNumber("CA_PLAYER_REQUEST_INTERVAL_MS", 500, 250);
 const EXT_MAX_PER_POLL = envNumber("CA_PLAYER_MAX_PER_POLL", 80, 1);
 /** Cache je Spieler-ID */
@@ -262,20 +261,18 @@ export async function fetchExtPlayer(id: string): Promise<ExtPlayer | null> {
 }
 
 /**
- * Fragt fällige Spieler einzeln ab: online jede Abfrage, offline alle `CA_PLAYER_OFFLINE_REFRESH_MINUTES`.
- * Online-Spieler und noch nie abgefragte kommen zuerst, danach die ältesten Einträge.
+ * Fragt die übergebenen (Online-)Spieler einzeln ab, die älteste Antwort zuerst.
  * Ergebnis ist nach Spieler-ID abgelegt; `loginOf` enthält den Twitch-Login laut API.
  */
 export async function fetchExtAll(
   ids: Iterable<string>,
-  online: Set<string> = new Set(),
 ): Promise<{ players: Map<string, ExtPlayer>; loginOf: Map<string, string>; missing: Set<string>; failed: number }> {
   const all = [...new Set(ids)];
   const now = Date.now();
   const age = (id: string) => now - (extCache.get(id)?.at ?? 0);
   const queue = all
-    .filter((id) => age(id) >= (online.has(id) ? EXT_ONLINE_TTL_MS : EXT_OFFLINE_TTL_MS))
-    .sort((a, b) => Number(online.has(b)) - Number(online.has(a)) || age(b) - age(a))
+    .filter((id) => age(id) >= EXT_ONLINE_TTL_MS)
+    .sort((a, b) => age(b) - age(a))
     .slice(0, EXT_MAX_PER_POLL);
   const fetched = new Set<string>();
   const players = new Map<string, ExtPlayer>();
@@ -982,11 +979,12 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       // Einzelstatistiken für alle bekannten Spieler – Fehler hier sind nicht fatal, dann gibt es eben nur die Top 10
       const ids = knownPlayerIds(state, stats);
       const logins = extLogins(state, stats, ids);
-      // Wer jetzt oder beim vorigen Poll online war, bekommt frische Einzelwerte (auch die letzte Minute vor dem Leave)
+      // Einzelwerte nur für Spieler auf dem Server: jetzt oder beim vorigen Poll online (fängt die letzte Minute
+      // vor dem Leave ab). Offline ändern sich die Werte nicht.
       const onlineIds = new Set([...stats.online, ...(state.latest?.online ?? [])].map((p) => p.id));
       // Live-Status direkt bei Twitch für alle bekannten Logins; schlägt das fehl, zählt die Haupt-API
       const [ext, twitch, followers] = await Promise.all([
-        fetchExtAll(ids, onlineIds),
+        fetchExtAll(onlineIds),
         TWITCH_ENABLED
           ? fetchLiveStreams(logins.values()).catch((err: unknown) => {
               console.warn("[tracker] Twitch-Live-Abfrage fehlgeschlagen:", err instanceof Error ? err.message : err);
@@ -1023,6 +1021,7 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       await saveState(state);
       feedCheckpointSaved = true;
       await recordPlayerPoints(Object.values(state.players), now.toISOString(), freshStats, freshDetail);
+      await recordTopSnapshots(Object.values(state.players), now.toISOString(), freshDetail);
       return { ok: true, events: events.length };
     } catch (err) {
       if (!feedCheckpointSaved) state.latestFeed = previousFeed;

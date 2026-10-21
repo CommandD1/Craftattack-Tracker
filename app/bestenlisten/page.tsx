@@ -5,6 +5,8 @@ import { getFullBoard, getTwitchSubscriptionBoard } from "@/lib/store";
 import { getAfkBoard, getAfkRanksBefore, getBoardRanksBefore, getFollowerRanksBefore, getTrackedRanksBefore } from "@/lib/analytics";
 import { BOARD_KEYS, type AfkKind, type BoardKey } from "@/lib/types";
 import { ago, boardValue, duration, headUrl, num } from "@/lib/format";
+import { BOARD_STYLE } from "@/lib/boards";
+import { BoardValue } from "@/components/BoardValue";
 import { BOARD_ICON, Icon } from "@/components/Icons";
 import { playtimeOf } from "@/lib/playtime";
 
@@ -14,15 +16,15 @@ export const instant = false;
 export const metadata: Metadata = { title: "Bestenlisten" };
 
 const BOARDS: Record<BoardKey | "followers" | "twitchSubs" | "tracked" | "afk" | "afkmobs" | "afkblocks", { title: string; sub: string; tone: string }> = {
-  playtimeSeconds: { title: "Dauerzocker", sub: "Spielzeit laut API, sonst vom Tracker gemessene Online-Zeit", tone: "sky" },
-  diamonds: { title: "Diamantenbank", sub: "Diamanten", tone: "diamond" },
-  deaths: { title: "Friedhof", sub: "Tode", tone: "redstone" },
-  blocksBroken: { title: "Abrissbirne", sub: "Abgebaute Blöcke", tone: "gold" },
-  mobsKilled: { title: "Monsterjäger", sub: "Erledigte Mobs", tone: "grass" },
-  distance: { title: "Weltenbummler", sub: "Gelaufene Strecke", tone: "pink" },
-  damageDealt: { title: "Herzen", sub: "Verursachter Schaden, geteilt durch 20", tone: "redstone" },
-  totemsUsed: { title: "Totems", sub: "Benutzte Totems", tone: "amethyst" },
-  foodEaten: { title: "Essen", sub: "Gegessene Nahrung", tone: "gold" },
+  playtimeSeconds: { title: BOARD_STYLE.playtimeSeconds.title, sub: "Spielzeit laut API, sonst vom Tracker gemessene Online-Zeit", tone: "sky" },
+  diamonds: { title: BOARD_STYLE.diamonds.title, sub: "Diamanten", tone: "diamond" },
+  deaths: { title: BOARD_STYLE.deaths.title, sub: "Tode", tone: "redstone" },
+  blocksBroken: { title: BOARD_STYLE.blocksBroken.title, sub: "Abgebaute Blöcke", tone: "gold" },
+  mobsKilled: { title: BOARD_STYLE.mobsKilled.title, sub: "Erledigte Mobs", tone: "grass" },
+  distance: { title: BOARD_STYLE.distance.title, sub: "Gelaufene Strecke", tone: "pink" },
+  damageDealt: { title: BOARD_STYLE.damageDealt.title, sub: "Ausgeteilter Schaden in Herzen", tone: "redstone" },
+  totemsUsed: { title: BOARD_STYLE.totemsUsed.title, sub: "Benutzte Totems", tone: "amethyst" },
+  foodEaten: { title: BOARD_STYLE.foodEaten.title, sub: "Gegessene Nahrung", tone: "gold" },
   followers: { title: "Follower-Zuwachs auf dem Server", sub: "Neue Twitch-Follower während der Streamer auf dem Server waren", tone: "twitch" },
   twitchSubs: { title: "Sub-Stars", sub: "Twitch-Abos auf dem Server seit Beginn der IRC-Erfassung", tone: "amethyst" },
   tracked: { title: "Dauergäste", sub: "Online-Zeit laut Tracker, alle Spieler", tone: "lava" },
@@ -182,7 +184,7 @@ export default async function Page(props: PageProps<"/bestenlisten">) {
                       <span className="st-board__meta">
                         {isAfkKey(key) ? (e.afkNow ? (key === "afk" ? "gerade AFK" : "farmt gerade") : "") : key === "tracked" ? (e.online ? "läuft" : "") : key === "playtimeSeconds" ? (inApi.has(e.id) ? "aktuell" : e.playtimeSource === "estimate" ? "geschätzt" : e.playtimeSource === "tracker" ? "Tracker" : "API-Wert") : inApi.has(e.id) ? "aktuell" : e.at ? `Stand ${ago(e.at, now)}` : ""}
                       </span>
-                      <span className="st-board__val num">{fmt(e.value)}</span>
+                      <span className="st-board__val num">{key === "damageDealt" ? <BoardValue k={key} v={e.value} /> : fmt(e.value)}</span>
                       {diff === null ? (
                         <span className="st-board__mv st-board__mv--new" title={`Vor ${SPANS[span].label} noch nicht erfasst`}>
                           neu
