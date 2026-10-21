@@ -2,6 +2,7 @@ import "server-only";
 import { connection } from "next/server";
 import { getDb, type Db } from "./db";
 import { playtimeOf } from "./playtime";
+import { createSwrCache } from "./swrCache";
 import { EXTRA_HISTORY_KEYS, EXTRA_KEY_OF_METRIC, EXTRA_METRICS, extraStatSql, type ExtraMetric } from "./playerStats";
 import type { BoardKey, DeathFeedItem, FeedItem, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind, AfkCheck } from "./types";
 
@@ -1231,31 +1232,33 @@ function decodeExtraStats(values: (number | null)[] | null | undefined): Record<
 }
 
 export async function getPlayerHistory(id: string, limit = 3000): Promise<PlayerPoint[]> {
-  await ensureLoaded();
-  const db = await getDb();
-  const rows = (
-    await db.query<PlayerPointRow>(`SELECT * FROM player_history WHERE player = $1 ORDER BY at DESC LIMIT $2`, [id, limit])
-  ).rows;
-  return rows.reverse().map((r) => ({
-    at: iso(r.at)!,
-    online: r.online,
-    viewers: r.viewers,
-    playtimeSeconds: r.playtime_seconds,
-    deaths: r.deaths,
-    diamonds: r.diamonds,
-    blocksBroken: r.blocks_broken,
-    mobsKilled: r.mobs_killed,
-    distance: r.distance === null ? null : Number(r.distance),
-    damageDealt: r.damage_dealt === null ? null : Number(r.damage_dealt),
-    totemsUsed: r.totems_used,
-    foodEaten: r.food_eaten,
-    followersOnServer: r.followers_on_server,
-    followersTotal: r.followers_total ?? null,
-    ranks: r.ranks ?? {},
-    streamGameId: r.stream_game_id ?? null,
-    streamGameName: r.stream_game_name ?? null,
-    extra: decodeExtraStats(r.extra_stats),
-  }));
+  return cached(`playerHistory:${id}:${limit}`, 30000, async () => {
+    await ensureLoaded();
+    const db = await getDb();
+    const rows = (
+      await db.query<PlayerPointRow>(`SELECT * FROM player_history WHERE player = $1 ORDER BY at DESC LIMIT $2`, [id, limit])
+    ).rows;
+    return rows.reverse().map((r) => ({
+      at: iso(r.at)!,
+      online: r.online,
+      viewers: r.viewers,
+      playtimeSeconds: r.playtime_seconds,
+      deaths: r.deaths,
+      diamonds: r.diamonds,
+      blocksBroken: r.blocks_broken,
+      mobsKilled: r.mobs_killed,
+      distance: r.distance === null ? null : Number(r.distance),
+      damageDealt: r.damage_dealt === null ? null : Number(r.damage_dealt),
+      totemsUsed: r.totems_used,
+      foodEaten: r.food_eaten,
+      followersOnServer: r.followers_on_server,
+      followersTotal: r.followers_total ?? null,
+      ranks: r.ranks ?? {},
+      streamGameId: r.stream_game_id ?? null,
+      streamGameName: r.stream_game_name ?? null,
+      extra: decodeExtraStats(r.extra_stats),
+    }));
+  });
 }
 
 /* ---------- Komplette Bestenlisten (alle bekannten Spieler) ---------- */
@@ -1285,32 +1288,34 @@ const COLUMN: Record<string, string> = {
 
 /** Letzter bekannter Wert pro Spieler für ein Board, absteigend sortiert. */
 export async function getFullBoard(key: string): Promise<FullBoardEntry[]> {
-  const col = COLUMN[key];
-  if (!col) return [];
-  await ensureLoaded();
-  const db = await getDb();
-  const rows = (
-    await db.query<{ player: string; at: Date; value: number | string }>(
-      `SELECT DISTINCT ON (player) player, at, ${col} AS value
-         FROM player_history
-        WHERE ${col} IS NOT NULL
-        ORDER BY player, at DESC`,
-    )
-  ).rows;
-  const players = g().state?.players ?? {};
-  return rows
-    .map((r) => {
-      const p = players[r.player];
-      return {
-        id: r.player,
-        name: p?.name ?? r.player,
-        uuid: p?.uuid ?? "",
-        value: Number(r.value),
-        at: iso(r.at)!,
-        online: p?.online ?? false,
-      };
-    })
-    .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, "de"));
+  return cached(`fullBoard:${key}`, 60000, async () => {
+    const col = COLUMN[key];
+    if (!col) return [];
+    await ensureLoaded();
+    const db = await getDb();
+    const rows = (
+      await db.query<{ player: string; at: Date; value: number | string }>(
+        `SELECT DISTINCT ON (player) player, at, ${col} AS value
+           FROM player_history
+          WHERE ${col} IS NOT NULL
+          ORDER BY player, at DESC`,
+      )
+    ).rows;
+    const players = g().state?.players ?? {};
+    return rows
+      .map((r) => {
+        const p = players[r.player];
+        return {
+          id: r.player,
+          name: p?.name ?? r.player,
+          uuid: p?.uuid ?? "",
+          value: Number(r.value),
+          at: iso(r.at)!,
+          online: p?.online ?? false,
+        };
+      })
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, "de"));
+  });
 }
 
 /* ---------- Sessions aller Spieler (aus Join/Leave-Ereignissen) ---------- */
@@ -1325,7 +1330,8 @@ export interface StoredSession {
  * Baut aus allen Join/Leave-Ereignissen in der DB die Sessions aller Spieler.
  * Laufende Sessions (Spieler gerade online) haben `end = null`.
  */
-export async function getAllSessions(): Promise<StoredSession[]> {
+/** Sessions aller Spieler direkt aus der DB (ohne Zwischenspeicher, auch außerhalb von Anfragen nutzbar). */
+export async function loadAllSessions(): Promise<StoredSession[]> {
   await ensureLoaded();
   const db = await getDb();
   const rows = (
@@ -1363,16 +1369,17 @@ export async function getAllSessions(): Promise<StoredSession[]> {
   return out;
 }
 
+/** Sessions aller Spieler für Seiten: 60 s zwischengespeichert, gleichzeitige Aufrufe teilen sich die Abfrage. */
+export async function getAllSessions(): Promise<StoredSession[]> {
+  return cached("allSessions", 60_000, loadAllSessions);
+}
+
 /* ---------- Statistik-Seite: alle Daten, gebündelt ---------- */
 
-const statsCache = new Map<string, { at: number; value: unknown }>();
+const statsSwr = createSwrCache();
 async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
   await connection(); // dynamisch: Date.now() ist hier sonst beim Prerendern verboten
-  const hit = statsCache.get(key);
-  if (hit && Date.now() - hit.at < ttlMs) return hit.value as T;
-  const value = await load();
-  statsCache.set(key, { at: Date.now(), value });
-  return value;
+  return statsSwr(key, ttlMs, load);
 }
 
 /** Bündelgröße so wählen, dass es höchstens ~`target` Punkte gibt (mindestens `minMinutes`). */

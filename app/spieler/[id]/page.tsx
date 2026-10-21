@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { isShownEvent, sharedChatPlayers } from "@/lib/events";
+import { thinHistory } from "@/lib/thinHistory";
 import { BOARD_KEYS, type BoardKey, type TrackerEvent } from "@/lib/types";
 import { ago, boardParts, dateTime, duration, headUrl, num, skinUrl } from "@/lib/format";
 import { EventFeed } from "@/components/EventFeed";
@@ -145,6 +146,8 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
     getPlayerTopHistory(id),
     getPlayerSharedChatSessions(id),
   ]);
+  // Für die Sparklines im Browser reichen ~300 Punkte; der volle Verlauf bleibt auf dem Server (PlayerInsights)
+  const sparkHistory = thinHistory(history);
   const overlaps = overlapsFor(id, allSessions, now);
   const nameOf = (pid: string) => state.players[pid]?.name ?? pid;
 
@@ -280,7 +283,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                     <Link className="pstat__val" href={graphHref(k)} tabIndex={-1} aria-hidden="true">
                       <FigValue>{p.followersAt ? num(p.followersOnServer) : "–"}</FigValue>
                     </Link>
-                    <StatSpark points={history} k="followersOnServer" label="Follower-Zuwachs auf dem Server" href={graphHref(k)} />
+                    <StatSpark points={sparkHistory} k="followersOnServer" label="Follower-Zuwachs auf dem Server" href={graphHref(k)} />
                   </div>
                 );
               }
@@ -378,7 +381,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                   <Link className="pstat__val" href={graphHref(k)} tabIndex={-1} aria-hidden="true">
                     {v !== undefined ? <FigValue unit={boardParts(k, v).unit}>{boardParts(k, v).value}</FigValue> : <FigValue>–</FigValue>}
                   </Link>
-                  <StatSpark points={history} k={k} label={LABEL[k]} href={graphHref(k)} />
+                  <StatSpark points={sparkHistory} k={k} label={LABEL[k]} href={graphHref(k)} />
                 </div>
               );
             })}
@@ -467,7 +470,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
                         Zuschauer <span aria-hidden="true">↗</span>
                       </Link>
                     </p>
-                    <StatSpark points={history} k="viewers" label="Zuschauer" height={48} href={graphHref("viewers")} />
+                    <StatSpark points={sparkHistory} k="viewers" label="Zuschauer" height={48} href={graphHref("viewers")} />
                   </div>
                 )}
               </div>
