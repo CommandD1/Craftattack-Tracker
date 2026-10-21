@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { duration, headUrl, num, ago } from "@/lib/format";
@@ -6,14 +8,15 @@ import { playtimeOf, trackedSecondsOf } from "@/lib/playtime";
 import { getRecentTwitchChatMessages, getTwitchSubscriptionBoard } from "@/lib/store";
 import { ChatFeed } from "@/components/ChatFeed";
 
-// Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
-export const instant = false;
 
 export const metadata: Metadata = { title: "Spieler" };
 
+/** Öffnet sofort mit Überschrift und Platzhaltern; die Daten werden nachgestreamt. */
 export default function Page(props: PageProps<"/spieler">) {
   return (
+    <Suspense fallback={<PageSkeleton eyebrow="Alle, die der Tracker je gesehen hat" title="Spieler" tone="grass" />}>
       <Players searchParams={props.searchParams} />
+    </Suspense>
   );
 }
 

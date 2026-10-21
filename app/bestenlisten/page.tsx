@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { getFullBoard, getTwitchSubscriptionBoard } from "@/lib/store";
@@ -10,8 +12,6 @@ import { BoardValue } from "@/components/BoardValue";
 import { BOARD_ICON, Icon } from "@/components/Icons";
 import { playtimeOf } from "@/lib/playtime";
 
-// Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
-export const instant = false;
 
 export const metadata: Metadata = { title: "Bestenlisten" };
 
@@ -55,7 +55,7 @@ function listHref(key: Key, span: Span) {
   return qs ? `/bestenlisten?${qs}` : "/bestenlisten";
 }
 
-export default async function Page(props: PageProps<"/bestenlisten">) {
+async function Boards(props: PageProps<"/bestenlisten">) {
   const sp = await props.searchParams;
   const raw = typeof sp.liste === "string" ? sp.liste : "playtimeSeconds";
   const key: Key = (KEYS as readonly string[]).includes(raw) ? (raw as Key) : "playtimeSeconds";
@@ -215,5 +215,14 @@ export default async function Page(props: PageProps<"/bestenlisten">) {
         </div>
       </section>
     </>
+  );
+}
+
+/** Öffnet sofort mit Überschrift und Platzhaltern; die Daten werden nachgestreamt. */
+export default function Page(props: PageProps<"/bestenlisten">) {
+  return (
+    <Suspense fallback={<PageSkeleton eyebrow="Mehr als Top 10" title="Bestenlisten" tone="sky" />}>
+      <Boards {...props} />
+    </Suspense>
   );
 }

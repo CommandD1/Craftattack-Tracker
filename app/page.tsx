@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { PageSkeleton } from "@/components/Skeletons";
 import { loadTracker } from "@/lib/data";
 import { getHistoryAll, getTwitchSubscriptionBoard } from "@/lib/store";
 import { BOARD_KEYS } from "@/lib/types";
@@ -17,12 +19,13 @@ import { BoardValue } from "@/components/BoardValue";
 // Titel, Untertitel und Farben wie auf craftattack.one/stats
 const BOARDS = BOARD_STYLE;
 
-// Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
-export const instant = false;
 
+/** Öffnet sofort mit Überschrift und Platzhaltern; die Daten werden nachgestreamt. */
 export default function Home() {
   return (
+    <Suspense fallback={<PageSkeleton eyebrow="Live vom Server · inoffizieller Tracker" title="Übersicht" tone="diamond" />}>
       <Dashboard />
+    </Suspense>
   );
 }
 

@@ -1,12 +1,12 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { getOfficialEvents, type OfficialEvent } from "@/lib/officialEvents";
 import { loadTracker } from "@/lib/data";
 import { EventFeed } from "@/components/EventFeed";
 
-// Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
-export const instant = false;
 
 export const metadata: Metadata = { title: "Events" };
 
@@ -25,9 +25,12 @@ function stateOf(e: OfficialEvent, today: string): { label: string; key: "upcomi
   return { label: "Kommt noch", key: "upcoming" };
 }
 
+/** Öffnet sofort mit Überschrift und Platzhaltern; die Daten werden nachgestreamt. */
 export default function Page() {
   return (
+    <Suspense fallback={<PageSkeleton eyebrow="Offizielle Termine" title="Events" tone="amethyst" />}>
       <Events />
+    </Suspense>
   );
 }
 

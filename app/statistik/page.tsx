@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { getBiggestEvents, getBoardTotalsOverTime, getHistoryAll, getSeries, getTwitchSubscriptionBoard, getTwitchSubscriptionMinuteRecord } from "@/lib/store";
@@ -9,8 +11,6 @@ import { parseGraphQuery, toSearch } from "@/lib/graphQuery";
 import { dayKey, getStatsExtras } from "@/lib/analytics";
 import { StatsExtras } from "@/components/StatsExtras";
 
-// Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
-export const instant = false;
 
 export const metadata: Metadata = { title: "Statistik" };
 
@@ -103,7 +103,7 @@ function Record({
   );
 }
 
-export default async function Page(props: PageProps<"/statistik">) {
+async function Stats(props: PageProps<"/statistik">) {
   const sp = await props.searchParams;
   const { state, now } = await loadTracker();
   const [extras, hist, totals, bigDiamonds, bigDistance, bigBlocks, bigMobs, bigDamage, bigTotems, bigFood, subscriptionBoard, subscriptionSeries, subscriptionMinuteRecord] = await Promise.all([
@@ -283,5 +283,14 @@ export default async function Page(props: PageProps<"/statistik">) {
         </div>
       </section>
     </>
+  );
+}
+
+/** Öffnet sofort mit Überschrift und Platzhaltern; die Daten werden nachgestreamt. */
+export default function Page(props: PageProps<"/statistik">) {
+  return (
+    <Suspense fallback={<PageSkeleton eyebrow="Alles, was der Tracker je gemessen hat" title="Statistik" tone="gold" />}>
+      <Stats {...props} />
+    </Suspense>
   );
 }

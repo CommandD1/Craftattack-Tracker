@@ -3857,3 +3857,16 @@ a.spark-card--link:hover .eyebrow {
   font-size: 0.6875rem;
   padding: 1px 6px;
 }
+
+/* ---------- Platzhalter beim Nachladen (Skeletons) ---------- */
+.skel-rows {
+  display: grid;
+  gap: 12px;
+}
+.skel-fig {
+  min-height: 200px;
+}
+.skel-fig dd,
+.skel-fig dt {
+  margin: 0;
+}
