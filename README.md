@@ -70,9 +70,7 @@ verwendet beim Build einen Worker. Die verbleibende Speichermarge ist für Node.
 native Module und den Tracker vorgesehen.
 
 Beim Erstellen des Blueprints die abgefragten Variablen eintragen:
-`DATABASE_URL`, `NEON_AUTH_BASE_URL`, `NEON_AUTH_COOKIE_SECRET` sowie
-`AWS_ENDPOINT_URL_S3`, `AWS_REGION`, `AWS_ACCESS_KEY_ID` und
-`AWS_SECRET_ACCESS_KEY` für private Datei-Uploads. Twitch-Zugangsdaten sind
+`DATABASE_URL` und `CRON_SECRET`. Twitch-Zugangsdaten sind
 optional und können nach dem Erstellen im Render-Dashboard gesetzt werden.
 
 Für `DATABASE_URL` die **Internal Database URL** der Render-PostgreSQL-Datenbank
@@ -104,12 +102,10 @@ Stream-Zeit, Follower) werden addiert, Spitzenwerte als Maximum übernommen, akt
 ## Datenbank (PostgreSQL)
 
 - `DATABASE_URL` muss gesetzt sein (siehe `.env.example`), damit die App über `pg` direkt auf PostgreSQL zugreift. Für Render den Internal Database URL verwenden; bei lokaler Entwicklung mit einer Render-Datenbank den External Database URL. `SUPABASE_DB_URL` bleibt als Fallback für bestehende Deployments erhalten, wird aber ignoriert, wenn `DATABASE_URL` gesetzt ist. Tabellen werden beim Start angelegt.
-- Der Datenbankwechsel betrifft PostgreSQL; Kontoauthentifizierung und Datei-Uploads verwenden weiterhin Neon. Die Auth- und Object-Storage-Umgebungsvariablen kommen über `neon env pull`; `NEON_AUTH_COOKIE_SECRET` muss lokal einmalig mit `openssl rand -base64 32` erzeugt werden.
-- `/konto` bietet Neon-Managed-Auth (E-Mail/Passwort) und private persönliche Datei-Uploads. Dateien bis 10 MiB werden im privaten Neon-Bucket `assets` gespeichert; Metadaten und Besitzer-ID liegen in PostgreSQL. Die API prüft den angemeldeten Besitzer bei jedem Aufruf.
 
-Tabellen: `tracker_meta` (Status, Rekorde, letzter API-Snapshot), `players`, `events` (Chronik), `history` (Zeitreihe gesamt, einschließlich Spielerzahl), `player_history` (Spielerwerte, Follower-Gesamtstand und Twitch-Kategorie je Messpunkt; Zusatzwerte aus `/api/player` höchstens alle 5 Minuten als kompaktes `extra_stats integer[]`, Reihenfolge in `lib/playerStats.ts`), `player_top_history` (Top-Listen je Spieler: jede Minute nur die geänderten Einträge, stündlich ein vollständiger Stand als Anker), `twitch_chat_messages` (höchstens 10.000 Nachrichten zwischen Spielern; im geteilten Chat einmal je Nachricht, weitere Kanäle in `shared_with`), `shared_chat_sessions` (geteilte Chats mit Beteiligten, Beginn und Ende) und `user_files` (Metadaten privater Uploads). Neue Verlaufsfelder werden mit additiven `IF NOT EXISTS`-Spalten ergänzt; bestehende Daten bleiben erhalten.
+Tabellen: `tracker_meta` (Status, Rekorde, letzter API-Snapshot), `players`, `events` (Chronik), `history` (Zeitreihe gesamt, einschließlich Spielerzahl), `player_history` (Spielerwerte, Follower-Gesamtstand und Twitch-Kategorie je Messpunkt; Zusatzwerte aus `/api/player` höchstens alle 5 Minuten als kompaktes `extra_stats integer[]`, Reihenfolge in `lib/playerStats.ts`), `player_top_history` (Top-Listen je Spieler: jede Minute nur die geänderten Einträge, stündlich ein vollständiger Stand als Anker), `twitch_chat_messages` (höchstens 10.000 Nachrichten zwischen Spielern; im geteilten Chat einmal je Nachricht, weitere Kanäle in `shared_with`) und `shared_chat_sessions` (geteilte Chats mit Beteiligten, Beginn und Ende). Neue Verlaufsfelder werden mit additiven `IF NOT EXISTS`-Spalten ergänzt; bestehende Daten bleiben erhalten.
 
-Die Tracker-Datenseiten werden serverseitig gerendert (SSR, `instant = false`), ohne Lade-Skeleton. Das Konto ergänzt die Oberfläche clientseitig um Anmeldung und Dateiaktionen.
+Die Datenseiten öffnen sofort mit Überschrift und Platzhaltern (Partial Prerender) und streamen die Daten nach; die Spielerseite lädt dabei jeden Abschnitt einzeln.
 Geöffnete Seiten aktualisieren ihre Daten höchstens einmal pro Minute und nur solange der Tab sichtbar ist.
 
 ## Was erfasst wird
@@ -145,7 +141,6 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 - `/live` Twitch-Übersicht, Zuschauerkurve und Stream-Chronik
 - `/bestenlisten?liste=twitchSubs` Twitch-Abo-Bestenliste; Profile zeigen Gesamtzahl, Tagesgraph und – wenn live – Subs im aktuellen Stream
 - `/bestenlisten?liste=followers` Bestenliste des Follower-Zuwachses während der Serverzeit; Profile und eigener Graph zeigen den erfassten Verlauf, keine globalen Twitch-Gesamtstände
-- `/konto` Registrierung, Anmeldung und private Datei-Uploads/Downloads
 - `/api/tracker?limit=200&player=<id>&type=<typ>` JSON-Export, `/api/cron/poll` löst eine authentifizierte Abfrage aus
 
 ## Konfiguration
@@ -154,8 +149,6 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 
 - `DATABASE_URL` PostgreSQL-Verbindung, z. B. `postgres://user:pass@localhost:5432/actracker`
 - `CA_STATS_URL` andere API-Adresse
-- `NEON_AUTH_BASE_URL` Neon Managed Auth URL; `NEON_AUTH_COOKIE_SECRET` lokales Next.js-Cookie-Secret (mindestens 32 Zeichen).
-- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3` und `AWS_REGION` für den privaten Neon-Object-Storage-Bucket `assets`.
 - `CA_PLAYER_URL` Basis-Adresse der Einzelstatistik je Spieler-ID (Standard `https://craftattack.one/api/player`; ersetzt das frühere `CA_EXT_URL`)
 - `CA_PLAYER_MAX_PER_POLL` höchstens so viele Einzelstatistik-Anfragen pro Poll (Standard 80); `CA_PLAYER_REQUEST_INTERVAL_MS` Abstand zwischen ihnen (Standard 500, mindestens 250).
 - `CA_POLL_INTERVAL_MS` mittleres Abfrageintervall in Millisekunden (Standard 60000, mit ±25 % Jitter; nicht unter die Vorgaben des API-Betreibers setzen)
