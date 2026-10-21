@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { EVENT_GROUPS, EVENT_META, EVENT_TYPES, TIME_RANGES, isShownEvent, sharedChatPlayers, typesForGroup } from "@/lib/events";
@@ -9,16 +11,17 @@ import { EVENT_ICON, Icon } from "@/components/Icons";
 import { getAllSessions } from "@/lib/store";
 import { getPlayerEventTimeState } from "@/lib/playerEventStatus";
 
-// Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
-export const instant = false;
 
 export const metadata: Metadata = { title: "Ereignisse" };
 
 const PAGE = 100;
 
+/** Öffnet sofort mit Überschrift und Platzhaltern; die Daten werden nachgestreamt. */
 export default function Page(props: PageProps<"/ereignisse">) {
   return (
+    <Suspense fallback={<PageSkeleton eyebrow="Chronik" title="Ereignisse" tone="gold" />}>
       <Events searchParams={props.searchParams} />
+    </Suspense>
   );
 }
 

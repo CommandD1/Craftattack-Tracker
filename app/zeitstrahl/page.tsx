@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { dayKey, getDayTimeline, getTimelapse } from "@/lib/analytics";
@@ -8,7 +10,6 @@ import { Timelapse } from "@/components/Timelapse";
 import { GanttLiveSegment } from "@/components/GanttLiveSegment";
 import { findVodAt } from "@/lib/twitch";
 
-export const instant = false;
 export const metadata: Metadata = { title: "Zeitstrahl" };
 
 const dayLong = new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Berlin" });
@@ -28,7 +29,7 @@ const sortValue = (r: { seconds: number; afkSeconds: number; afkMobsSeconds: num
   key === "aktiv" ? r.seconds - r.afkSeconds : key === "afk" ? r.afkSeconds : key === "afkmobs" ? r.afkMobsSeconds : key === "afkblocks" ? r.afkBlocksSeconds : key === "live" ? r.liveSeconds : r.seconds;
 const AFK_TIP: Record<string, string> = { mobs: "AFK, farmt Mobs", blocks: "AFK, baut Blöcke ab" };
 
-export default async function Page(props: PageProps<"/zeitstrahl">) {
+async function Timeline(props: PageProps<"/zeitstrahl">) {
   const sp = await props.searchParams;
   const { state } = await loadTracker();
   const tag = typeof sp.tag === "string" ? sp.tag : undefined;
@@ -204,5 +205,14 @@ export default async function Page(props: PageProps<"/zeitstrahl">) {
         </div>
       </section>
     </>
+  );
+}
+
+/** Öffnet sofort mit Überschrift und Platzhaltern; die Daten werden nachgestreamt. */
+export default function Page(props: PageProps<"/zeitstrahl">) {
+  return (
+    <Suspense fallback={<PageSkeleton eyebrow="Ein Tag auf dem Server" title="Zeitstrahl" tone="sky" />}>
+      <Timeline {...props} />
+    </Suspense>
   );
 }

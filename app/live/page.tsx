@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { getHistoryRange } from "@/lib/analytics";
@@ -8,8 +10,6 @@ import { Sparkline } from "@/components/Sparkline";
 import { EventFeed } from "@/components/EventFeed";
 import { FigValue } from "@/components/FigValue";
 
-// Kein Skeleton: die Seite wird komplett auf dem Server gerendert (SSR) und blockiert bis die Daten da sind.
-export const instant = false;
 
 export const metadata: Metadata = { title: "Live" };
 
@@ -26,8 +26,13 @@ const RANGES: { key: string; label: string; hours: number | null }[] = [
 /** Zeitraum der Live-Seite → Zeitraum des Graph-Baukastens (der kennt kein 12 h) */
 const GRAPH_ZEIT: Record<string, string> = { "1h": "1h", "6h": "6h", "12h": "24h", "24h": "24h", "7d": "7d", alle: "alle" };
 
+/** Öffnet sofort mit Überschrift und Platzhaltern; die Daten werden nachgestreamt. */
 export default function Page(props: PageProps<"/live">) {
-  return <Live searchParams={props.searchParams} />;
+  return (
+    <Suspense fallback={<PageSkeleton eyebrow="Twitch" title="Live" tone="twitch" />}>
+      <Live searchParams={props.searchParams} />
+    </Suspense>
+  );
 }
 
 async function Live({ searchParams }: { searchParams: PageProps<"/live">["searchParams"] }) {
