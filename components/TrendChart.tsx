@@ -9,8 +9,8 @@ const dtf = new Intl.DateTimeFormat("de-DE", { weekday: "short", hour: "2-digit"
 const RANGES = [6, 24, 72] as const;
 
 const SERIES = [
-  { key: "online", label: "Spieler online", color: "var(--grass)", area: true },
-  { key: "live", label: "Streams live", color: "var(--amethyst)", area: false },
+  { key: "online", label: "Spieler online", color: "var(--presence)", area: true },
+  { key: "live", label: "Streams live", color: "var(--ink)", area: false },
   { key: "viewers", label: "Zuschauer gesamt", color: "var(--twitch)", area: false },
 ] as const;
 
@@ -65,7 +65,7 @@ export function TrendChart({ points, now }: { points: TrendPoint[]; now: number 
       <div className="trend__plot">
         <svg ref={ref} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="trend__svg" role="img" aria-label="Verlauf: Spieler online, Streams live, Zuschauer" onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
           <line x1={0} x2={W} y1={H - pad} y2={H - pad} className="trend__grid" vectorEffect="non-scaling-stroke" />
-          <path d={`${path("online")}L${W},${H - pad}L0,${H - pad}Z`} fill="var(--grass)" opacity={0.25} />
+          <path d={`${path("online")}L${W},${H - pad}L0,${H - pad}Z`} fill="var(--presence)" opacity={0.35} />
           {SERIES.map((s) => (
             <path key={s.key} d={path(s.key)} fill="none" stroke={s.color} strokeWidth={2.5} vectorEffect="non-scaling-stroke" />
           ))}

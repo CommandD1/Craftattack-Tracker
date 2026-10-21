@@ -4,7 +4,7 @@ import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { duration, headUrl, num, ago } from "@/lib/format";
-import { playtimeOf, trackedSecondsOf } from "@/lib/playtime";
+import { playtimeOf } from "@/lib/playtime";
 import { getRecentTwitchChatMessages, getTwitchSubscriptionBoard } from "@/lib/store";
 import { ChatFeed } from "@/components/ChatFeed";
 
@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: "Spieler" };
 /** Öffnet sofort mit Überschrift und Platzhaltern; die Daten werden nachgestreamt. */
 export default function Page(props: PageProps<"/spieler">) {
   return (
-    <Suspense fallback={<PageSkeleton eyebrow="Alle, die der Tracker je gesehen hat" title="Spieler" tone="grass" />}>
+    <Suspense fallback={<PageSkeleton eyebrow="Alle, die der Tracker je gesehen hat" title="Spieler" />}>
       <Players searchParams={props.searchParams} />
     </Suspense>
   );
@@ -52,7 +52,7 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
 
   return (
     <>
-      <section className="block page-head" data-tone="grass">
+      <section className="block page-head" data-tone="ender">
         <div className="wrap">
           <p className="eyebrow">Alle, die der Tracker je gesehen hat</p>
           <h1 className="t-1">Spieler</h1>
@@ -102,7 +102,7 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
                             </span>
                           )}
                           {p.online && p.afkSince && (
-                            <span className="tag" data-tone="gold" title={`Keine Bewegung seit ${ago(p.afkSince).replace("vor ", "")}${p.afkFarm ? ` · ${p.afkFarm === "mobs" ? "farmt dabei Mobs" : "baut dabei Blöcke ab"}` : ""}`}>
+                            <span className="tag" data-tone="paper" title={`Keine Bewegung seit ${ago(p.afkSince).replace("vor ", "")}${p.afkFarm ? ` · ${p.afkFarm === "mobs" ? "farmt dabei Mobs" : "baut dabei Blöcke ab"}` : ""}`}>
                               AFK{p.afkFarm ? ` · ${p.afkFarm === "mobs" ? "Mobs" : "Blöcke"}` : ""}
                             </span>
                           )}
@@ -126,18 +126,19 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
                       </dd>
                       <dt>Tode</dt>
                       <dd className="num">{p.stats.deaths !== undefined ? num(p.stats.deaths) : "–"}</dd>
-                      <dt>Twitch Subs</dt>
-                      <dd className="num">
-                        {num(subscriptions.get(p.id) ?? 0)}
-                      </dd>
-                      <dt title="Vom Tracker gemessen, für alle Spieler">Online (Tracker)</dt>
-                      <dd className="num">
-                        {duration(trackedSecondsOf(p, now))}
-                      </dd>
-                      <dt>Sessions</dt>
-                      <dd className="num">{num(p.sessions)}</dd>
-                      <dt>Zuletzt</dt>
-                      <dd className="num">{p.online ? "jetzt" : ago(p.lastSeen)}</dd>
+                      {/* Kurz halten: Online-Zeit laut Tracker und Sessions stehen im Profil */}
+                      {(subscriptions.get(p.id) ?? 0) > 0 && (
+                        <>
+                          <dt>Twitch Subs</dt>
+                          <dd className="num">{num(subscriptions.get(p.id) ?? 0)}</dd>
+                        </>
+                      )}
+                      {!p.online && (
+                        <>
+                          <dt>Zuletzt</dt>
+                          <dd className="num">{ago(p.lastSeen)}</dd>
+                        </>
+                      )}
                     </dl>
                   </Link>
                 </li>

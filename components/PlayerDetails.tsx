@@ -4,22 +4,15 @@ import type { TopSnapshot } from "@/lib/store";
 import { ago, dateTime, num } from "@/lib/format";
 import { EXTRA_STATS, EXTRA_STAT_KEYS, FORMATTERS, STAT_GROUPS, TOP_LABELS } from "@/lib/playerStats";
 import { Icon } from "@/components/Icons";
+import { GROUP_TONE } from "@/lib/statTone";
 
 const GROUP_ICON: Record<string, keyof typeof Icon> = {
   abbau: "pickaxe",
   kampf: "sword",
   bewegung: "boots",
-  items: "gift",
+  items: "bolt",
   tiere: "heart",
   afk: "clock",
-};
-const GROUP_TONE: Record<string, string> = {
-  abbau: "gold",
-  kampf: "redstone",
-  bewegung: "pink",
-  items: "sky",
-  tiere: "grass",
-  afk: "paper",
 };
 
 /** Winzige Verlaufslinie (serverseitig, ohne JavaScript) */

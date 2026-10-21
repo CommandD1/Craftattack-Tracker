@@ -19,7 +19,7 @@ const PAGE = 100;
 /** Öffnet sofort mit Überschrift und Platzhaltern; die Daten werden nachgestreamt. */
 export default function Page(props: PageProps<"/ereignisse">) {
   return (
-    <Suspense fallback={<PageSkeleton eyebrow="Chronik" title="Ereignisse" tone="gold" />}>
+    <Suspense fallback={<PageSkeleton eyebrow="Chronik" title="Ereignisse" />}>
       <Events searchParams={props.searchParams} />
     </Suspense>
   );
@@ -83,7 +83,7 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
 
   return (
     <>
-      <section className="block page-head" data-tone="gold">
+      <section className="block page-head" data-tone="ender">
         <div className="wrap">
           <p className="eyebrow">Chronik</p>
           <h1 className="t-1">Ereignisse</h1>
@@ -108,10 +108,12 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
                 <Link
                   href={`/ereignisse${qs({ ...q, g: grp.key, t: undefined })}`}
                   aria-current={g === grp.key && !t ? "true" : undefined}
-                  data-tone={g === grp.key ? "ink" : grp.tone}
+                  data-tone={g === grp.key ? "ink" : "white"}
                 >
                   <span className="num">{num(grp.n)}</span>
-                  <span className="eyebrow">{grp.label}</span>
+                  <span className="eyebrow">
+                    <span className="swatch" data-tone={grp.tone} aria-hidden="true" /> {grp.label}
+                  </span>
                 </Link>
               </li>
             ))}

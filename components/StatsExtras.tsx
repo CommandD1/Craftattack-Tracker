@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { StatsExtras as Data } from "@/lib/analytics";
 import { dateTime, duration, headUrl, num } from "@/lib/format";
 import { Sparkline } from "./Sparkline";
+import { METRIC_TONE } from "@/lib/statTone";
 
 const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const dayShort = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", timeZone: "Europe/Berlin" });
@@ -81,11 +82,11 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
   return (
     <>
       <dl className="grid st-figs st-figs--6" style={{ marginBottom: 32 }}>
-        <div className="box st-fig" data-tone="grass">
+        <div className="box st-fig" data-tone="white">
           <dt>Server erreichbar</dt>
           <dd className="num">{d.availability.ratio === null ? "–" : `${(Math.round(d.availability.ratio * 1000) / 10).toLocaleString("de-DE")} %`}</dd>
         </div>
-        <div className="box st-fig" data-tone="sky">
+        <div className="box st-fig" data-tone={METRIC_TONE.tracked}>
           <dt>Spielerstunden</dt>
           <dd className="num">{num(d.totals.playerHours)}</dd>
         </div>
@@ -93,15 +94,15 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
           <dt>Spieler bisher</dt>
           <dd className="num">{num(d.totals.players)}</dd>
         </div>
-        <div className="box st-fig" data-tone="grass">
+        <div className="box st-fig" data-tone="white">
           <dt>Aktiv in 24 h</dt>
           <dd className="num">{num(d.loyalty.groups.h24)}</dd>
         </div>
-        <div className="box st-fig" data-tone="gold">
+        <div className="box st-fig" data-tone="white">
           <dt>Länger als 1 Tag weg</dt>
           <dd className="num">{num(d.loyalty.groups.d3 + d.loyalty.groups.d7 + d.loyalty.groups.gone)}</dd>
         </div>
-        <div className="box st-fig" data-tone="gold">
+        <div className="box st-fig" data-tone={METRIC_TONE.afkSeconds}>
           <dt title="Online, aber ohne Streckenzuwachs für mindestens 20 Minuten">AFK-Stunden</dt>
           <dd className="num">
             {num(d.afk.totalHours)}
@@ -148,7 +149,7 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
           </div>
         </Card>
 
-        <Card title="Wann ist der Server voll?" sub="Ø Spieler online je Wochentag und Stunde (Berliner Zeit) – je gelber, desto mehr davon AFK">
+        <Card title="Wann ist der Server voll?" sub="Ø Spieler online je Wochentag und Stunde (Berliner Zeit) – je grauer, desto mehr davon AFK">
           <Heatmap values={d.heatmap} afk={d.heatmapAfk} />
         </Card>
 
@@ -177,7 +178,7 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
           </ol>
         </Card>
 
-        <Card title="Wann wird gespielt?" sub="Spielerstunden je Tagesstunde (Berliner Zeit), über alle Tage – der goldene Teil ist AFK" tone="white">
+        <Card title="Wann wird gespielt?" sub="Spielerstunden je Tagesstunde (Berliner Zeit), über alle Tage – der graue Teil ist AFK" tone="white">
           <HourBars values={d.playHours.map((p) => ({ hour: p.hour, v: p.hours, afk: p.afkHours, title: `${num(p.hours)} Spielerstunden${p.afkHours > 0 ? ` · davon ${num(p.afkHours)} AFK` : ""}` }))} unit="Spielerstunden je Tagesstunde, AFK-Anteil in Gold" tone="sky" />
         </Card>
 

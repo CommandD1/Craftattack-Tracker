@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Timelapse as TimelapseData } from "@/lib/analytics";
 import { headUrl, num } from "@/lib/format";
+import { BOARD_TONE, METRIC_TONE } from "@/lib/statTone";
 
 const tf = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 const SPEEDS = [
@@ -13,8 +14,8 @@ const SPEEDS = [
 ];
 
 /**
- * Der Tag im Schnelldurchlauf. Köpfe: grün = auf dem Server, gelb = auf dem Server, aber AFK (rot: Mob-Farm, türkis: Block-Farm),
- * lila Ring = live auf Twitch (mit grünem/gelbem Kern: dabei auf dem Server; mit grauem Kern: nur Stream).
+ * Der Tag im Schnelldurchlauf. Köpfe: hellblau = auf dem Server, grau = auf dem Server, aber AFK (grün: Mob-Farm, gelb: Block-Farm),
+ * lila Ring = live auf Twitch (mit farbigem Kern: dabei auf dem Server; mit blassem Kopf: nur Stream).
  */
 export function Timelapse({ data }: { data: TimelapseData }) {
   const { frames, players } = data;
@@ -71,25 +72,25 @@ export function Timelapse({ data }: { data: TimelapseData }) {
     <div className="zr">
       <div className="zr__bar">
         <span className="zr__clock num">{tf.format(new Date(f.at))}</span>
-        <span className="tag" data-tone="grass">
+        <span className="tag" data-tone={METRIC_TONE.onlineCount}>
           {num(f.online.length)} online
         </span>
         {f.afk.length > 0 && (
-          <span className="tag" data-tone="gold" title="Auf dem Server, aber seit mindestens 20 Minuten keine Bewegung · davon an einer AFK-Farm">
+          <span className="tag" data-tone="paper" title="Auf dem Server, aber seit mindestens 20 Minuten keine Bewegung · davon an einer AFK-Farm">
             {num(f.afk.length)} AFK{farming > 0 ? ` · ${num(farming)} farmen` : ""}
           </span>
         )}
-        <span className="tag" data-tone="twitch" title="Live auf Twitch · davon auf dem Server">
+        <span className="tag" data-tone={METRIC_TONE.liveCount} title="Live auf Twitch · davon auf dem Server">
           {num(f.live.length)} live{f.live.length > 0 ? ` · ${num(liveOnServer)} auf dem Server` : ""}
         </span>
-        <span className="tag" data-tone="amethyst">
+        <span className="tag" data-tone={METRIC_TONE.viewers}>
           {f.viewers !== null ? `${num(f.viewers)} Zuschauer` : "– Zuschauer"}
         </span>
-        <span className="tag" data-tone="redstone">
+        <span className="tag" data-tone={BOARD_TONE.deaths}>
           {f.deaths !== null ? `${num(f.deaths)} Tode` : "– Tode"}
         </span>
         <span className="zr__controls">
-          <button type="button" className="btn btn--small" data-tone="gold" onClick={togglePlay} aria-pressed={playing}>
+          <button type="button" className="btn btn--small" data-tone="ink" onClick={togglePlay} aria-pressed={playing}>
             {playing ? "❚❚ Pause" : i >= frames.length - 1 ? "↻ Nochmal" : "▶ Abspielen"}
           </button>
           <select className="zr__speed" value={speed} onChange={(e) => setSpeed(Number(e.target.value))} aria-label="Geschwindigkeit">
@@ -125,7 +126,7 @@ export function Timelapse({ data }: { data: TimelapseData }) {
         <>
           <ul className="legend zr__legend" aria-label="Legende">
             <li>
-              <i style={{ background: "var(--grass)" }} /> auf dem Server
+              <i style={{ background: "var(--presence)" }} /> auf dem Server
             </li>
             <li>
               <i className="legend__afk" /> auf dem Server, AFK

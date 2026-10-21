@@ -3,9 +3,10 @@ import type { StoredSession } from "@/lib/store";
 import { RATE_KEYS, type PlayerRates, type RateKey } from "@/lib/analytics";
 import { distance, duration, num, dateTime } from "@/lib/format";
 import { BOARD_ICON, Icon } from "./Icons";
+import { BOARD_TONE } from "@/lib/statTone";
 
 const LABEL: Record<RateKey, string> = { deaths: "Tode", diamonds: "Diamanten", blocksBroken: "Blöcke", mobsKilled: "Mobs", distance: "Strecke" };
-const TONE: Record<RateKey, string> = { deaths: "redstone", diamonds: "diamond", blocksBroken: "gold", mobsKilled: "grass", distance: "pink" };
+const TONE: Record<RateKey, string> = BOARD_TONE;
 
 const nf1 = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
 const fmtRate = (k: RateKey, v: number) => (k === "distance" ? distance(v) : k === "blocksBroken" || k === "mobsKilled" ? num(v) : nf1.format(v));

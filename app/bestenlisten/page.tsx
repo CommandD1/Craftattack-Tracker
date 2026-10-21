@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
+import { BOARD_TONE, METRIC_TONE } from "@/lib/statTone";
 import { loadTracker } from "@/lib/data";
 import { getFullBoard, getTwitchSubscriptionBoard } from "@/lib/store";
 import { getAfkBoard, getAfkRanksBefore, getBoardRanksBefore, getFollowerRanksBefore, getTrackedRanksBefore } from "@/lib/analytics";
@@ -16,21 +17,21 @@ import { playtimeOf } from "@/lib/playtime";
 export const metadata: Metadata = { title: "Bestenlisten" };
 
 const BOARDS: Record<BoardKey | "followers" | "twitchSubs" | "tracked" | "afk" | "afkmobs" | "afkblocks", { title: string; sub: string; tone: string }> = {
-  playtimeSeconds: { title: BOARD_STYLE.playtimeSeconds.title, sub: "Spielzeit laut API, sonst vom Tracker gemessene Online-Zeit", tone: "sky" },
-  diamonds: { title: BOARD_STYLE.diamonds.title, sub: "Diamanten", tone: "diamond" },
-  deaths: { title: BOARD_STYLE.deaths.title, sub: "Tode", tone: "redstone" },
-  blocksBroken: { title: BOARD_STYLE.blocksBroken.title, sub: "Abgebaute Blöcke", tone: "gold" },
-  mobsKilled: { title: BOARD_STYLE.mobsKilled.title, sub: "Erledigte Mobs", tone: "grass" },
-  distance: { title: BOARD_STYLE.distance.title, sub: "Gelaufene Strecke", tone: "pink" },
-  damageDealt: { title: BOARD_STYLE.damageDealt.title, sub: "Ausgeteilter Schaden in Herzen", tone: "redstone" },
-  totemsUsed: { title: BOARD_STYLE.totemsUsed.title, sub: "Benutzte Totems", tone: "amethyst" },
-  foodEaten: { title: BOARD_STYLE.foodEaten.title, sub: "Gegessene Nahrung", tone: "gold" },
-  followers: { title: "Follower-Zuwachs auf dem Server", sub: "Neue Twitch-Follower während der Streamer auf dem Server waren", tone: "twitch" },
-  twitchSubs: { title: "Sub-Stars", sub: "Twitch-Abos auf dem Server seit Beginn der IRC-Erfassung", tone: "amethyst" },
-  tracked: { title: "Dauergäste", sub: "Online-Zeit laut Tracker, alle Spieler", tone: "lava" },
-  afk: { title: "Standbilder", sub: "AFK-Zeit laut Tracker: online, aber ≥ 20 Min keine Bewegung", tone: "gold" },
-  afkmobs: { title: "Mob-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Mobs pro Minute gestorben sind (AFK-Mobfarm)", tone: "gold" },
-  afkblocks: { title: "Block-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke pro Minute abgebaut wurden (AFK-Blockfarm)", tone: "gold" },
+  playtimeSeconds: { title: BOARD_STYLE.playtimeSeconds.title, sub: "Spielzeit laut API, sonst vom Tracker gemessene Online-Zeit", tone: BOARD_TONE.playtimeSeconds },
+  diamonds: { title: BOARD_STYLE.diamonds.title, sub: "Diamanten", tone: BOARD_TONE.diamonds },
+  deaths: { title: BOARD_STYLE.deaths.title, sub: "Tode", tone: BOARD_TONE.deaths },
+  blocksBroken: { title: BOARD_STYLE.blocksBroken.title, sub: "Abgebaute Blöcke", tone: BOARD_TONE.blocksBroken },
+  mobsKilled: { title: BOARD_STYLE.mobsKilled.title, sub: "Erledigte Mobs", tone: BOARD_TONE.mobsKilled },
+  distance: { title: BOARD_STYLE.distance.title, sub: "Gelaufene Strecke", tone: BOARD_TONE.distance },
+  damageDealt: { title: BOARD_STYLE.damageDealt.title, sub: "Ausgeteilter Schaden in Herzen", tone: BOARD_TONE.damageDealt },
+  totemsUsed: { title: BOARD_STYLE.totemsUsed.title, sub: "Benutzte Totems", tone: BOARD_TONE.totemsUsed },
+  foodEaten: { title: BOARD_STYLE.foodEaten.title, sub: "Gegessene Nahrung", tone: BOARD_TONE.foodEaten },
+  followers: { title: "Follower-Zuwachs auf dem Server", sub: "Neue Twitch-Follower während der Streamer auf dem Server waren", tone: METRIC_TONE.followers },
+  twitchSubs: { title: "Sub-Stars", sub: "Twitch-Abos auf dem Server seit Beginn der IRC-Erfassung", tone: METRIC_TONE.twitchSubs },
+  tracked: { title: "Dauergäste", sub: "Online-Zeit laut Tracker, alle Spieler", tone: METRIC_TONE.tracked },
+  afk: { title: "Standbilder", sub: "AFK-Zeit laut Tracker: online, aber ≥ 20 Min keine Bewegung", tone: METRIC_TONE.afkSeconds },
+  afkmobs: { title: "Mob-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Mobs pro Minute gestorben sind (AFK-Mobfarm)", tone: METRIC_TONE.afkMobsSeconds },
+  afkblocks: { title: "Block-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke pro Minute abgebaut wurden (AFK-Blockfarm)", tone: METRIC_TONE.afkBlocksSeconds },
 };
 const KEYS = [...BOARD_KEYS, "followers", "twitchSubs", "tracked", "afk", "afkmobs", "afkblocks"] as const;
 const AFK_KEYS = ["afk", "afkmobs", "afkblocks"] as const;
@@ -117,7 +118,7 @@ async function Boards(props: PageProps<"/bestenlisten">) {
 
   return (
     <>
-      <section className="block page-head" data-tone={b.tone}>
+      <section className="block page-head" data-tone="ender">
         <div className="wrap">
           <p className="eyebrow">Mehr als Top 10</p>
           <h1 className="t-1">Bestenlisten</h1>
@@ -134,7 +135,8 @@ async function Boards(props: PageProps<"/bestenlisten">) {
           <ul className="filters" aria-label="Liste wählen">
             {KEYS.map((k) => (
               <li key={k}>
-                <Link className="tag" data-tone={k === key ? undefined : BOARDS[k].tone} aria-current={k === key ? "true" : undefined} href={listHref(k, span)}>
+                <Link className="tag" data-tone="white" aria-current={k === key ? "true" : undefined} href={listHref(k, span)}>
+                  <span className="swatch" data-tone={BOARDS[k].tone} aria-hidden="true" />
                   {BOARDS[k].title}
                 </Link>
               </li>
@@ -182,7 +184,7 @@ async function Boards(props: PageProps<"/bestenlisten">) {
                         {e.online && <span className="dot" style={{ display: "inline-block", marginLeft: 8, verticalAlign: "middle" }} title="online" />}
                       </span>
                       <span className="st-board__meta">
-                        {isAfkKey(key) ? (e.afkNow ? (key === "afk" ? "gerade AFK" : "farmt gerade") : "") : key === "tracked" ? (e.online ? "läuft" : "") : key === "playtimeSeconds" ? (inApi.has(e.id) ? "aktuell" : e.playtimeSource === "estimate" ? "geschätzt" : e.playtimeSource === "tracker" ? "Tracker" : "API-Wert") : inApi.has(e.id) ? "aktuell" : e.at ? `Stand ${ago(e.at, now)}` : ""}
+                        {isAfkKey(key) ? (e.afkNow ? (key === "afk" ? "gerade AFK" : "farmt gerade") : "") : key === "tracked" ? (e.online ? "läuft" : "") : key === "playtimeSeconds" ? (inApi.has(e.id) ? "" : e.playtimeSource === "estimate" ? "geschätzt" : e.playtimeSource === "tracker" ? "Tracker" : "API-Wert") : inApi.has(e.id) ? "" : e.at ? `Stand ${ago(e.at, now)}` : ""}
                       </span>
                       <span className="st-board__val num">{key === "damageDealt" ? <BoardValue k={key} v={e.value} /> : fmt(e.value)}</span>
                       {diff === null ? (
@@ -221,7 +223,7 @@ async function Boards(props: PageProps<"/bestenlisten">) {
 /** Öffnet sofort mit Überschrift und Platzhaltern; die Daten werden nachgestreamt. */
 export default function Page(props: PageProps<"/bestenlisten">) {
   return (
-    <Suspense fallback={<PageSkeleton eyebrow="Mehr als Top 10" title="Bestenlisten" tone="sky" />}>
+    <Suspense fallback={<PageSkeleton eyebrow="Mehr als Top 10" title="Bestenlisten" />}>
       <Boards {...props} />
     </Suspense>
   );

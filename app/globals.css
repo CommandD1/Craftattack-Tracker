@@ -34,6 +34,9 @@ select {
   --sky: #8ccdff;
   --dirt: #8a5a3b;
   --twitch: #9146ff;
+  /* Zeit auf dem Server (wie Spielzeit) und AFK – Zeitstrahl, Sessions, Heatmap, Stundenbalken */
+  --presence: var(--sky);
+  --idle: color-mix(in srgb, var(--ink) 35%, var(--paper));
   /* Fest, unabhängig vom Thema: Text auf bunten Tönen und die dunklen Töne (Header, Statistik-Bänder) */
   --on-tone: #16120f;
   /* Umrandungen und Schatten: immer schwarz, auch im dunklen Design */
@@ -697,9 +700,9 @@ a.box {
   width: 32px;
   height: 32px;
 }
+/* Live: Twitch-Kante wie bei den Ereignis-Kacheln statt voller Fläche */
 a.st-chip-in[data-live="true"] {
-  background: var(--twitch);
-  color: #fff;
+  border-left: 5px solid var(--twitch);
 }
 @media (hover: hover) {
   a.st-chip-in:hover {
@@ -742,10 +745,11 @@ a.st-chip-in[data-live="true"] {
   display: flex;
 }
 .st-board__icon {
-  background: var(--on-tone);
+  background: var(--accent, var(--on-tone));
+  box-shadow: 0 0 0 3px var(--line);
   width: 44px;
   height: 44px;
-  color: var(--bg);
+  color: var(--on-accent, var(--bg));
   flex: none;
   place-items: center;
   display: grid;
@@ -753,9 +757,6 @@ a.st-chip-in[data-live="true"] {
 .st-board__icon svg {
   width: 26px;
   height: 26px;
-}
-[data-tone="ender"] .st-board__icon {
-  background: var(--paper);
 }
 .st-board__sub {
   opacity: 0.8;
@@ -777,9 +778,6 @@ a.st-chip-in[data-live="true"] {
   display: grid;
   text-decoration: none;
 }
-[data-tone="ender"] .st-board__row {
-  border-top-color: color-mix(in srgb, var(--ink-fg) 18%, transparent);
-}
 .st-board__row:first-child {
   border-top: 0;
 }
@@ -789,13 +787,9 @@ a.st-chip-in[data-live="true"] {
   font-weight: 700;
 }
 .st-board__row:nth-child(-n + 3) .st-board__rank {
-  background: var(--on-tone);
-  color: var(--bg);
+  background: var(--ink);
+  color: var(--white);
   line-height: 28px;
-}
-[data-tone="ender"] .st-board__row:nth-child(-n + 3) .st-board__rank {
-  background: var(--gold);
-  color: var(--on-tone);
 }
 .st-board__row img {
   width: 28px;
@@ -876,14 +870,14 @@ a.st-chip-in[data-live="true"] {
   text-decoration: none;
 }
 .feed__time[data-presence="server"] {
-  background: var(--grass);
+  background: var(--presence);
 }
 .feed__time[data-presence="live"] {
   background: var(--twitch);
   color: #fff;
 }
 .feed__time[data-presence="both"] {
-  background: linear-gradient(90deg, var(--grass) 50%, var(--twitch) 50%);
+  background: linear-gradient(90deg, var(--presence) 50%, var(--twitch) 50%);
 }
 .feed__time[href]:hover {
   box-shadow: var(--outline);
@@ -1021,8 +1015,8 @@ a.st-chip-in[data-live="true"] {
   color: var(--paper);
 }
 .filters .tag:hover {
-  background: var(--gold);
-  color: var(--on-tone);
+  background: color-mix(in srgb, var(--ink) 10%, var(--white));
+  color: var(--ink);
 }
 .filters .tag[aria-current="true"]:hover {
   background: var(--ink);
@@ -1176,7 +1170,7 @@ a.st-chip-in[data-live="true"] {
   padding-left: 10px;
 }
 .sessions__server {
-  border-left: 4px solid var(--grass);
+  border-left: 4px solid var(--presence);
   padding-left: 10px;
 }
 
@@ -1187,8 +1181,11 @@ a.st-chip-in[data-live="true"] {
   overflow: visible;
 }
 .spark__area {
-  fill: var(--ink);
+  fill: var(--accent, var(--ink));
   opacity: 0.12;
+}
+[data-tone] .spark__area {
+  opacity: 0.45;
 }
 .spark__line {
   fill: none;
@@ -2276,25 +2273,25 @@ a.spark-card--link:hover .eyebrow {
 .gantt__now {
   position: absolute;
 }
-/* AFK-Arten als Vollfarben: AFK gelb, Mob-Farm rot, Block-Farm türkis – liegen über dem grünen Online-Balken */
+/* AFK-Arten über dem Online-Balken: AFK neutral grau, Farmen in der Farbe dessen, was gefarmt wird (Mobs, Blöcke) */
 .gantt__afk {
   top: 3px;
   height: 12px;
-  background: var(--gold);
+  background: var(--idle);
   box-shadow: inset 0 0 0 1px var(--line);
 }
 .legend__afk {
-  background: var(--gold);
+  background: var(--idle);
 }
 .gantt__afk[data-kind="mobs"],
 .legend__afk--mobs,
 .zr__heads li[data-afk="mobs"] {
-  background: var(--redstone);
+  background: var(--grass);
 }
 .gantt__afk[data-kind="blocks"],
 .legend__afk--blocks,
 .zr__heads li[data-afk="blocks"] {
-  background: var(--diamond);
+  background: var(--gold);
 }
 .zr__afk--farm {
   font-size: 0.5625rem;
@@ -2309,7 +2306,7 @@ a.spark-card--link:hover .eyebrow {
 .gantt__on {
   top: 3px;
   height: 12px;
-  background: var(--grass);
+  background: var(--presence);
   box-shadow: inset 0 0 0 1px var(--line);
 }
 .gantt__live {
@@ -2399,15 +2396,16 @@ a.spark-card--link:hover .eyebrow {
 }
 .zr__heads li[data-on] {
   filter: none;
-  background: var(--grass);
+  background: var(--presence);
   box-shadow: 0 0 0 2px var(--line);
   transform: translateY(-2px);
 }
 /* AFK: auf dem Server, aber ohne Bewegung – gelber Kern (Mob-Farm rot, Block-Farm türkis, s. u.) */
-.zr__heads li[data-afk] {
-  background: var(--gold);
+/* :where, damit die Farm-Farben (Mobs, Blöcke) weiter oben gewinnen */
+.zr__heads li:where([data-afk]) {
+  background: var(--idle);
 }
-/* Live: lila Ring. Der Kern bleibt grün/gelb (auf dem Server) oder grau (nur Stream). */
+/* Live: lila Ring. Der Kern bleibt im Online-/AFK-Ton (auf dem Server) oder grau (nur Stream). */
 .zr__heads li[data-live] {
   filter: none;
   box-shadow: 0 0 0 2px var(--line), 0 0 0 4px var(--twitch);
@@ -2422,7 +2420,7 @@ a.spark-card--link:hover .eyebrow {
   margin: 0 0 12px;
 }
 .zr__legend-live {
-  background: var(--grass);
+  background: var(--presence);
   box-shadow: 0 0 0 2px var(--twitch);
 }
 .zr__legend-live--off {
@@ -2553,12 +2551,6 @@ a.spark-card--link:hover .eyebrow {
   text-transform: uppercase;
   opacity: 0.7;
 }
-[data-tone="ender"] .st-board__mv--up {
-  color: var(--grass);
-}
-[data-tone="ender"] .st-board__mv--down {
-  color: var(--redstone);
-}
 
 /* Staffel-Statistik */
 .stat-card__head {
@@ -2641,7 +2633,7 @@ a.spark-card--link:hover .eyebrow {
 }
 .hm__cell {
   aspect-ratio: 1;
-  --tone: color-mix(in srgb, var(--gold) calc(var(--afk, 0) * 100%), var(--grass));
+  --tone: color-mix(in srgb, var(--idle) calc(var(--afk, 0) * 100%), var(--presence));
   background: color-mix(in srgb, var(--tone) calc(var(--a) * 100%), color-mix(in srgb, var(--ink) 7%, transparent));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent);
 }
@@ -2732,12 +2724,12 @@ a.spark-card--link:hover .eyebrow {
   left: 0;
   right: 0;
   bottom: 0;
-  background: var(--gold);
+  background: var(--idle);
 }
 .hbars i {
   display: block;
   position: relative;
-  background: var(--bar, var(--redstone));
+  background: var(--bar, var(--presence));
   box-shadow: inset 0 0 0 1px var(--line);
 }
 .hbars b {
@@ -3004,8 +2996,8 @@ a.spark-card--link:hover .eyebrow {
 .heat__c {
   aspect-ratio: 1;
   min-height: 10px;
-  /* Farbton: grün → gold je AFK-Anteil (--afk 0…1), Sättigung nach Online-Minuten (--a) */
-  --tone: color-mix(in srgb, var(--gold) calc(var(--afk, 0) * 100%), var(--grass));
+  /* Farbton: Online-Ton → AFK-Grau je AFK-Anteil (--afk 0…1), Sättigung nach Online-Minuten (--a) */
+  --tone: color-mix(in srgb, var(--idle) calc(var(--afk, 0) * 100%), var(--presence));
   background: color-mix(in srgb, var(--tone) calc(var(--a) * 100%), color-mix(in srgb, var(--ink) 8%, transparent));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent);
 }
@@ -3545,4 +3537,51 @@ a.spark-card--link:hover .eyebrow {
 .skel-fig dd,
 .skel-fig dt {
   margin: 0;
+}
+
+/* ---------- Kennzahl-Farbe als Akzent ----------
+   Kacheln, Bestenlisten, Verlaufs- und Rekordkarten bleiben weiß. Der Ton der Kennzahl (lib/statTone.ts)
+   erscheint nur als Balken oben, im Icon-Feld und unter der Kurve – so heißt Farbe überall "welche Kennzahl".
+   Neutrale Töne (white, paper, ink) haben keinen Balken. */
+:is(.st-fig, .st-board, .spark-card, .record, .chart)[data-tone] {
+  --accent: var(--bg);
+  --on-accent: var(--on-tone);
+  background: var(--white);
+  color: var(--ink);
+  box-shadow: inset 0 calc(var(--px) * 2) 0 var(--accent), var(--outline), var(--drop);
+}
+:is(.st-fig, .st-board, .spark-card, .record, .chart):is([data-tone="twitch"], [data-tone="ender"]) {
+  --on-accent: #fff;
+}
+/* Das dunkle Ender ist als schmaler Balken kaum von der Umrandung zu unterscheiden */
+:is(.st-fig, .st-board, .spark-card, .record, .chart)[data-tone="ender"] {
+  --accent: var(--ender-2);
+}
+:is(.st-fig, .st-board, .spark-card, .record, .chart):is([data-tone="white"], [data-tone="paper"], [data-tone="ink"]) {
+  --accent: transparent;
+  --on-accent: var(--ink);
+}
+:is(.st-fig, .st-board, .spark-card, .record, .chart):is([data-tone="white"], [data-tone="paper"], [data-tone="ink"]) .st-board__icon {
+  background: var(--paper);
+}
+:is(.st-fig, .st-board, .spark-card, .record, .chart)[data-tone] :focus-visible {
+  outline-color: var(--ink);
+}
+
+/* Farbmarke einer Kennzahl in Filtern und Legenden – wie die Icon-Felder der Ereignisse */
+.swatch {
+  display: inline-block;
+  flex: none;
+  width: 0.7em;
+  height: 0.7em;
+  margin-right: 0.45em;
+  vertical-align: -0.05em;
+  background: var(--bg);
+  box-shadow: 0 0 0 2px var(--line);
+}
+.swatch:is([data-tone="white"], [data-tone="paper"]) {
+  display: none;
+}
+.swatch[data-tone="ender"] {
+  background: var(--ender-2);
 }
