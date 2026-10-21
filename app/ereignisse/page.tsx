@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
-import { EVENT_GROUPS, EVENT_META, EVENT_TYPES, TIME_RANGES, typesForGroup } from "@/lib/events";
+import { EVENT_GROUPS, EVENT_META, EVENT_TYPES, TIME_RANGES, isShownEvent, typesForGroup } from "@/lib/events";
 import type { EventType } from "@/lib/types";
 import { num } from "@/lib/format";
 import { EventFeed } from "@/components/EventFeed";
@@ -49,7 +49,7 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
   // Basisfilter (ohne Kategorie), damit die Zusammenfassung pro Kategorie stimmt
   const range = TIME_RANGES.find((r) => r.key === zeit)?.ms ?? null;
   const since = range ? now - range : 0;
-  let base = [...events].reverse();
+  let base = [...events].reverse().filter(isShownEvent);
   if (since) base = base.filter((e) => Date.parse(e.at) >= since);
   if (where) base = base.filter((e) => e.where === where);
   if (player) base = base.filter((e) => e.player === player || e.meta?.raidTargetPlayerId === player);

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
+import { isShownEvent } from "@/lib/events";
 import { BOARD_KEYS, type BoardKey, type TrackerEvent } from "@/lib/types";
 import { ago, boardParts, dateTime, duration, headUrl, num, skinUrl } from "@/lib/format";
 import { EventFeed } from "@/components/EventFeed";
@@ -167,7 +168,8 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
     ...sess.map((s) => ({ ...s, kind: "server" as const, overlap: overlapSeconds(s, strm, now) })),
     ...strm.map((s) => ({ ...s, kind: "stream" as const, overlap: overlapSeconds(s, sess, now) })),
   ].sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
-  const recent = [...mine].reverse().slice(0, 150);
+  const shown = mine.filter(isShownEvent);
+  const recent = [...shown].reverse().slice(0, 150);
   const getTimeState = await getPlayerEventTimeState({
     playerEvents: mine.filter((event) => event.player === id),
     displayEvents: recent,
@@ -408,7 +410,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
               <div className="section-head">
                 <h2 className="t-2">Verlauf</h2>
                 <Link className="btn btn--small" data-tone="white" href={`/ereignisse?spieler=${encodeURIComponent(id)}`}>
-                  Alle {num(mine.length)}
+                  Alle {num(shown.length)}
                 </Link>
               </div>
               <EventFeed events={recent} showPlayer={false} empty={`Für ${p.name} wurde noch nichts aufgezeichnet.`} getTimeState={getTimeState} />

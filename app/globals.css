@@ -3568,8 +3568,12 @@ a.spark-card--link:hover .eyebrow {
   gap: 10px;
   padding: 14px 16px;
 }
-.chatbox--below {
-  margin-top: 32px;
+.chatsection {
+  margin-top: 48px;
+}
+/* Einzelne Box so breit wie eine Spalte im Profil */
+.chatpair.chatpair--single {
+  grid-template-columns: minmax(0, 620px);
 }
 .chatpair .chatbox {
   align-content: start;
@@ -3761,4 +3765,11 @@ a.spark-card--link:hover .eyebrow {
   font-weight: 600;
   opacity: 0.85;
   white-space: nowrap;
+}
+
+/* Raid-Kachel: Raider → Ziel */
+.tile__raid-arrow {
+  display: inline-grid;
+  place-items: center;
+  opacity: 0.7;
 }

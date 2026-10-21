@@ -1,4 +1,5 @@
 import "server-only";
+import { EVENT_MIN_DELTA } from "./events";
 import { createHash } from "node:crypto";
 import { appendEvents, appendFeedItems, enrichDeathEvents, getState, recordPlayerPoints, recordTopSnapshots, saveState } from "./store";
 import { fetchFollowerCounts, fetchLiveStreams, TWITCH_ENABLED, type TwitchFollowerChannel, type TwitchStream } from "./twitch";
@@ -115,7 +116,8 @@ const MIN_DELTA: Partial<Record<BoardKey, number>> = {
   distance: 500, // Meter
   blocksBroken: 100,
   mobsKilled: 10,
-  damageDealt: 20,
+  // Essen: mehr als 2; Schaden: mehr als 20 Herzen (siehe EVENT_MIN_DELTA in lib/events.ts)
+  ...EVENT_MIN_DELTA,
 };
 
 /** Meilensteine pro Zähler – beim Überschreiten gibt es ein Ereignis */

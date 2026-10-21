@@ -23,7 +23,7 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
   const [{ state, now }, subscriptionBoard, chatMessages] = await Promise.all([
     loadTracker(),
     getTwitchSubscriptionBoard(),
-    getRecentTwitchChatMessages(25),
+    getRecentTwitchChatMessages(20),
   ]);
   const subscriptions = new Map(subscriptionBoard.map((entry) => [entry.id, entry.value]));
 
@@ -141,24 +141,30 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
               ))}
             </ul>
           )}
-          <section className="box chatbox chatbox--below" data-tone="white" aria-labelledby="recent-twitch-chat">
-            <div className="chatbox__head">
-              <div>
-                <p className="eyebrow">Twitch</p>
-                <h2 className="t-3" id="recent-twitch-chat">Spieler-Chat</h2>
-              </div>
-              <p className="muted chatbox__note">
-                Was Spieler in den Twitch-Chats anderer Spieler schreiben. Die neuesten {num(chatMessages.length)}; mehr im Profil jedes Spielers.
-              </p>
+          <section className="chatsection" aria-labelledby="recent-twitch-chat">
+            <div className="section-head">
+              <h2 className="t-2" id="recent-twitch-chat">
+                Chat
+              </h2>
+              <p className="muted">Was Spieler in den Twitch-Chats anderer Spieler schreiben. Mehr im Profil jedes Spielers.</p>
             </div>
-            <div className="chatbox__scroll">
-              <ChatFeed
-                messages={chatMessages}
-                uuidOf={(id) => state.players[id]?.uuid}
-                now={now}
-                empty="Noch keine Nachrichten zwischen erfassten Spielern."
-                label="Neueste Nachrichten von Spielern in Twitch-Chats"
-              />
+            <div className="chatpair chatpair--single">
+              <div className="box chatbox" data-tone="white">
+                <div className="chatbox__head">
+                  <p className="eyebrow">
+                    Neueste Nachrichten <span className="num">({num(chatMessages.length)})</span>
+                  </p>
+                </div>
+                <div className="chatbox__scroll">
+                  <ChatFeed
+                    messages={chatMessages}
+                    uuidOf={(id) => state.players[id]?.uuid}
+                    now={now}
+                    empty="Noch keine Nachrichten zwischen erfassten Spielern."
+                    label="Neueste Nachrichten von Spielern in Twitch-Chats"
+                  />
+                </div>
+              </div>
             </div>
           </section>
         </div>

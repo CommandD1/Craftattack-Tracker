@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BOARD_KEYS, type BoardKey, type EventType, type TrackerEvent } from "@/lib/types";
-import { EVENT_META, eventBadge } from "@/lib/events";
+import { EVENT_META, eventBadge, isShownEvent } from "@/lib/events";
 import { headUrl, time } from "@/lib/format";
 import { BOARD_ICON, EVENT_ICON, Icon } from "./Icons";
 
@@ -129,7 +129,7 @@ export function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlaye
 
   return (
     <li className="tile" data-tone={meta.tone} data-type={e.type} title={`${time(e.at)} · ${sentence}`}>
-      {withHead && showPlayer ? (
+      {withHead && (showPlayer || e.type === "raid") ? (
         <Link className="tile__head" href={`/spieler/${encodeURIComponent(e.player!)}`} aria-label={e.playerName ?? e.player}>
           <img src={headUrl(e.uuid, 32, e.player)} alt="" width={32} height={32} loading="lazy" decoding="async" />
         </Link>
@@ -151,7 +151,14 @@ export function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlaye
           />
         </Link>
       )}
-      {e.type === "raid" && showPlayer && typeof e.meta?.raidTargetPlayerId === "string" && (
+      {e.type === "raid" && typeof e.meta?.raidTargetPlayerId === "string" && (
+        <span className="tile__raid-arrow" aria-hidden="true">
+          <svg viewBox="0 0 16 10" width={12} height={8}>
+            <path d="M0 4h11V1l5 4-5 4V6H0z" fill="currentColor" />
+          </svg>
+        </span>
+      )}
+      {e.type === "raid" && typeof e.meta?.raidTargetPlayerId === "string" && (
         <Link
           className="tile__head tile__head--raid-target"
           href={`/spieler/${encodeURIComponent(e.meta.raidTargetPlayerId)}`}
@@ -205,8 +212,9 @@ export function EventFeed({
   empty?: string;
   getTimeState?: (at: string) => { server: boolean; live: boolean; href?: string };
 }) {
-  if (events.length === 0) return <p className="st-online__empty">{empty}</p>;
-  const visibleEvents = combineGiftSubscriptions(events);
+  const shown = events.filter(isShownEvent);
+  if (shown.length === 0) return <p className="st-online__empty">{empty}</p>;
+  const visibleEvents = combineGiftSubscriptions(shown);
   const out: React.ReactNode[] = [];
   let lastDay = "";
   let lastMin = "";
