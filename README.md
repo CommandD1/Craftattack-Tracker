@@ -101,7 +101,7 @@ Stream-Zeit, Follower) werden addiert, Spitzenwerte als Maximum übernommen, akt
 
 ## Datenbank (PostgreSQL)
 
-- `DATABASE_URL` muss gesetzt sein (siehe `.env.example`), damit die App über `pg` direkt auf PostgreSQL zugreift. Für Render den Internal Database URL verwenden; bei lokaler Entwicklung mit einer Render-Datenbank den External Database URL. `SUPABASE_DB_URL` bleibt als Fallback für bestehende Deployments erhalten, wird aber ignoriert, wenn `DATABASE_URL` gesetzt ist. Tabellen werden beim Start angelegt.
+- `DATABASE_URL` muss gesetzt sein (siehe `.env.example`), damit die App über `pg` direkt auf PostgreSQL zugreift. Für Render den Internal Database URL verwenden; bei lokaler Entwicklung mit einer Render-Datenbank den External Database URL. Tabellen werden beim Start angelegt.
 
 Tabellen: `tracker_meta` (Status, Rekorde, letzter API-Snapshot), `players`, `events` (Chronik), `history` (Zeitreihe gesamt, einschließlich Spielerzahl), `player_history` (Spielerwerte, Follower-Gesamtstand und Twitch-Kategorie je Messpunkt; Zusatzwerte aus `/api/player` höchstens alle 5 Minuten als kompaktes `extra_stats integer[]`, Reihenfolge in `lib/playerStats.ts`), `player_top_history` (Top-Listen je Spieler: jede Minute nur die geänderten Einträge, stündlich ein vollständiger Stand als Anker), `twitch_chat_messages` (höchstens 10.000 Nachrichten zwischen Spielern; im geteilten Chat einmal je Nachricht, weitere Kanäle in `shared_with`) und `shared_chat_sessions` (geteilte Chats mit Beteiligten, Beginn und Ende). Neue Verlaufsfelder werden mit additiven `IF NOT EXISTS`-Spalten ergänzt; bestehende Daten bleiben erhalten.
 
@@ -144,8 +144,6 @@ Koordinaten liefert die API nicht. „Wo“ bedeutet daher: auf dem Server oder 
 - `/api/tracker?limit=200&player=<id>&type=<typ>` JSON-Export, `/api/cron/poll` löst eine authentifizierte Abfrage aus
 
 ## Konfiguration
-
-- `SUPABASE_DB_URL` optionaler Legacy-Fallback für bestehende Deployments; `DATABASE_URL` hat Vorrang.
 
 - `DATABASE_URL` PostgreSQL-Verbindung, z. B. `postgres://user:pass@localhost:5432/actracker`
 - `CA_STATS_URL` andere API-Adresse

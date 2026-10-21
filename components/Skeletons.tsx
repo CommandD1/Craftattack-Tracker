@@ -1,4 +1,4 @@
-export function FigsSkeleton({ n = 4 }: { n?: number }) {
+function FigsSkeleton({ n = 4 }: { n?: number }) {
   return (
     <dl className={`grid st-figs${n === 6 ? " st-figs--6" : ""}`} aria-hidden="true">
       {Array.from({ length: n }).map((_, i) => (
@@ -11,7 +11,7 @@ export function FigsSkeleton({ n = 4 }: { n?: number }) {
   );
 }
 
-export function RowsSkeleton({ n = 6 }: { n?: number }) {
+function RowsSkeleton({ n = 6 }: { n?: number }) {
   return (
     <ul className="feed" aria-hidden="true">
       {Array.from({ length: n }).map((_, i) => (

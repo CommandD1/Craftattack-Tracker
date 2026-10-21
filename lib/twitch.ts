@@ -123,8 +123,8 @@ export interface TwitchStream {
   gameName: string;
 }
 
-export const streamUrl = (login: string) => `https://www.twitch.tv/${encodeURIComponent(login)}`;
-export const videoUrl = (vodId: string) => `https://www.twitch.tv/videos/${encodeURIComponent(vodId)}`;
+const streamUrl = (login: string) => `https://www.twitch.tv/${encodeURIComponent(login)}`;
+const videoUrl = (vodId: string) => `https://www.twitch.tv/videos/${encodeURIComponent(vodId)}`;
 
 /**
  * Fragt für alle Logins ab, wer gerade live ist (bis zu 100 Logins pro Anfrage).
@@ -259,7 +259,7 @@ export async function findVodAt(login: string, atMs: number): Promise<{ vodId: s
 }
 
 /** Sucht das passende VOD und steigt für Ereignislinks etwas vor dem Zeitpunkt ein. */
-export async function findVod(login: string, atMs: number): Promise<{ vodId: string; offset: number } | null> {
+async function findVod(login: string, atMs: number): Promise<{ vodId: string; offset: number } | null> {
   const hit = await findVodAt(login, atMs);
   return hit ? { vodId: hit.vodId, offset: Math.max(0, hit.offset - LEAD_SECONDS) } : null;
 }
@@ -391,7 +391,7 @@ export function withLiveLinks(events: TrackerEvent[], liveNow: { player: string;
 }
 
 /** Laufender geteilter Chat (Stream Together) eines Kanals laut Twitch */
-export interface TwitchSharedChatSession {
+interface TwitchSharedChatSession {
   sessionId: string;
   hostBroadcasterId: string;
   /** Twitch-Nutzer-IDs aller beteiligten Kanäle */

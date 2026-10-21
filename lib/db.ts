@@ -2,8 +2,7 @@ import "server-only";
 
 /**
  * Datenbank-Anbindung.
- * `DATABASE_URL` enthält die PostgreSQL-Verbindung; `SUPABASE_DB_URL` bleibt
- * als Fallback für bestehende Deployments erhalten.
+ * `DATABASE_URL` enthält die PostgreSQL-Verbindung.
  */
 export interface Db {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -13,7 +12,7 @@ export interface Db {
 type Globals = typeof globalThis & { __acDb?: Promise<Db> };
 
 async function connect(): Promise<Db> {
-  const url = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
+  const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error("DATABASE_URL is required to connect to PostgreSQL.");
   }

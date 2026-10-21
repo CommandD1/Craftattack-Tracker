@@ -30,7 +30,7 @@ function g() {
   return gl.__acTracker;
 }
 
-export function freshState(): TrackerState {
+function freshState(): TrackerState {
   return {
     startedAt: new Date().toISOString(),
     lastPoll: null,
@@ -634,7 +634,7 @@ export async function incrementLiveSubscriptionEvent(event: TrackerEvent): Promi
   if (row.inserted && store.state) store.state.eventCount += 1;
 }
 
-export interface TwitchSubscriptionPoint {
+interface TwitchSubscriptionPoint {
   at: string;
   value: number;
 }
@@ -709,13 +709,13 @@ const chatFromRow = (row: ChatRow): TwitchChatMessage => ({
   sharedWith: row.shared_with ?? [],
 });
 
-export interface ChatPartner {
+interface ChatPartner {
   id: string;
   name: string;
   count: number;
 }
 
-export interface PlayerChat {
+interface PlayerChat {
   /** Nachrichten des Spielers in fremden Chats */
   sent: TwitchChatMessage[];
   /** Nachrichten anderer Spieler im Chat dieses Spielers */
@@ -914,7 +914,7 @@ export async function getPlayerSharedChatSessions(id: string, limit = 20): Promi
   ).rows.map(sharedFromRow);
 }
 
-export interface TwitchSubscriptionProfile {
+interface TwitchSubscriptionProfile {
   total: number;
   currentStream: number;
   history: TwitchSubscriptionPoint[];
@@ -1004,7 +1004,7 @@ export async function getTwitchSubscriptionBoard(): Promise<FullBoardEntry[]> {
   }));
 }
 
-export interface TwitchSubscriptionMinuteRecord {
+interface TwitchSubscriptionMinuteRecord {
   id: string;
   name: string;
   uuid: string;
@@ -1331,7 +1331,7 @@ export async function getPlayerHistory(id: string, limit = 3000): Promise<Player
 
 /* ---------- Komplette Bestenlisten (alle bekannten Spieler) ---------- */
 
-export interface FullBoardEntry {
+interface FullBoardEntry {
   id: string;
   name: string;
   uuid: string;
@@ -1479,7 +1479,7 @@ export async function getHistoryAll(): Promise<{ points: TotalsPoint[]; bucketMi
   });
 }
 
-export interface TotalsSeriesPoint {
+interface TotalsSeriesPoint {
   at: string;
   diamonds: number;
   blocksBroken: number;
@@ -1546,7 +1546,7 @@ export async function getBoardTotalsOverTime(): Promise<{ points: TotalsSeriesPo
   });
 }
 
-export interface DayCount {
+interface DayCount {
   day: string; // YYYY-MM-DD (Europe/Berlin)
   value: number;
 }
@@ -1604,13 +1604,13 @@ const BASE_SERIES_METRICS = [
 export type SeriesMetric = (typeof BASE_SERIES_METRICS)[number] | ExtraMetric;
 export const SERIES_METRICS: readonly SeriesMetric[] = [...BASE_SERIES_METRICS, ...EXTRA_METRICS];
 
-export interface SeriesLine {
+interface SeriesLine {
   id: string;
   name: string;
   points: { at: string; v: number }[];
 }
 
-export interface SeriesQuery {
+interface SeriesQuery {
   metric: SeriesMetric;
   /** Leer = Server bzw. alle Spieler zusammen */
   players: string[];

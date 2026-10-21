@@ -53,9 +53,6 @@ export interface PlayerRank {
   of: number;
 }
 
-/** Zähler-Keys, die /api/player/<id> für jeden Spieler liefert (seit dem Wechsel von /api/ext alle Board-Keys) */
-export type ExtKey = BoardKey;
-export const EXT_KEYS: ExtKey[] = BOARD_KEYS;
 
 /** Eintrag einer Top-Liste je Spieler (z. B. meistabgebaute Blöcke) laut /api/player/<id> */
 export interface PlayerTopEntry {
@@ -217,7 +214,7 @@ export interface PlayerState {
   /** Letzter bekannter Stand aus den Boards bzw. /api/player/<id> */
   stats: Partial<Record<BoardKey, number>>;
   /** Ränge laut /api/player/<id> (leer, solange der Spieler dort noch nie abgefragt wurde) */
-  ranks: Partial<Record<ExtKey, PlayerRank>>;
+  ranks: Partial<Record<BoardKey, PlayerRank>>;
   /**
    * Twitch-Login des Spielers; weicht bei einigen Spielern von der ID ab (z. B. rohaze → xrohat). Wird für
    * Twitch-Live-Status und Follower gebraucht und gemerkt, sobald der Spieler einmal live war oder
@@ -302,7 +299,7 @@ export interface PlayerPoint {
   foodEaten: number | null;
   followersOnServer: number | null;
   followersTotal: number | null;
-  ranks: Partial<Record<ExtKey, PlayerRank>>;
+  ranks: Partial<Record<BoardKey, PlayerRank>>;
   streamGameId: string | null;
   streamGameName: string | null;
   /** Zusatzwerte aus /api/player/<id> zu diesem Zeitpunkt (API-Keys); leer = nicht frisch abgefragt */

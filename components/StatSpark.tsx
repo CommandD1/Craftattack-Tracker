@@ -5,7 +5,7 @@ import { boardValue, num } from "@/lib/format";
 import Link from "next/link";
 import { Sparkline } from "./Sparkline";
 
-export type SparkKey =
+type SparkKey =
   | "viewers"
   | "playtimeSeconds"
   | "deaths"

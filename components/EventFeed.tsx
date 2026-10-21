@@ -110,7 +110,7 @@ function detail(e: TrackerEvent): string | null {
 }
 
 /** Kompakte Kachel für ein Ereignis. Der volle Satz steht im Tooltip. */
-export function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlayer?: boolean }) {
+function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlayer?: boolean }) {
   const meta = EVENT_META[e.type];
   const IconCmp = Icon[EVENT_ICON[e.type]];
   const sub = meta.sub?.(e);

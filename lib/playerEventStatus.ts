@@ -9,7 +9,7 @@ interface StreamSession {
   login: string | null;
 }
 
-export interface PlayerEventTimeState {
+interface PlayerEventTimeState {
   server: boolean;
   live: boolean;
   href?: string;

@@ -38,7 +38,7 @@ const GIFT_NOTICE_IDS = new Set([
   "communitypayforward",
 ]);
 
-export interface TwitchIrcMessage {
+interface TwitchIrcMessage {
   tags: Record<string, string>;
   prefix: string | null;
   command: string;
@@ -58,7 +58,7 @@ function unescapeTag(value: string): string {
   });
 }
 
-export function parseTwitchIrcMessage(line: string): TwitchIrcMessage | null {
+function parseTwitchIrcMessage(line: string): TwitchIrcMessage | null {
   const match = /^(?:@([^ ]+) )?(?::([^ ]+) )?([^ ]+)(?: (.*))?$/.exec(line);
   if (!match) return null;
   const tags: Record<string, string> = {};
@@ -82,7 +82,7 @@ export function parseTwitchIrcMessage(line: string): TwitchIrcMessage | null {
   };
 }
 
-export interface ChannelOwner {
+interface ChannelOwner {
   id: string;
   name: string;
   uuid: string;
@@ -191,7 +191,7 @@ function playerForTwitchLogin(players: Record<string, PlayerState>, login: strin
   );
 }
 
-export function nextJoinDelay(joinTimes: number[], now: number): number {
+function nextJoinDelay(joinTimes: number[], now: number): number {
   while (joinTimes.length > 0 && joinTimes[0] <= now - JOIN_WINDOW_MS) joinTimes.shift();
   const windowDelay = joinTimes.length >= MAX_JOINS_PER_WINDOW
     ? joinTimes[0] + JOIN_WINDOW_MS - now
@@ -289,7 +289,7 @@ function connect(irc: IrcState) {
   }
 }
 
-export function subscriptionEventFromNotice(message: TwitchIrcMessage, owner?: ChannelOwner): TrackerEvent | null {
+function subscriptionEventFromNotice(message: TwitchIrcMessage, owner?: ChannelOwner): TrackerEvent | null {
   if (message.command !== "USERNOTICE") return null;
   const msgId = message.tags["msg-id"];
   const kind = msgId ? SUB_NOTICE_TYPES[msgId] : null;
