@@ -76,7 +76,7 @@ export function Timelapse({ data }: { data: TimelapseData }) {
           {num(f.online.length)} online
         </span>
         {f.afk.length > 0 && (
-          <span className="tag" data-tone="paper" title="Auf dem Server, aber seit mindestens 20 Minuten keine Bewegung · davon an einer AFK-Farm">
+          <span className="tag" data-tone="idle" title="Auf dem Server, aber seit mindestens 20 Minuten keine Bewegung · davon an einer AFK-Farm">
             {num(f.afk.length)} AFK{farming > 0 ? ` · ${num(farming)} farmen` : ""}
           </span>
         )}

@@ -98,7 +98,7 @@ async function Dashboard() {
           <h2 className="sr-only" id="fig-h">
             Auf einen Blick
           </h2>
-          <dl className="grid st-figs st-figs--6">
+          <dl className="grid st-figs st-figs--5">
             <Link href="/spieler?filter=online" className="box st-fig" data-tone={METRIC_TONE.onlineCount}>
               <dt>Online</dt>
               <FigValue>{s ? num(s.onlineCount) : "–"}</FigValue>
@@ -118,10 +118,6 @@ async function Dashboard() {
             <Link href="/ereignisse?g=death" className="box st-fig" data-tone={BOARD_TONE.deaths}>
               <dt>Tode</dt>
               <FigValue>{s ? num(s.totals.deaths) : "–"}</FigValue>
-            </Link>
-            <Link href="/ereignisse" className="box st-fig" data-tone={METRIC_TONE.events}>
-              <dt>Ereignisse</dt>
-              <FigValue>{num(state.eventCount)}</FigValue>
             </Link>
           </dl>
         </div>

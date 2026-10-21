@@ -205,7 +205,7 @@ async function HeadSection({ params }: { params: Params }) {
                 </span>
               )}
               {p.online && p.afkSince && (
-                <span className="tag" data-tone="paper" title={p.afkFarm ? `Die Strecke steigt nicht, aber ${p.afkFarm === "mobs" ? "Mobs sterben" : "Blöcke fallen"} – eine AFK-Farm` : "Die gelaufene Strecke steigt seit mindestens 20 Minuten nicht"}>
+                <span className="tag" data-tone="idle" title={p.afkFarm ? `Die Strecke steigt nicht, aber ${p.afkFarm === "mobs" ? "Mobs sterben" : "Blöcke fallen"} – eine AFK-Farm` : "Die gelaufene Strecke steigt seit mindestens 20 Minuten nicht"}>
                   AFK seit {ago(p.afkSince).replace("vor ", "")}
                   {p.afkFarm ? ` · ${p.afkFarm === "mobs" ? "farmt Mobs" : "baut Blöcke ab"}` : ""}
                 </span>
