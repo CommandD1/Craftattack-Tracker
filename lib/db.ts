@@ -171,8 +171,8 @@ async function migrate(db: Db) {
   // Zusatzwerte aus /api/player/<id> als kompaktes integer[] (Reihenfolge: EXTRA_HISTORY_KEYS in lib/playerStats.ts),
   // höchstens alle 5 Minuten je Spieler gesetzt, sonst NULL (kostet dann nur ein Bit)
   await db.query(`ALTER TABLE player_history ADD COLUMN IF NOT EXISTS extra_stats integer[]`);
-  // Top-Listen je Spieler (meistabgebaute Blöcke usw.): höchstens stündlich und nur bei Änderung,
-  // kompakt als {"liste": {"item": anzahl}} ohne Anzeigenamen
+  // Top-Listen je Spieler (meistabgebaute Blöcke usw.): jede Minute, aber nur Änderungen; stündlich ein
+  // vollständiger Stand als Anker. Kompakt als {"liste": {"item": anzahl}} ohne Anzeigenamen
   await db.query(`
     CREATE TABLE IF NOT EXISTS player_top_history (
       player text NOT NULL,
@@ -180,6 +180,9 @@ async function migrate(db: Db) {
       tops   jsonb NOT NULL,
       PRIMARY KEY (player, at)
     )`);
+  // anchor = vollständiger Stand; false = nur die seit dem vorigen Stand geänderten Einträge.
+  // Alte Zeilen waren immer vollständig. („full" wäre ein reserviertes Wort in PostgreSQL.)
+  await db.query(`ALTER TABLE player_top_history ADD COLUMN IF NOT EXISTS anchor boolean NOT NULL DEFAULT true`);
   await db.query(`
     CREATE TABLE IF NOT EXISTS history (
       at               timestamptz PRIMARY KEY,

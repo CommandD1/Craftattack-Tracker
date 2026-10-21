@@ -675,47 +675,92 @@ export async function getPlayerTwitchChat(id: string, limit = 30): Promise<Playe
 
 /** Kompakter Stand: Liste → Item-Key → Anzahl */
 export type TopSnapshot = Record<string, Record<string, number>>;
-const TOP_HISTORY_INTERVAL_MS = 60 * 60_000;
-const lastTopSnapshot = new Map<string, { at: number; sig: string }>();
+/** Spätestens nach dieser Zeit wird statt einer Änderung wieder ein vollständiger Stand gespeichert (Anker) */
+const TOP_FULL_INTERVAL_MS = 60 * 60_000;
+/** Letzter gespeicherter Stand je Spieler (vollständig rekonstruiert) und Zeit des letzten Ankers */
+const lastTopSnapshot = new Map<string, { fullAt: number; counts: TopSnapshot }>();
 
 /**
- * Speichert die Top-Listen frisch abgefragter Spieler: höchstens stündlich und nur, wenn sich etwas geändert hat.
- * Ohne Anzeigenamen (die stehen im aktuellen `players.detail`), damit jede Zeile klein bleibt.
+ * Speichert die Top-Listen frisch abgefragter (also online) Spieler bei jedem Poll, aber platzsparend:
+ * - nur wenn sich etwas geändert hat,
+ * - meist nur die geänderten Einträge (`anchor = false`, oft unter 100 Byte),
+ * - höchstens stündlich und nach jedem Neustart ein vollständiger Stand als Anker (`anchor = true`, ~1 KB).
+ * Ohne Anzeigenamen (die stehen im aktuellen `players.detail`).
  */
 export async function recordTopSnapshots(players: PlayerState[], at: string, freshDetail: Set<string>) {
   const t = Date.parse(at);
   const rows: unknown[][] = [];
-  const written: { id: string; sig: string }[] = [];
+  const written: { id: string; fullAt: number; counts: TopSnapshot }[] = [];
   for (const p of players) {
     if (!p.detail || !freshDetail.has(p.id)) continue;
-    const last = lastTopSnapshot.get(p.id);
-    if (last && t - last.at < TOP_HISTORY_INTERVAL_MS) continue;
     const snapshot: TopSnapshot = {};
     for (const [list, entries] of Object.entries(p.detail.tops)) {
       if (entries.length) snapshot[list] = Object.fromEntries(entries.map((e) => [e.key, e.count]));
     }
     if (Object.keys(snapshot).length === 0) continue;
-    const sig = JSON.stringify(snapshot);
-    if (last?.sig === sig) continue;
-    rows.push([p.id, toDate(at), sig]);
-    written.push({ id: p.id, sig });
+    const last = lastTopSnapshot.get(p.id);
+    const changes: TopSnapshot = {};
+    let changed = 0;
+    for (const [list, items] of Object.entries(snapshot)) {
+      for (const [key, count] of Object.entries(items)) {
+        if (last?.counts[list]?.[key] === count) continue;
+        (changes[list] ??= {})[key] = count;
+        changed += 1;
+      }
+    }
+    if (last && changed === 0) continue;
+    const full = !last || t - last.fullAt >= TOP_FULL_INTERVAL_MS;
+    rows.push([p.id, toDate(at), JSON.stringify(full ? snapshot : changes), full]);
+    // Auch nach einer Änderung bleibt der Gesamtstand bekannt: alte Werte plus Änderungen
+    const counts: TopSnapshot = full ? snapshot : { ...last!.counts };
+    if (!full) for (const [list, items] of Object.entries(changes)) counts[list] = { ...(counts[list] ?? {}), ...items };
+    written.push({ id: p.id, fullAt: full ? t : last!.fullAt, counts });
   }
   if (rows.length === 0) return;
   const db = await getDb();
-  await insertRows(db, "player_top_history", ["player", "at", "tops"], rows, "ON CONFLICT (player, at) DO NOTHING");
-  for (const { id, sig } of written) lastTopSnapshot.set(id, { at: t, sig });
+  await insertRows(db, "player_top_history", ["player", "at", "tops", "anchor"], rows, "ON CONFLICT (player, at) DO NOTHING");
+  for (const { id, fullAt, counts } of written) lastTopSnapshot.set(id, { fullAt, counts });
 }
 
-/** Verlauf der Top-Listen eines Spielers, älteste zuerst */
-export async function getPlayerTopHistory(id: string, limit = 400): Promise<{ at: string; tops: TopSnapshot }[]> {
+/**
+ * Verlauf der Top-Listen eines Spielers über die letzten `hours` Stunden, älteste zuerst.
+ * Ab dem letzten Anker vor dem Zeitfenster werden die Änderungen aufaddiert; zurück kommt je
+ * `bucketMinutes` der letzte Gesamtstand, damit das Profil nicht tausende Minutenpunkte verarbeiten muss.
+ */
+export async function getPlayerTopHistory(id: string, hours = 25, bucketMinutes = 30): Promise<{ at: string; tops: TopSnapshot }[]> {
   const db = await getDb();
+  const since = new Date(Date.now() - hours * 3600_000);
   const rows = (
-    await db.query<{ at: Date; tops: TopSnapshot }>(
-      `SELECT at, tops FROM player_top_history WHERE player = $1 ORDER BY at DESC LIMIT $2`,
-      [id, limit],
+    await db.query<{ at: Date; tops: TopSnapshot; anchor: boolean }>(
+      `SELECT at, tops, anchor FROM player_top_history
+        WHERE player = $1
+          AND at >= COALESCE(
+                (SELECT max(at) FROM player_top_history WHERE player = $1 AND anchor AND at <= $2),
+                (SELECT min(at) FROM player_top_history WHERE player = $1 AND anchor),
+                $2)
+        ORDER BY at`,
+      [id, since],
     )
   ).rows;
-  return rows.reverse().map((r) => ({ at: iso(r.at)!, tops: r.tops }));
+  const bucketMs = bucketMinutes * 60_000;
+  const out: { at: string; tops: TopSnapshot }[] = [];
+  let state: TopSnapshot | null = null;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (r.anchor) state = r.tops;
+    else if (state) {
+      const merged: TopSnapshot = { ...state };
+      for (const [list, items] of Object.entries(r.tops)) merged[list] = { ...(merged[list] ?? {}), ...items };
+      state = merged;
+    }
+    // Änderungen ohne vorherigen Anker lassen sich nicht einordnen
+    if (!state) continue;
+    const t = new Date(r.at).getTime();
+    const next = rows[i + 1] ? new Date(rows[i + 1].at).getTime() : null;
+    // Letzter Stand je Bündel (und immer der allerletzte)
+    if (next === null || Math.floor(next / bucketMs) !== Math.floor(t / bucketMs)) out.push({ at: iso(r.at)!, tops: state });
+  }
+  return out;
 }
 
 export async function getRecentTwitchChatMessages(limit = 50): Promise<TwitchChatMessage[]> {
