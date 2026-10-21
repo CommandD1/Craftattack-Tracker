@@ -139,6 +139,42 @@ async function migrate(db: Db) {
       message      text NOT NULL
     )`);
   await db.query(`CREATE INDEX IF NOT EXISTS twitch_chat_messages_at_idx ON twitch_chat_messages (at DESC, id DESC)`);
+  // Geteilter Chat (Stream Together): weitere Spieler, in deren Chat dieselbe Nachricht ebenfalls erschien
+  await db.query(`ALTER TABLE twitch_chat_messages ADD COLUMN IF NOT EXISTS shared_with text[]`);
+  // Aufräumen aus der Zeit vor der Erkennung: Im geteilten Chat wurde dieselbe Nachricht (gleicher Absender, Text
+  // und Zeitstempel auf die Millisekunde) je Kanal einmal gespeichert. Daraus wird eine Zeile mit `shared_with`.
+  // War der Absender selbst einer der Kanäle, schrieb er im eigenen Chat: dann zählt die Nachricht gar nicht.
+  // Ohne solche Gruppen ändert sich nichts.
+  await db.query(`
+    WITH g AS (
+      SELECT sender_id, message, at, min(id) AS keep_id, array_agg(channel_id) AS chans
+        FROM twitch_chat_messages GROUP BY sender_id, message, at HAVING count(*) > 1
+    ), own AS (
+      DELETE FROM twitch_chat_messages t USING g
+       WHERE t.sender_id = g.sender_id AND t.message = g.message AND t.at = g.at AND g.sender_id = ANY(g.chans)
+    ), keep AS (
+      UPDATE twitch_chat_messages t
+         SET shared_with = ARRAY(SELECT DISTINCT c FROM unnest(g.chans || COALESCE(t.shared_with, '{}')) AS c WHERE c <> t.channel_id)
+        FROM g
+       WHERE t.id = g.keep_id AND NOT (g.sender_id = ANY(g.chans))
+    )
+    DELETE FROM twitch_chat_messages t USING g
+     WHERE t.sender_id = g.sender_id AND t.message = g.message AND t.at = g.at
+       AND t.id <> g.keep_id AND NOT (g.sender_id = ANY(g.chans))`);
+  // Geteilte Chats (Stream Together) zwischen Kanälen: aus der Twitch-API (session_id) oder, ohne API-Zugang,
+  // aus geteilten Chat-Nachrichten erschlossen. participants = erfasste Spieler, other_count = weitere Kanäle.
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS shared_chat_sessions (
+      key          text PRIMARY KEY,
+      session_id   text,
+      source       text NOT NULL,
+      participants text[] NOT NULL,
+      other_count  integer NOT NULL DEFAULT 0,
+      started_at   timestamptz NOT NULL,
+      last_seen_at timestamptz NOT NULL,
+      ended_at     timestamptz
+    )`);
+  await db.query(`CREATE INDEX IF NOT EXISTS shared_chat_sessions_started_idx ON shared_chat_sessions (started_at DESC)`);
   // Chat je Spieler im Profil (Tabelle ist auf 10.000 Nachrichten begrenzt, die Indizes bleiben klein)
   await db.query(`CREATE INDEX IF NOT EXISTS twitch_chat_messages_sender_idx ON twitch_chat_messages (sender_id, at DESC)`);
   await db.query(`CREATE INDEX IF NOT EXISTS twitch_chat_messages_channel_idx ON twitch_chat_messages (channel_id, at DESC)`);

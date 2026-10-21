@@ -113,6 +113,8 @@ async function fetchVideos(key: string): Promise<Vod[]> {
 
 /** Laufender Stream laut Twitch Helix `streams` */
 export interface TwitchStream {
+  /** Twitch-Nutzer-ID des Kanals (für Shared-Chat-Abfragen) */
+  userId?: string;
   login: string;
   title: string;
   viewers: number;
@@ -145,10 +147,11 @@ export async function fetchLiveStreams(logins: Iterable<string>): Promise<Map<st
     });
     if (res.status === 401) g().token = null;
     if (!res.ok) throw new Error(`Twitch streams HTTP ${res.status}`);
-    const data = ((await res.json()) as { data: { user_login: string; user_name: string; title: string; viewer_count: number; started_at: string; type: string; game_id: string; game_name: string }[] }).data;
+    const data = ((await res.json()) as { data: { user_id: string; user_login: string; user_name: string; title: string; viewer_count: number; started_at: string; type: string; game_id: string; game_name: string }[] }).data;
     for (const s of data) {
       if (s.type !== "live") continue;
       out.set(s.user_login.toLowerCase(), {
+        userId: s.user_id,
         login: s.user_login,
         title: s.title,
         viewers: s.viewer_count,
@@ -385,4 +388,28 @@ export function withLiveLinks(events: TrackerEvent[], liveNow: { player: string;
     if (!l || Date.parse(e.at) < Date.parse(l.since) - 60_000) return e;
     return { ...e, meta: { ...e.meta, liveUrl: streamUrl(l.login) } };
   });
+}
+
+/** Laufender geteilter Chat (Stream Together) eines Kanals laut Twitch */
+export interface TwitchSharedChatSession {
+  sessionId: string;
+  hostBroadcasterId: string;
+  /** Twitch-Nutzer-IDs aller beteiligten Kanäle */
+  participants: string[];
+  createdAt: string;
+}
+
+/**
+ * Fragt den geteilten Chat eines Kanals ab (GET /helix/shared_chat/session, App-Token genügt).
+ * `null`, wenn der Kanal gerade keinen geteilten Chat hat.
+ */
+export async function fetchSharedChatSession(broadcasterId: string): Promise<TwitchSharedChatSession | null> {
+  if (!TWITCH_ENABLED) return null;
+  const data = await helix<{ session_id: string; host_broadcaster_id: string; participants: { broadcaster_id: string }[]; created_at: string }>(
+    "shared_chat/session",
+    { broadcaster_id: broadcasterId },
+  );
+  const s = data[0];
+  if (!s?.session_id) return null;
+  return { sessionId: s.session_id, hostBroadcasterId: s.host_broadcaster_id, participants: s.participants.map((p) => p.broadcaster_id), createdAt: s.created_at };
 }

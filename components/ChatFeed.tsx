@@ -29,6 +29,7 @@ function Who({ id, name, uuid, role }: { id: string; name: string; uuid: string 
 export function ChatFeed({
   messages,
   uuidOf,
+  nameOf = (id) => id,
   now,
   empty,
   label,
@@ -36,6 +37,8 @@ export function ChatFeed({
   messages: TwitchChatMessage[];
   /** Spieler-ID → Minecraft-UUID für den Kopf */
   uuidOf: (id: string) => string | undefined;
+  /** Spieler-ID → Anzeigename (für „geteilt mit …") */
+  nameOf?: (id: string) => string;
   now: number;
   empty: string;
   label: string;
@@ -63,6 +66,16 @@ export function ChatFeed({
                     <path d="M0 4h11V1l5 4-5 4V6H0z" fill="currentColor" />
                   </svg>
                   <Who id={m.channelId} name={m.channelName} uuid={uuidOf(m.channelId)} role="to" />
+                  {m.sharedWith && m.sharedWith.length > 0 && (
+                    <span className="chat__shared" title={`Geteilter Chat: erschien auch bei ${m.sharedWith.map(nameOf).join(", ")}`}>
+                      <span className="chat__shared-label">geteilt</span>
+                      {m.sharedWith.slice(0, 4).map((id) => (
+                        <Link key={id} href={`/spieler/${encodeURIComponent(id)}`} aria-label={`auch bei ${nameOf(id)}`}>
+                          <img className="chat__head chat__head--small" src={headUrl(uuidOf(id), 32, id)} alt="" width={16} height={16} loading="lazy" />
+                        </Link>
+                      ))}
+                    </span>
+                  )}
                   <time className="chat__time" dateTime={m.at} title={dateTime(m.at)}>
                     {ago(m.at, now)}
                   </time>

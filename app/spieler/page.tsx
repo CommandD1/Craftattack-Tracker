@@ -159,6 +159,7 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
                   <ChatFeed
                     messages={chatMessages}
                     uuidOf={(id) => state.players[id]?.uuid}
+                    nameOf={(id) => state.players[id]?.name ?? id}
                     now={now}
                     empty="Noch keine Nachrichten zwischen erfassten Spielern."
                     label="Neueste Nachrichten von Spielern in Twitch-Chats"

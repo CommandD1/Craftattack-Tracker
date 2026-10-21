@@ -2,14 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
-import { isShownEvent } from "@/lib/events";
+import { isShownEvent, sharedChatPlayers } from "@/lib/events";
 import { BOARD_KEYS, type BoardKey, type TrackerEvent } from "@/lib/types";
 import { ago, boardParts, dateTime, duration, headUrl, num, skinUrl } from "@/lib/format";
 import { EventFeed } from "@/components/EventFeed";
 import { BOARD_ICON, Icon } from "@/components/Icons";
 import { FigValue } from "@/components/FigValue";
 import { StatSpark } from "@/components/StatSpark";
-import { getAllSessions, getFullBoard, getPlayerHistory, getPlayerTopHistory, getPlayerTwitchChat, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
+import { getAllSessions, getFullBoard, getPlayerHistory, getPlayerSharedChatSessions, getPlayerTopHistory, getPlayerTwitchChat, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
+import { SharedChatList } from "@/components/SharedChatList";
 import { ChatFeed, ChatPartners } from "@/components/ChatFeed";
 import { companionsOf, overlapsFor } from "@/lib/overlap";
 import { TwitchEmbed } from "@/components/TwitchEmbed";
@@ -131,7 +132,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const { state, events, now } = await loadTracker();
   const p = state.players[id];
   if (!p) notFound();
-  const [history, allSessions, rates, rankHistory, afkSpans, subscriptions, subscriptionBoard, followerBoard, chat, topHistory] = await Promise.all([
+  const [history, allSessions, rates, rankHistory, afkSpans, subscriptions, subscriptionBoard, followerBoard, chat, topHistory, sharedSessions] = await Promise.all([
     getPlayerHistory(id),
     getAllSessions(),
     getPlayerRates(),
@@ -142,6 +143,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
     getFullBoard("followers"),
     getPlayerTwitchChat(id, 20),
     getPlayerTopHistory(id),
+    getPlayerSharedChatSessions(id),
   ]);
   const overlaps = overlapsFor(id, allSessions, now);
   const nameOf = (pid: string) => state.players[pid]?.name ?? pid;
@@ -159,7 +161,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
   const activeSeconds = Math.max(0, onlineSeconds - afkSeconds);
   /** Link auf den Graphen der Statistik-Seite für diese Kennzahl und diesen Spieler */
   const graphHref = (metric: string) => `/statistik?metric=${metric}&spieler=${encodeURIComponent(id)}&zeit=alle#graph`;
-  const mine = events.filter((e) => e.player === id || e.meta?.raidTargetPlayerId === id);
+  const mine = events.filter((e) => e.player === id || e.meta?.raidTargetPlayerId === id || sharedChatPlayers(e).includes(id));
   const sess = sessions(mine, p.online, p.sessionStart, now);
   const serverSessions = allSessions.filter((session) => session.player === id);
   const strm = streams(mine, Boolean(p.live), p.liveSince, now, p.live?.login);
@@ -559,7 +561,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
         </div>
       </section>
 
-      {(chat.sentTotal > 0 || chat.receivedTotal > 0) && (
+      {(chat.sentTotal > 0 || chat.receivedTotal > 0 || sharedSessions.length > 0) && (
         <section className="block block--tight" data-tone="paper" aria-labelledby="chat-h">
           <div className="wrap">
             <div className="section-head">
@@ -568,42 +570,56 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
               </h2>
               <p className="muted">Nachrichten zwischen {p.name} und anderen Spielern in Twitch-Chats.</p>
             </div>
-            <div className="chatpair">
-              <div className="box chatbox" data-tone="white">
+            {sharedSessions.length > 0 && (
+              <div className="box chatbox sharedbox" data-tone="white">
                 <div className="chatbox__head">
                   <p className="eyebrow">
-                    Schreibt bei anderen <span className="num">({num(chat.sentTotal)})</span>
+                    Geteilter Chat · Stream Together <span className="num">({num(sharedSessions.length)})</span>
                   </p>
-                  <ChatPartners partners={chat.writesIn} label={`In wessen Chat ${p.name} schreibt`} />
                 </div>
-                <div className="chatbox__scroll">
-                  <ChatFeed
-                    messages={chat.sent}
-                    uuidOf={(pid) => state.players[pid]?.uuid}
-                    now={now}
-                    empty={`${p.name} hat noch in keinem Spieler-Chat geschrieben.`}
-                    label={`Nachrichten von ${p.name}`}
-                  />
+                <SharedChatList sessions={sharedSessions} self={id} players={state.players} now={now} />
+              </div>
+            )}
+            {(chat.sentTotal > 0 || chat.receivedTotal > 0) && (
+              <div className="chatpair">
+                <div className="box chatbox" data-tone="white">
+                  <div className="chatbox__head">
+                    <p className="eyebrow">
+                      Schreibt bei anderen <span className="num">({num(chat.sentTotal)})</span>
+                    </p>
+                    <ChatPartners partners={chat.writesIn} label={`In wessen Chat ${p.name} schreibt`} />
+                  </div>
+                  <div className="chatbox__scroll">
+                    <ChatFeed
+                      messages={chat.sent}
+                      uuidOf={(pid) => state.players[pid]?.uuid}
+                      nameOf={(pid) => state.players[pid]?.name ?? pid}
+                      now={now}
+                      empty={`${p.name} hat noch in keinem Spieler-Chat geschrieben.`}
+                      label={`Nachrichten von ${p.name}`}
+                    />
+                  </div>
+                </div>
+                <div className="box chatbox" data-tone="white">
+                  <div className="chatbox__head">
+                    <p className="eyebrow">
+                      Im eigenen Chat <span className="num">({num(chat.receivedTotal)})</span>
+                    </p>
+                    <ChatPartners partners={chat.visitors} label={`Wer im Chat von ${p.name} schreibt`} />
+                  </div>
+                  <div className="chatbox__scroll">
+                    <ChatFeed
+                      messages={chat.received}
+                      uuidOf={(pid) => state.players[pid]?.uuid}
+                      nameOf={(pid) => state.players[pid]?.name ?? pid}
+                      now={now}
+                      empty={`Im Chat von ${p.name} hat noch kein Spieler geschrieben.`}
+                      label={`Nachrichten im Chat von ${p.name}`}
+                    />
+                  </div>
                 </div>
               </div>
-              <div className="box chatbox" data-tone="white">
-                <div className="chatbox__head">
-                  <p className="eyebrow">
-                    Im eigenen Chat <span className="num">({num(chat.receivedTotal)})</span>
-                  </p>
-                  <ChatPartners partners={chat.visitors} label={`Wer im Chat von ${p.name} schreibt`} />
-                </div>
-                <div className="chatbox__scroll">
-                  <ChatFeed
-                    messages={chat.received}
-                    uuidOf={(pid) => state.players[pid]?.uuid}
-                    now={now}
-                    empty={`Im Chat von ${p.name} hat noch kein Spieler geschrieben.`}
-                    label={`Nachrichten im Chat von ${p.name}`}
-                  />
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         </section>
       )}

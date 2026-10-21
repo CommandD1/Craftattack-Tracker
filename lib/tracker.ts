@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { appendEvents, appendFeedItems, enrichDeathEvents, getState, recordPlayerPoints, recordTopSnapshots, saveState } from "./store";
 import { fetchFollowerCounts, fetchLiveStreams, TWITCH_ENABLED, type TwitchFollowerChannel, type TwitchStream } from "./twitch";
 import { fetchCraftAttack, getCraftAttackPauseMs, maxCraftAttackTimerDelay } from "./craftattackFetch";
+import { expireChatSessions, syncSharedChatFromApi } from "./sharedChat";
 import { trackedSecondsOf } from "./playtime";
 import {
   BOARD_KEYS,
@@ -1006,6 +1007,23 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       const first = state.latest === null;
       const events = diffSnapshot(state, stats, feed, now, ext.players, twitch, ext.loginOf, ext.missing, followers);
       snapshotApplied = true;
+      // Geteilter Chat (Stream Together): mit Twitch-API je Session abfragen, sonst aus Chat erschlossene beenden.
+      // Fehler hier sind nicht fatal.
+      try {
+        const shared = twitch
+          ? await syncSharedChatFromApi(
+              [...logins]
+                .map(([id, login]) => ({ playerId: id, broadcasterId: twitch.get(login.toLowerCase())?.userId }))
+                .filter((l): l is { playerId: string; broadcasterId: string } => Boolean(l.broadcasterId)),
+              state.players,
+              now.toISOString(),
+            )
+          : await expireChatSessions(state.players, now.toISOString());
+        events.push(...shared);
+        state.eventCount += shared.length;
+      } catch (err) {
+        console.warn("[tracker] Geteilter Chat nicht abgefragt:", err instanceof Error ? err.message : err);
+      }
       if (first) {
         events.unshift({
           id: eventId(now.toISOString()),
