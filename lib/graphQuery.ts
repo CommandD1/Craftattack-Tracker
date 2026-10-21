@@ -1,4 +1,5 @@
 import { boardValue, num } from "./format";
+import { GROUP_TONE, METRIC_TONE } from "./statTone";
 import { EXTRA_STATS, EXTRA_STAT_KEYS, FORMATTERS, type ExtraMetric, type StatGroup } from "./playerStats";
 
 /* ---------- Konfiguration ---------- */
@@ -25,30 +26,30 @@ interface MetricMeta {
 const EXTRA_HINT = "Verlauf beginnt mit der Erfassung über die Einzelstatistik der API";
 
 const BASE_METRICS: Record<BaseMetric, MetricMeta> = {
-  onlineCount: { label: "Spieler online", perPlayer: false, counter: false, format: num, tone: "grass", icon: "users", group: "server" },
-  liveCount: { label: "Streams live", perPlayer: false, counter: false, format: num, tone: "twitch", icon: "twitch", group: "server" },
-  playtimeSeconds: { label: "Spielzeit", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), tone: "sky", icon: "clock", group: "allgemein" },
-  online: { label: "Online (ja/nein)", perPlayer: true, counter: false, format: (v) => (v >= 1 ? "online" : "offline"), hint: "Ohne Spieler: Anzahl online", tone: "white", icon: "login", group: "allgemein" },
-  viewers: { label: "Zuschauer", perPlayer: true, counter: false, format: num, hint: "Ohne Spieler: Summe aller Streams", tone: "twitch", icon: "eye", group: "allgemein" },
-  followers: { label: "Follower", perPlayer: true, counter: true, format: num, hint: "Kumulierte neue Twitch-Follower während aufeinanderfolgender Messungen auf dem Server", tone: "twitch", icon: "users", group: "allgemein" },
-  twitchSubs: { label: "Twitch Subs", perPlayer: true, counter: true, format: num, hint: "Abos, die eingegangen sind, während der Streamer auf dem Server online war", tone: "amethyst", icon: "gift", group: "allgemein" },
-  diamonds: { label: "Diamanten", perPlayer: true, counter: true, format: num, tone: "diamond", icon: "diamond", group: "abbau" },
-  blocksBroken: { label: "Blöcke abgebaut", perPlayer: true, counter: true, format: num, tone: "gold", icon: "pickaxe", group: "abbau" },
-  deaths: { label: "Tode", perPlayer: true, counter: true, format: num, tone: "redstone", icon: "skull", group: "kampf" },
-  mobsKilled: { label: "Mobs", perPlayer: true, counter: true, format: num, tone: "grass", icon: "sword", group: "kampf" },
-  damageDealt: { label: "Schaden", perPlayer: true, counter: true, format: (v) => boardValue("damageDealt", v), hint: "Ausgeteilter Schaden in Herzen", tone: "redstone", icon: "heart", group: "kampf" },
-  totemsUsed: { label: "Totems", perPlayer: true, counter: true, format: num, tone: "amethyst", icon: "totem", group: "kampf" },
-  distance: { label: "Strecke", perPlayer: true, counter: true, format: (v) => boardValue("distance", v), tone: "pink", icon: "boots", group: "bewegung" },
-  foodEaten: { label: "Essen", perPlayer: true, counter: true, format: num, tone: "gold", icon: "food", group: "items" },
-  afkSeconds: { label: "AFK-Zeit", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "AFK = online, aber ≥ 20 Min keine Bewegung; aus dem Spielerverlauf berechnet", tone: "gold", icon: "clock", group: "afk" },
-  afkMobsSeconds: { label: "AFK: Mobs farmen", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "AFK-Zeit, in der trotzdem ≥ 10 Mobs pro Minute gestorben sind (Mob-Farm)", tone: "gold", icon: "sword", group: "afk" },
-  afkBlocksSeconds: { label: "AFK: Blöcke farmen", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke pro Minute abgebaut wurden (Block-Farm)", tone: "gold", icon: "pickaxe", group: "afk" },
+  onlineCount: { label: "Spieler online", perPlayer: false, counter: false, format: num, tone: METRIC_TONE.onlineCount, icon: "users", group: "server" },
+  liveCount: { label: "Streams live", perPlayer: false, counter: false, format: num, tone: METRIC_TONE.liveCount, icon: "twitch", group: "server" },
+  playtimeSeconds: { label: "Spielzeit", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), tone: METRIC_TONE.playtimeSeconds, icon: "clock", group: "allgemein" },
+  online: { label: "Online (ja/nein)", perPlayer: true, counter: false, format: (v) => (v >= 1 ? "online" : "offline"), hint: "Ohne Spieler: Anzahl online", tone: METRIC_TONE.online, icon: "login", group: "allgemein" },
+  viewers: { label: "Zuschauer", perPlayer: true, counter: false, format: num, hint: "Ohne Spieler: Summe aller Streams", tone: METRIC_TONE.viewers, icon: "eye", group: "allgemein" },
+  followers: { label: "Follower", perPlayer: true, counter: true, format: num, hint: "Kumulierte neue Twitch-Follower während aufeinanderfolgender Messungen auf dem Server", tone: METRIC_TONE.followers, icon: "users", group: "allgemein" },
+  twitchSubs: { label: "Twitch Subs", perPlayer: true, counter: true, format: num, hint: "Abos, die eingegangen sind, während der Streamer auf dem Server online war", tone: METRIC_TONE.twitchSubs, icon: "gift", group: "allgemein" },
+  diamonds: { label: "Diamanten", perPlayer: true, counter: true, format: num, tone: METRIC_TONE.diamonds, icon: "diamond", group: "abbau" },
+  blocksBroken: { label: "Blöcke abgebaut", perPlayer: true, counter: true, format: num, tone: METRIC_TONE.blocksBroken, icon: "pickaxe", group: "abbau" },
+  deaths: { label: "Tode", perPlayer: true, counter: true, format: num, tone: METRIC_TONE.deaths, icon: "skull", group: "kampf" },
+  mobsKilled: { label: "Mobs", perPlayer: true, counter: true, format: num, tone: METRIC_TONE.mobsKilled, icon: "sword", group: "kampf" },
+  damageDealt: { label: "Schaden", perPlayer: true, counter: true, format: (v) => boardValue("damageDealt", v), hint: "Ausgeteilter Schaden in Herzen", tone: METRIC_TONE.damageDealt, icon: "heart", group: "kampf" },
+  totemsUsed: { label: "Totems", perPlayer: true, counter: true, format: num, tone: METRIC_TONE.totemsUsed, icon: "totem", group: "kampf" },
+  distance: { label: "Strecke", perPlayer: true, counter: true, format: (v) => boardValue("distance", v), tone: METRIC_TONE.distance, icon: "boots", group: "bewegung" },
+  foodEaten: { label: "Essen", perPlayer: true, counter: true, format: num, tone: METRIC_TONE.foodEaten, icon: "food", group: "items" },
+  afkSeconds: { label: "AFK-Zeit", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "AFK = online, aber ≥ 20 Min keine Bewegung; aus dem Spielerverlauf berechnet", tone: METRIC_TONE.afkSeconds, icon: "clock", group: "afk" },
+  afkMobsSeconds: { label: "AFK: Mobs farmen", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "AFK-Zeit, in der trotzdem ≥ 10 Mobs pro Minute gestorben sind (Mob-Farm)", tone: METRIC_TONE.afkMobsSeconds, icon: "sword", group: "afk" },
+  afkBlocksSeconds: { label: "AFK: Blöcke farmen", perPlayer: true, counter: true, format: (v) => boardValue("playtimeSeconds", v), hint: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke pro Minute abgebaut wurden (Block-Farm)", tone: METRIC_TONE.afkBlocksSeconds, icon: "pickaxe", group: "afk" },
 };
 
 const EXTRA_METRIC_META = Object.fromEntries(
   EXTRA_STAT_KEYS.map((k) => {
     const x = EXTRA_STATS[k];
-    const meta: MetricMeta = { label: x.label, perPlayer: true, counter: true, format: FORMATTERS[x.format], hint: EXTRA_HINT, tone: x.tone, icon: x.icon, group: x.group };
+    const meta: MetricMeta = { label: x.label, perPlayer: true, counter: true, format: FORMATTERS[x.format], hint: EXTRA_HINT, tone: GROUP_TONE[x.group], icon: x.icon, group: x.group };
     return [x.metric, meta];
   }),
 ) as Record<ExtraMetric, MetricMeta>;

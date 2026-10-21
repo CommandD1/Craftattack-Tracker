@@ -66,12 +66,12 @@ async function Timeline(props: PageProps<"/zeitstrahl">) {
 
   return (
     <>
-      <section className="block page-head" data-tone="sky">
+      <section className="block page-head" data-tone="ender">
         <div className="wrap">
           <p className="eyebrow">Ein Tag auf dem Server</p>
           <h1 className="t-1">Zeitstrahl</h1>
           <p>
-            Oben der Tag als Film im Zeitraffer, darunter jede Session als Balken. Grün heißt auf dem Server, gelb heißt AFK, rot heißt AFK an einer Mob-Farm, türkis AFK beim Blöcke-Abbau, lila heißt live auf Twitch.
+            Oben der Tag als Film im Zeitraffer, darunter jede Session als Balken. Hellblau heißt auf dem Server, grau heißt AFK, grün heißt AFK an einer Mob-Farm, gelb AFK beim Blöcke-Abbau, lila heißt live auf Twitch.
             {nav.dataFrom && <> Daten an diesem Tag ab {time(new Date(nav.dataFrom).toISOString())} Uhr.</>}
           </p>
         </div>
@@ -113,7 +113,7 @@ async function Timeline(props: PageProps<"/zeitstrahl">) {
             </ul>
             <ul className="legend" style={{ marginBottom: 12 }}>
               <li>
-                <i style={{ background: "var(--grass)" }} /> auf dem Server
+                <i style={{ background: "var(--presence)" }} /> auf dem Server
               </li>
               <li>
                 <i className="legend__afk" /> AFK (keine Bewegung ≥ 20 Min)
@@ -211,7 +211,7 @@ async function Timeline(props: PageProps<"/zeitstrahl">) {
 /** Öffnet sofort mit Überschrift und Platzhaltern; die Daten werden nachgestreamt. */
 export default function Page(props: PageProps<"/zeitstrahl">) {
   return (
-    <Suspense fallback={<PageSkeleton eyebrow="Ein Tag auf dem Server" title="Zeitstrahl" tone="sky" />}>
+    <Suspense fallback={<PageSkeleton eyebrow="Ein Tag auf dem Server" title="Zeitstrahl" />}>
       <Timeline {...props} />
     </Suspense>
   );

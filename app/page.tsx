@@ -15,6 +15,7 @@ import { getBoardRanksBefore, getHistoryRange } from "@/lib/analytics";
 import { EVENT_GROUPS, isShownEvent } from "@/lib/events";
 import { BOARD_STYLE } from "@/lib/boards";
 import { BoardValue } from "@/components/BoardValue";
+import { BOARD_TONE, METRIC_TONE } from "@/lib/statTone";
 
 // Titel, Untertitel und Farben wie auf craftattack.one/stats
 const BOARDS = BOARD_STYLE;
@@ -98,27 +99,27 @@ async function Dashboard() {
             Auf einen Blick
           </h2>
           <dl className="grid st-figs st-figs--6">
-            <Link href="/spieler?filter=online" className="box st-fig" data-tone="grass">
+            <Link href="/spieler?filter=online" className="box st-fig" data-tone={METRIC_TONE.onlineCount}>
               <dt>Online</dt>
               <FigValue>{s ? num(s.onlineCount) : "–"}</FigValue>
             </Link>
-            <Link href="/live" className="box st-fig" data-tone="amethyst">
+            <Link href="/live" className="box st-fig" data-tone={METRIC_TONE.liveCount}>
               <dt>Live auf Twitch</dt>
               <FigValue>{s ? num(liveList.length) : "–"}</FigValue>
             </Link>
-            <Link href="/live" className="box st-fig" data-tone="twitch">
+            <Link href="/live" className="box st-fig" data-tone={METRIC_TONE.viewers}>
               <dt>Zuschauer</dt>
               <FigValue>{s ? num(viewers) : "–"}</FigValue>
             </Link>
-            <div className="box st-fig" data-tone="diamond">
+            <div className="box st-fig" data-tone={BOARD_TONE.playtimeSeconds}>
               <dt>Stunden gespielt</dt>
               <FigValue>{s ? num(s.totals.playtimeSeconds / 3600) : "–"}</FigValue>
             </div>
-            <Link href="/ereignisse?g=death" className="box st-fig" data-tone="redstone">
+            <Link href="/ereignisse?g=death" className="box st-fig" data-tone={BOARD_TONE.deaths}>
               <dt>Tode</dt>
               <FigValue>{s ? num(s.totals.deaths) : "–"}</FigValue>
             </Link>
-            <Link href="/ereignisse" className="box st-fig" data-tone="gold">
+            <Link href="/ereignisse" className="box st-fig" data-tone={METRIC_TONE.events}>
               <dt>Ereignisse</dt>
               <FigValue>{num(state.eventCount)}</FigValue>
             </Link>
@@ -126,7 +127,7 @@ async function Dashboard() {
         </div>
       </section>
 
-      <section className="block block--tight" data-tone="grass" aria-labelledby="online-h">
+      <section className="block block--tight" data-tone="white" aria-labelledby="online-h">
         <div className="wrap">
           <h2 className="t-2 st-online__h" id="online-h">
             <span className="dot" aria-hidden="true" /> Gerade online{" "}
@@ -191,7 +192,8 @@ async function Dashboard() {
               <ul className="filters" style={{ marginBottom: 12 }} aria-label="Nur eine Kategorie zeigen">
                 {EVENT_GROUPS.map((grp) => (
                   <li key={grp.key}>
-                    <Link className="tag" data-tone={grp.tone} href={`/ereignisse?g=${grp.key}`}>
+                    <Link className="tag" data-tone="white" href={`/ereignisse?g=${grp.key}`}>
+                      <span className="swatch" data-tone={grp.tone} aria-hidden="true" />
                       {grp.label}
                     </Link>
                   </li>
@@ -229,7 +231,7 @@ async function Dashboard() {
                   <dd className="num">{num(state.eventCount)}</dd>
                 </dl>
               </div>
-              <div className="box spark-card" data-tone="gold">
+              <div className="box spark-card" data-tone="white">
                 <div className="spark-card__head">
                   <span className="eyebrow">Rekorde seit Start</span>
                 </div>
@@ -325,7 +327,7 @@ async function Dashboard() {
                 </section>
               );
             })}
-            <section className="box st-board" data-tone="amethyst" aria-labelledby="b-twitch-subs">
+            <section className="box st-board" data-tone={METRIC_TONE.twitchSubs} aria-labelledby="b-twitch-subs">
               <header className="st-board__head">
                 <span className="st-board__icon">
                   <Icon.gift aria-hidden="true" />
@@ -355,7 +357,7 @@ async function Dashboard() {
                 )}
               </ol>
             </section>
-            <section className="box st-board" data-tone="lava" aria-labelledby="b-tracked">
+            <section className="box st-board" data-tone={METRIC_TONE.tracked} aria-labelledby="b-tracked">
               <header className="st-board__head">
                 <span className="st-board__icon">
                   <Icon.users aria-hidden="true" />

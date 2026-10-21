@@ -26,29 +26,28 @@ interface ExtraStatMeta {
   format: StatFormat;
   /** Icon-Name aus `Icon` */
   icon: string;
-  tone: string;
   /** Kennzahl-Name im Graphen */
   metric: string;
 }
 
 export const EXTRA_STATS = {
-  blocksPlaced: { label: "Blöcke platziert", group: "abbau", format: "num", icon: "pickaxe", tone: "gold", metric: "blocksPlaced" },
-  damageTaken: { label: "Schaden erlitten", group: "kampf", format: "hearts", icon: "heart", tone: "redstone", metric: "damageTaken" },
-  raidsWon: { label: "Überfälle gewonnen", group: "kampf", format: "num", icon: "trophy", tone: "redstone", metric: "raidsWon" },
-  jumps: { label: "Sprünge", group: "bewegung", format: "num", icon: "boots", tone: "pink", metric: "jumps" },
-  distanceFallen: { label: "Gefallen", group: "bewegung", format: "distance", icon: "boots", tone: "pink", metric: "distanceFallen" },
-  sneakSeconds: { label: "Geschlichen", group: "bewegung", format: "duration", icon: "clock", tone: "pink", metric: "sneakSeconds" },
-  itemsCrafted: { label: "Items hergestellt", group: "items", format: "num", icon: "bolt", tone: "sky", metric: "itemsCrafted" },
-  itemsPickedUp: { label: "Items aufgehoben", group: "items", format: "num", icon: "bolt", tone: "sky", metric: "itemsPickedUp" },
-  itemsDropped: { label: "Items fallen gelassen", group: "items", format: "num", icon: "bolt", tone: "sky", metric: "itemsDropped" },
-  itemsEnchanted: { label: "Items verzaubert", group: "items", format: "num", icon: "bolt", tone: "amethyst", metric: "itemsEnchanted" },
-  chestsOpened: { label: "Truhen geöffnet", group: "items", format: "num", icon: "gift", tone: "gold", metric: "chestsOpened" },
-  tradedWithVillagers: { label: "Handel mit Dorfbewohnern", group: "items", format: "num", icon: "users", tone: "diamond", metric: "tradedWithVillagers" },
-  animalsKilled: { label: "Tiere getötet", group: "tiere", format: "num", icon: "sword", tone: "grass", metric: "animalsKilled" },
-  animalsBred: { label: "Tiere gezüchtet", group: "tiere", format: "num", icon: "heart", tone: "grass", metric: "animalsBred" },
-  fishCaught: { label: "Fische gefangen", group: "tiere", format: "num", icon: "food", tone: "diamond", metric: "fishCaught" },
-  bellsRung: { label: "Glocken geläutet", group: "tiere", format: "num", icon: "flag", tone: "gold", metric: "bellsRung" },
-  afkSeconds: { label: "AFK laut Server", group: "afk", format: "duration", icon: "clock", tone: "gold", metric: "serverAfkSeconds" },
+  blocksPlaced: { label: "Blöcke platziert", group: "abbau", format: "num", icon: "pickaxe", metric: "blocksPlaced" },
+  damageTaken: { label: "Schaden erlitten", group: "kampf", format: "hearts", icon: "heart", metric: "damageTaken" },
+  raidsWon: { label: "Überfälle gewonnen", group: "kampf", format: "num", icon: "trophy", metric: "raidsWon" },
+  jumps: { label: "Sprünge", group: "bewegung", format: "num", icon: "boots", metric: "jumps" },
+  distanceFallen: { label: "Gefallen", group: "bewegung", format: "distance", icon: "boots", metric: "distanceFallen" },
+  sneakSeconds: { label: "Geschlichen", group: "bewegung", format: "duration", icon: "clock", metric: "sneakSeconds" },
+  itemsCrafted: { label: "Items hergestellt", group: "items", format: "num", icon: "bolt", metric: "itemsCrafted" },
+  itemsPickedUp: { label: "Items aufgehoben", group: "items", format: "num", icon: "bolt", metric: "itemsPickedUp" },
+  itemsDropped: { label: "Items fallen gelassen", group: "items", format: "num", icon: "bolt", metric: "itemsDropped" },
+  itemsEnchanted: { label: "Items verzaubert", group: "items", format: "num", icon: "bolt", metric: "itemsEnchanted" },
+  chestsOpened: { label: "Truhen geöffnet", group: "items", format: "num", icon: "gift", metric: "chestsOpened" },
+  tradedWithVillagers: { label: "Handel mit Dorfbewohnern", group: "items", format: "num", icon: "users", metric: "tradedWithVillagers" },
+  animalsKilled: { label: "Tiere getötet", group: "tiere", format: "num", icon: "sword", metric: "animalsKilled" },
+  animalsBred: { label: "Tiere gezüchtet", group: "tiere", format: "num", icon: "heart", metric: "animalsBred" },
+  fishCaught: { label: "Fische gefangen", group: "tiere", format: "num", icon: "food", metric: "fishCaught" },
+  bellsRung: { label: "Glocken geläutet", group: "tiere", format: "num", icon: "flag", metric: "bellsRung" },
+  afkSeconds: { label: "AFK laut Server", group: "afk", format: "duration", icon: "clock", metric: "serverAfkSeconds" },
 } as const satisfies Record<string, ExtraStatMeta>;
 
 export type ExtraStatKey = keyof typeof EXTRA_STATS;

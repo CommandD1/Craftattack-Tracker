@@ -9,6 +9,7 @@ import { ago, headUrl, num } from "@/lib/format";
 import { Sparkline } from "@/components/Sparkline";
 import { EventFeed } from "@/components/EventFeed";
 import { FigValue } from "@/components/FigValue";
+import { METRIC_TONE } from "@/lib/statTone";
 
 
 export const metadata: Metadata = { title: "Live" };
@@ -29,7 +30,7 @@ const GRAPH_ZEIT: Record<string, string> = { "1h": "1h", "6h": "6h", "12h": "24h
 /** Öffnet sofort mit Überschrift und Platzhaltern; die Daten werden nachgestreamt. */
 export default function Page(props: PageProps<"/live">) {
   return (
-    <Suspense fallback={<PageSkeleton eyebrow="Twitch" title="Live" tone="twitch" />}>
+    <Suspense fallback={<PageSkeleton eyebrow="Twitch" title="Live" />}>
       <Live searchParams={props.searchParams} />
     </Suspense>
   );
@@ -72,7 +73,7 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
 
   return (
     <>
-      <section className="block page-head" data-tone="twitch">
+      <section className="block page-head" data-tone="ender">
         <div className="wrap">
           <p className="eyebrow">Twitch</p>
           <h1 className="t-1">Live</h1>
@@ -92,31 +93,31 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
             ))}
           </ul>
           <dl className="grid st-figs">
-            <div className="box st-fig" data-tone="amethyst">
+            <div className="box st-fig" data-tone={METRIC_TONE.liveCount}>
               <dt>Streams</dt>
               <FigValue>{num(live.length)}</FigValue>
             </div>
-            <div className="box st-fig" data-tone="twitch">
+            <div className="box st-fig" data-tone={METRIC_TONE.viewers}>
               <dt title="Zuschauer der Streamer, die gerade auf dem Server sind">Zuschauer auf dem Server</dt>
               <FigValue>{num(viewers)}</FigValue>
             </div>
-            <div className="box st-fig" data-tone="amethyst">
+            <div className="box st-fig" data-tone={METRIC_TONE.viewers}>
               <dt title="Zuschauer aller Streams, auch ohne Server">Zuschauer gesamt</dt>
               <FigValue>{num(viewersAll)}</FigValue>
             </div>
-            <div className="box st-fig" data-tone="gold">
+            <div className="box st-fig" data-tone={METRIC_TONE.viewers}>
               <dt>Peak · {rangeLabel}</dt>
               <FigValue>{num(peak)}</FigValue>
             </div>
-            <div className="box st-fig" data-tone="grass">
+            <div className="box st-fig" data-tone={METRIC_TONE.onlineCount}>
               <dt>Davon auf dem Server</dt>
               <FigValue>{num(live.filter((p) => p.online).length)}</FigValue>
             </div>
-            <div className="box st-fig" data-tone="amethyst">
+            <div className="box st-fig" data-tone={METRIC_TONE.twitchSubs}>
               <dt title="Gesammelte Subs in den aktuell laufenden Streams">Subs in aktuellen Livestreams</dt>
               <FigValue>{num(liveStreamSubs)}</FigValue>
             </div>
-            <div className="box st-fig" data-tone="pink">
+            <div className="box st-fig" data-tone={METRIC_TONE.followers}>
               <dt title="Follower, die während der aktuellen Streams bei Serveranwesenheit dazugekommen sind">Follower-Zuwachs in aktuellen Streams</dt>
               <FigValue>{num(liveStreamFollowers)}</FigValue>
             </div>
@@ -191,13 +192,13 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
                         </p>
                       )}
                       <div className="stream__stats">
-                        <span className="stream__stat" data-tone="pink">
+                        <span className="stream__stat" data-tone={METRIC_TONE.followers}>
                           <strong className="num">
                             {p.followersLiveAtSample === p.liveSince ? num(p.followersOnLiveStream ?? 0) : "–"}
                           </strong>
                           <small>Follower-Zuwachs auf dem Server</small>
                         </span>
-                        <span className="stream__stat" data-tone="amethyst">
+                        <span className="stream__stat" data-tone={METRIC_TONE.twitchSubs}>
                           <strong className="num">{num(streamSubs.get(p.id) ?? 0)}</strong>
                           <small>Subs in diesem Stream</small>
                         </span>

@@ -21,7 +21,7 @@ function Loading({ label }: { label: string }) {
 
 export function HeadSkeleton() {
   return (
-    <section className="block page-head" data-tone="sky" aria-busy="true">
+    <section className="block page-head" data-tone="ender" aria-busy="true">
       <div className="wrap">
         <p className="eyebrow">
           <Link href="/spieler" style={{ textDecoration: "none" }}>

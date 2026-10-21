@@ -42,7 +42,7 @@ const MAX_HEADS = 5;
 /** Öffnet sofort mit Überschrift und Platzhaltern; die Daten werden nachgestreamt. */
 export default function Page() {
   return (
-    <Suspense fallback={<PageSkeleton eyebrow="Offizielle Termine" title="Events" tone="amethyst" />}>
+    <Suspense fallback={<PageSkeleton eyebrow="Offizielle Termine" title="Events" />}>
       <Events />
     </Suspense>
   );
@@ -128,7 +128,7 @@ async function Events() {
 
   return (
     <>
-      <section className="block page-head" data-tone="amethyst">
+      <section className="block page-head" data-tone="ender">
         <div className="wrap">
           <p className="eyebrow">Offizielle Termine</p>
           <h1 className="t-1">Events</h1>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense, cache } from "react";
 import type { Metadata } from "next";
+import { BOARD_TONE } from "@/lib/statTone";
 import { loadTracker } from "@/lib/data";
 import { isShownEvent, sharedChatPlayers } from "@/lib/events";
 import { thinHistory } from "@/lib/thinHistory";
@@ -23,6 +24,7 @@ import { PlayerDetails } from "@/components/PlayerDetails";
 import { playtimeOf, trackedSecondsOf } from "@/lib/playtime";
 import { getPlayerEventTimeState } from "@/lib/playerEventStatus";
 import { ChatSkeleton, DetailsSkeleton, HeadSkeleton, InsightsSkeleton, RanksSkeleton, TilesSkeleton, TimelineSkeleton } from "@/components/PlayerSkeletons";
+import { METRIC_TONE } from "@/lib/statTone";
 
 
 export async function generateMetadata({ params }: PageProps<"/spieler/[id]">): Promise<Metadata> {
@@ -41,17 +43,7 @@ const LABEL: Record<BoardKey, string> = {
   totemsUsed: "Totems",
   foodEaten: "Essen",
 };
-const TONE: Record<BoardKey, string> = {
-  playtimeSeconds: "sky",
-  diamonds: "diamond",
-  deaths: "redstone",
-  blocksBroken: "gold",
-  mobsKilled: "grass",
-  distance: "pink",
-  damageDealt: "redstone",
-  totemsUsed: "amethyst",
-  foodEaten: "gold",
-};
+const TONE = BOARD_TONE;
 
 type Params = PageProps<"/spieler/[id]">["params"];
 
@@ -190,7 +182,7 @@ async function HeadSection({ params }: { params: Params }) {
   const twitchUrl = twitchLogin ? `https://www.twitch.tv/${encodeURIComponent(twitchLogin)}` : null;
   return (
     <>
-    <section className="block page-head" data-tone={p.live ? "twitch" : p.online ? "grass" : "sky"}>
+    <section className="block page-head" data-tone="ender">
       <div className="wrap">
         <p className="eyebrow">
           <Link href="/spieler" style={{ textDecoration: "none" }}>
@@ -213,7 +205,7 @@ async function HeadSection({ params }: { params: Params }) {
                 </span>
               )}
               {p.online && p.afkSince && (
-                <span className="tag" data-tone="gold" title={p.afkFarm ? `Die Strecke steigt nicht, aber ${p.afkFarm === "mobs" ? "Mobs sterben" : "Blöcke fallen"} – eine AFK-Farm` : "Die gelaufene Strecke steigt seit mindestens 20 Minuten nicht"}>
+                <span className="tag" data-tone="paper" title={p.afkFarm ? `Die Strecke steigt nicht, aber ${p.afkFarm === "mobs" ? "Mobs sterben" : "Blöcke fallen"} – eine AFK-Farm` : "Die gelaufene Strecke steigt seit mindestens 20 Minuten nicht"}>
                   AFK seit {ago(p.afkSince).replace("vor ", "")}
                   {p.afkFarm ? ` · ${p.afkFarm === "mobs" ? "farmt Mobs" : "baut Blöcke ab"}` : ""}
                 </span>
@@ -284,7 +276,7 @@ async function StatsSection({ params }: { params: Params }) {
           {profileStatKeys.map((k) => {
             if (k === "followers") {
               return (
-                <div key={k} className="box st-fig st-fig--spark" data-tone="twitch">
+                <div key={k} className="box st-fig st-fig--spark" data-tone={METRIC_TONE.followers}>
                   <dt className="pstat">
                     <Link className="pstat__label pstat__link" href={graphHref(k)} title={`Follower von ${p.name} im Graphen der Statistik öffnen`}>
                       <Icon.users width={18} height={18} aria-hidden="true" />
@@ -309,7 +301,7 @@ async function StatsSection({ params }: { params: Params }) {
             }
             if (k === "twitchSubs") {
               return (
-                <div key={k} className="box st-fig st-fig--spark" data-tone="amethyst">
+                <div key={k} className="box st-fig st-fig--spark" data-tone={METRIC_TONE.twitchSubs}>
                   <dt className="pstat">
                     <Link className="pstat__label pstat__link" href={graphHref(k)} title={`Twitch-Subs von ${p.name} im Graphen der Statistik öffnen`}>
                       <Icon.gift width={18} height={18} aria-hidden="true" />
@@ -555,7 +547,7 @@ async function TimelineSection({ params }: { params: Params }) {
                 </div>
               )}
             </div>
-            <section className="box st-board" data-tone="sky" aria-labelledby="b-with">
+            <section className="box st-board" data-tone={METRIC_TONE.tracked} aria-labelledby="b-with">
               <header className="st-board__head">
                 <span className="st-board__icon">
                   <Icon.users aria-hidden="true" />

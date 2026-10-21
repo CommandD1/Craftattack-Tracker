@@ -224,7 +224,7 @@ export function PlayerActivity({
                   <p className="muted" style={{ fontSize: ".875rem", marginBottom: 12 }}>
                     {typical ? `Meist zwischen ${typical[0]} und ${typical[1] === 0 ? 24 : typical[1]} Uhr` : ""}
                     {topDay !== null ? `, stärkster Tag ${DAYS[topDay]}` : ""}. Insgesamt {duration(total * 60)} seit Tracker-Start
-                    {afkTotal > 0 ? `, davon ${duration(afkTotal * 60)} AFK` : ""}. Je gelber ein Feld, desto größer der AFK-Anteil.
+                    {afkTotal > 0 ? `, davon ${duration(afkTotal * 60)} AFK` : ""}. Je grauer ein Feld, desto größer der AFK-Anteil.
                   </p>
                   <div className="heat" role="img" aria-label="Online-Zeit nach Wochentag und Uhrzeit">
                     <span />

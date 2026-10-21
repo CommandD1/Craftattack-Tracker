@@ -35,7 +35,7 @@ function RowsSkeleton({ n = 6 }: { n?: number }) {
  * Platzhalter für eine ganze Seite: echte Überschrift und Farbe sofort, darunter Kacheln und Zeilen,
  * bis die Daten gestreamt sind. So reagiert jeder Klick auf einen Link ohne Wartezeit.
  */
-export function PageSkeleton({ eyebrow = "Lädt", title = "…", tone = "diamond", figs = 4 }: { eyebrow?: string; title?: string; tone?: string; figs?: number }) {
+export function PageSkeleton({ eyebrow = "Lädt", title = "…", tone = "ender", figs = 4 }: { eyebrow?: string; title?: string; tone?: string; figs?: number }) {
   return (
     <>
       <section className="block page-head" data-tone={tone} aria-busy="true">

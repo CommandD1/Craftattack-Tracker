@@ -1,5 +1,6 @@
 import type { EventType, TrackerEvent } from "./types";
 import { duration, hearts, num, distance } from "./format";
+import { BOARD_TONE, METRIC_TONE } from "./statTone";
 
 interface EventMeta {
   label: string;
@@ -25,40 +26,40 @@ function farmEndSub(e: TrackerEvent, what: string): string | null {
 }
 
 export const EVENT_META: Record<EventType, EventMeta> = {
-  join: { label: "Join", tone: "grass", text: () => "ist auf den Server gekommen" },
+  join: { label: "Join", tone: "white", text: () => "ist auf den Server gekommen" },
   afk_start: {
     label: "AFK",
-    tone: "gold",
+    tone: "paper",
     text: () => "ist AFK",
     sub: (e) => (typeof e.meta?.since === "string" ? `Keine Bewegung seit ${new Date(e.meta.since).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" })} Uhr` : null),
   },
   afk_mobs_start: {
     label: "Mob-Farm",
-    tone: "redstone",
+    tone: METRIC_TONE.afkMobsSeconds,
     text: () => "farmt AFK Mobs",
     sub: (e) => farmStartSub(e, "Mobs"),
   },
   afk_mobs_end: {
     label: "Mob-Farm Ende",
-    tone: "redstone",
+    tone: METRIC_TONE.afkMobsSeconds,
     text: (e) => (e.meta?.byLeave ? "hat die Mob-Farm bis zum Leave laufen lassen" : e.meta?.stillAfk ? "farmt keine Mobs mehr, bleibt aber AFK" : "ist von der Mob-Farm zurück"),
     sub: (e) => farmEndSub(e, "Mobs"),
   },
   afk_blocks_start: {
     label: "Block-Farm",
-    tone: "diamond",
+    tone: METRIC_TONE.afkBlocksSeconds,
     text: () => "baut AFK Blöcke ab",
     sub: (e) => farmStartSub(e, "Blöcke"),
   },
   afk_blocks_end: {
     label: "Block-Farm Ende",
-    tone: "diamond",
+    tone: METRIC_TONE.afkBlocksSeconds,
     text: (e) => (e.meta?.byLeave ? "hat die Block-Farm bis zum Leave laufen lassen" : e.meta?.stillAfk ? "baut keine Blöcke mehr ab, bleibt aber AFK" : "ist von der Block-Farm zurück"),
     sub: (e) => farmEndSub(e, "Blöcke"),
   },
   afk_end: {
     label: "Zurück",
-    tone: "grass",
+    tone: "paper",
     text: (e) => (e.meta?.byLeave ? "war bis zum Leave AFK" : "ist wieder da"),
     // Keine Farm-Menge über die ganze Phase: die steht minutengenau in den Farm-Ende-Ereignissen
     sub: (e) => {
@@ -77,7 +78,7 @@ export const EVENT_META: Record<EventType, EventMeta> = {
   },
   death: {
     label: "Tod",
-    tone: "redstone",
+    tone: BOARD_TONE.deaths,
     text: (e) =>
       e.meta?.unknown
         ? `${e.delta === 1 ? "Jemand ist" : `${num(e.delta ?? 0)} Spieler sind`} gestorben`
@@ -103,7 +104,7 @@ export const EVENT_META: Record<EventType, EventMeta> = {
   },
   achievement: {
     label: "Achievement",
-    tone: "amethyst",
+    tone: "white",
     text: (e) => `hat das Achievement „${e.meta?.title ?? e.meta?.advancement ?? "unbekannt"}“ erhalten`,
     sub: (e) =>
       [
@@ -116,43 +117,43 @@ export const EVENT_META: Record<EventType, EventMeta> = {
   },
   diamonds: {
     label: "Diamanten",
-    tone: "diamond",
+    tone: BOARD_TONE.diamonds,
     text: (e) => `hat ${num(e.delta ?? 0)} Diamant${e.delta === 1 ? "en" : "en"} gefunden`,
     sub: (e) => (e.value !== undefined ? `Jetzt ${num(e.value)} insgesamt` : null),
   },
   blocksBroken: {
     label: "Blöcke",
-    tone: "gold",
+    tone: BOARD_TONE.blocksBroken,
     text: (e) => `hat ${num(e.delta ?? 0)} Blöcke abgebaut`,
     sub: (e) => (e.value !== undefined ? `Jetzt ${num(e.value)} insgesamt` : null),
   },
   mobsKilled: {
     label: "Mobs",
-    tone: "grass",
+    tone: BOARD_TONE.mobsKilled,
     text: (e) => `hat ${num(e.delta ?? 0)} Mobs erledigt`,
     sub: (e) => (e.value !== undefined ? `Jetzt ${num(e.value)} insgesamt` : null),
   },
   distance: {
     label: "Strecke",
-    tone: "pink",
+    tone: BOARD_TONE.distance,
     text: (e) => `ist ${distance(e.delta ?? 0)} gelaufen`,
     sub: (e) => (e.value !== undefined ? `Jetzt ${distance(e.value)} insgesamt` : null),
   },
   damageDealt: {
     label: "Schaden",
-    tone: "redstone",
+    tone: BOARD_TONE.damageDealt,
     text: (e) => `hat ${hearts(e.delta ?? 0)} Herzen Schaden verursacht`,
     sub: (e) => (e.value !== undefined ? `Jetzt ${hearts(e.value)} Herzen insgesamt` : null),
   },
   totemsUsed: {
     label: "Totems",
-    tone: "amethyst",
+    tone: BOARD_TONE.totemsUsed,
     text: (e) => `hat ${num(e.delta ?? 0)} Totems benutzt`,
     sub: (e) => (e.value !== undefined ? `Jetzt ${num(e.value)} insgesamt` : null),
   },
   foodEaten: {
     label: "Essen",
-    tone: "gold",
+    tone: BOARD_TONE.foodEaten,
     text: (e) => `hat ${num(e.delta ?? 0)} Essen gegessen`,
     sub: (e) => (e.value !== undefined ? `Jetzt ${num(e.value)} insgesamt` : null),
   },
@@ -164,7 +165,7 @@ export const EVENT_META: Record<EventType, EventMeta> = {
   },
   stream_end: {
     label: "Stream aus",
-    tone: "ender",
+    tone: "twitch",
     text: () => "hat den Stream beendet",
     sub: (e) => {
       const s = Number(e.meta?.streamSeconds ?? 0);
@@ -179,25 +180,25 @@ export const EVENT_META: Record<EventType, EventMeta> = {
   },
   stream_title: {
     label: "Titel",
-    tone: "amethyst",
+    tone: "twitch",
     text: () => "hat den Streamtitel geändert",
     sub: (e) => (e.meta?.title ? String(e.meta.title) : null),
   },
   subscription: {
     label: "Abo",
-    tone: "pink",
+    tone: "twitch",
     text: (e) => e.player ? "hat in dieser Minute Subs erhalten" : `${e.meta?.channel ?? "Ein Streamer"} hat in dieser Minute Subs erhalten`,
     sub: () => "Minutensumme",
   },
   subscription_gift: {
     label: "Geschenk-Subs",
-    tone: "amethyst",
+    tone: "twitch",
     text: (e) => `hat ${num(e.delta ?? 0)} Subs von ${e.meta?.giftGiverName ?? "einem anderen Streamer"} geschenkt bekommen`,
     sub: (e) => e.meta?.channel ? `im Stream von ${e.meta.channel}` : null,
   },
   follower_burst: {
     label: "Follower-Schub",
-    tone: "pink",
+    tone: "twitch",
     text: (e) => `hat ${num(e.delta ?? 0)} Follower in ${duration(Number(e.meta?.windowSeconds ?? 60))} auf dem Server gewonnen (mehr als 20 pro Minute)`,
     sub: (e) => `Auf dem Server insgesamt ${num(e.value ?? 0)} neue Follower erfasst`,
   },
@@ -222,13 +223,13 @@ export const EVENT_META: Record<EventType, EventMeta> = {
   server_offline: { label: "Server", tone: "redstone", text: () => "Der Server ist offline gegangen" },
   first_join: {
     label: "Neu",
-    tone: "lava",
+    tone: "white",
     text: () => "ist zum ersten Mal auf dem Server aufgetaucht",
     sub: () => "Zumindest seit der Tracker läuft.",
   },
   rank: {
     label: "Rang",
-    tone: "gold",
+    tone: "white",
     text: (e) =>
       e.value === 1
         ? `hat die Führung bei „${e.meta?.label}“ übernommen`
@@ -237,7 +238,7 @@ export const EVENT_META: Record<EventType, EventMeta> = {
   },
   milestone: {
     label: "Meilenstein",
-    tone: "amethyst",
+    tone: "white",
     text: (e) => {
       const v = e.value ?? 0;
       switch (String(e.meta?.board ?? "")) {
@@ -260,13 +261,13 @@ export const EVENT_META: Record<EventType, EventMeta> = {
   },
   record: {
     label: "Rekord",
-    tone: "redstone",
+    tone: "white",
     text: (e) => `Neuer Rekord: ${num(e.value ?? 0)} ${e.meta?.label ?? ""}`,
     sub: (e) => (e.delta ? `+${num(e.delta)} gegenüber dem alten Rekord` : null),
   },
   tracker_start: {
     label: "Tracker",
-    tone: "sky",
+    tone: "white",
     text: () => "Der Tracker hat angefangen aufzuzeichnen",
     sub: (e) =>
       e.meta ? `${num(Number(e.meta.online ?? 0))} online · ${num(Number(e.meta.live ?? 0))} live` : null,
@@ -274,11 +275,11 @@ export const EVENT_META: Record<EventType, EventMeta> = {
 };
 
 export const EVENT_GROUPS: { key: string; label: string; tone: string; types: EventType[] }[] = [
-  { key: "server", label: "Server", tone: "grass", types: ["join", "leave", "afk_start", "afk_mobs_start", "afk_mobs_end", "afk_blocks_start", "afk_blocks_end", "afk_end", "server_online", "server_offline", "tracker_start"] },
-  { key: "death", label: "Tode", tone: "redstone", types: ["death"] },
-  { key: "loot", label: "Loot & Arbeit", tone: "gold", types: ["diamonds", "blocksBroken", "mobsKilled", "distance", "damageDealt", "totemsUsed", "foodEaten"] },
+  { key: "server", label: "Server", tone: "white", types: ["join", "leave", "afk_start", "afk_mobs_start", "afk_mobs_end", "afk_blocks_start", "afk_blocks_end", "afk_end", "server_online", "server_offline", "tracker_start"] },
+  { key: "death", label: "Tode", tone: BOARD_TONE.deaths, types: ["death"] },
+  { key: "loot", label: "Loot & Arbeit", tone: "white", types: ["diamonds", "blocksBroken", "mobsKilled", "distance", "damageDealt", "totemsUsed", "foodEaten"] },
   { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title", "subscription", "subscription_gift", "follower_burst", "raid", "shared_chat_start", "shared_chat_end"] },
-  { key: "highlights", label: "Highlights", tone: "amethyst", types: ["achievement", "first_join", "rank", "milestone", "record"] },
+  { key: "highlights", label: "Highlights", tone: "white", types: ["achievement", "first_join", "rank", "milestone", "record"] },
 ];
 
 export function typesForGroup(key: string | undefined): EventType[] | null {
