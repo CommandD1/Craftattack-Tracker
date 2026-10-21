@@ -374,3 +374,15 @@ export const TIME_RANGES: { key: string; label: string; ms: number | null }[] = 
   { key: "7d", label: "7 Tage", ms: 7 * 24 * 3600_000 },
   { key: "alle", label: "Alles", ms: null },
 ];
+
+/**
+ * Mindest-Zuwachs, ab dem ein Zähler-Ereignis entsteht bzw. angezeigt wird (Rohwerte der API).
+ * Essen: mehr als 2 Mahlzeiten. Schaden: mehr als 20 Herzen (Rohwert ÷ 20, also mehr als 400).
+ */
+export const EVENT_MIN_DELTA = { foodEaten: 3, damageDealt: 401 } as const;
+
+/** Kleine Essen- und Schaden-Ereignisse ausblenden (auch ältere, die vor der Schwelle gespeichert wurden) */
+export function isShownEvent(e: Pick<TrackerEvent, "type" | "delta">): boolean {
+  if (e.type === "foodEaten" || e.type === "damageDealt") return (e.delta ?? 0) >= EVENT_MIN_DELTA[e.type];
+  return true;
+}

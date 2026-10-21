@@ -12,15 +12,24 @@ function dayLabel(iso: string, now: number) {
   return dayFmt.format(new Date(iso));
 }
 
+/** Kopf und Name eines Spielers als Link */
+function Who({ id, name, uuid, role }: { id: string; name: string; uuid: string | undefined; role: "from" | "to" }) {
+  return (
+    <Link className="chat__who" data-role={role} href={`/spieler/${encodeURIComponent(id)}`}>
+      <img className="chat__head" src={headUrl(uuid, 32, id)} alt="" width={20} height={20} loading="lazy" />
+      <span className="chat__name">{name}</span>
+    </Link>
+  );
+}
+
 /**
  * Nachrichten von Spielern in Twitch-Chats anderer Spieler, nach Tagen gruppiert.
- * `show` blendet die Seite aus, die im Kontext schon klar ist (im Profil: der Spieler selbst).
+ * Jede Zeile zeigt Absender → Empfänger (Kanal) mit Kopf und Namen, darunter die Nachricht.
  */
 export function ChatFeed({
   messages,
   uuidOf,
   now,
-  show = "both",
   empty,
   label,
 }: {
@@ -28,8 +37,6 @@ export function ChatFeed({
   /** Spieler-ID → Minecraft-UUID für den Kopf */
   uuidOf: (id: string) => string | undefined;
   now: number;
-  /** "both": Absender und Kanal, "channel": nur der Kanal (Absender bekannt), "sender": nur der Absender */
-  show?: "both" | "channel" | "sender";
   empty: string;
   label: string;
 }) {
@@ -47,35 +54,22 @@ export function ChatFeed({
         <li key={day.label} className="chat__day">
           <p className="chat__daylabel">{day.label}</p>
           <ol className="chat__list">
-            {day.items.map((m) => {
-              const avatarId = show === "channel" ? m.channelId : m.senderId;
-              return (
-                <li key={m.id} className="chat__msg">
-                  <img className="chat__head" src={headUrl(uuidOf(avatarId), 32, avatarId)} alt="" width={28} height={28} loading="lazy" />
-                  <div className="chat__body">
-                    <p className="chat__meta">
-                      {show !== "channel" && (
-                        <Link className="chat__who" href={`/spieler/${encodeURIComponent(m.senderId)}`}>
-                          {m.senderName}
-                        </Link>
-                      )}
-                      {show !== "sender" && (
-                        <>
-                          <span className="chat__in">{show === "channel" ? "im Chat von" : "bei"}</span>
-                          <Link className="chat__chan" href={`/spieler/${encodeURIComponent(m.channelId)}`}>
-                            {m.channelName}
-                          </Link>
-                        </>
-                      )}
-                      <time className="chat__time" dateTime={m.at} title={dateTime(m.at)}>
-                        {ago(m.at, now)}
-                      </time>
-                    </p>
-                    <p className="chat__text">{m.message}</p>
-                  </div>
-                </li>
-              );
-            })}
+            {day.items.map((m) => (
+              <li key={m.id} className="chat__msg">
+                <p className="chat__route">
+                  <Who id={m.senderId} name={m.senderName} uuid={uuidOf(m.senderId)} role="from" />
+                  {/* Pfeil als SVG: die Pixel-Schrift hat kein „→" */}
+                  <svg className="chat__arrow" viewBox="0 0 16 10" width={14} height={9} role="img" aria-label="schreibt im Chat von">
+                    <path d="M0 4h11V1l5 4-5 4V6H0z" fill="currentColor" />
+                  </svg>
+                  <Who id={m.channelId} name={m.channelName} uuid={uuidOf(m.channelId)} role="to" />
+                  <time className="chat__time" dateTime={m.at} title={dateTime(m.at)}>
+                    {ago(m.at, now)}
+                  </time>
+                </p>
+                <p className="chat__text">{m.message}</p>
+              </li>
+            ))}
           </ol>
         </li>
       ))}
