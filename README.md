@@ -85,6 +85,22 @@ zum Beispiel für lokale Entwicklung. Die PSQL Command ist für manuelle
 die PostgreSQL-Verbindung mit TLS; da Render intern selbstsignierte Zertifikate
 verwendet, wird das Zertifikat dabei nicht verifiziert.
 
+## Datenbanken zusammenführen
+
+`scripts/merge-eras.mjs` führt die Datenbanken mehrerer Tracker-Epochen (PGlite, Neon, Render) in eine zusammen:
+
+```bash
+# Ziel einmal mit dem aktuellen Schema anlegen: App mit dieser DATABASE_URL im Modus web starten und wieder stoppen
+npm i --no-save @electric-sql/pglite@0.5   # nur für eine PGlite-Quelle
+node scripts/merge-eras.mjs --target <ziel-url> \
+  --source pglite:/pfad/zu/data/pglite --source <neon-url> --source <render-url> --dry-run
+```
+
+Quellen älteste zuerst. `--dry-run` rollt am Ende zurück und zeigt nur die Zahlen. Das Ziel muss leer sein.
+Verlauf, Chat und Feed werden vereinigt, Ereignisse mit kollidierender ID bekommen ein Epochen-Präfix, an
+Epochengrenzen werden fehlende Leave/Join-Ereignisse ergänzt. Spieler-Summen (Online-Zeit, Sessions, AFK,
+Stream-Zeit, Follower) werden addiert, Spitzenwerte als Maximum übernommen, aktuelle Felder aus der neuesten Epoche.
+
 ## Datenbank (PostgreSQL)
 
 - `DATABASE_URL` muss gesetzt sein (siehe `.env.example`), damit die App über `pg` direkt auf PostgreSQL zugreift. Für Render den Internal Database URL verwenden; bei lokaler Entwicklung mit einer Render-Datenbank den External Database URL. `SUPABASE_DB_URL` bleibt als Fallback für bestehende Deployments erhalten, wird aber ignoriert, wenn `DATABASE_URL` gesetzt ist. Tabellen werden beim Start angelegt.
