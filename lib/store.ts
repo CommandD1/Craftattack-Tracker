@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { getDb, type Db } from "./db";
 import { playtimeOf } from "./playtime";
 import { createSwrCache } from "./swrCache";
+import { runsTracker } from "./mode";
 import { EXTRA_HISTORY_KEYS, EXTRA_KEY_OF_METRIC, EXTRA_METRICS, extraStatSql, type ExtraMetric } from "./playerStats";
 import type { BoardKey, DeathFeedItem, FeedItem, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind, AfkCheck } from "./types";
 
@@ -222,27 +223,29 @@ function rowToPoint(r: HistoryRow): TotalsPoint {
 
 /* ---------- Laden ---------- */
 
+function applyMeta(state: TrackerState, meta: MetaRow) {
+  state.startedAt = iso(meta.started_at)!;
+  state.lastPoll = iso(meta.last_poll);
+  state.lastOk = iso(meta.last_ok);
+  state.lastError = meta.last_error;
+  state.polls = meta.polls;
+  state.serverOnline = meta.server_online;
+  state.latest = meta.latest;
+  state.latestFeed = Array.isArray(meta.latest_feed) ? meta.latest_feed : null;
+  state.eventCount = meta.event_count;
+  if (meta.records) state.records = { ...state.records, ...meta.records };
+  state.pendingDeaths = meta.pending_deaths ?? 0;
+  state.pendingSince = iso(meta.pending_since);
+  state.pendingCandidates = Array.isArray(meta.pending_candidates) ? meta.pending_candidates : [];
+}
+
 async function loadFromDb() {
   const store = g();
   const db = await getDb();
 
   const meta = (await db.query<MetaRow>(`SELECT * FROM tracker_meta WHERE id = 1`)).rows[0];
   const state = freshState();
-  if (meta) {
-    state.startedAt = iso(meta.started_at)!;
-    state.lastPoll = iso(meta.last_poll);
-    state.lastOk = iso(meta.last_ok);
-    state.lastError = meta.last_error;
-    state.polls = meta.polls;
-    state.serverOnline = meta.server_online;
-    state.latest = meta.latest;
-    state.latestFeed = Array.isArray(meta.latest_feed) ? meta.latest_feed : null;
-    state.eventCount = meta.event_count;
-    if (meta.records) state.records = { ...state.records, ...meta.records };
-    state.pendingDeaths = meta.pending_deaths ?? 0;
-    state.pendingSince = iso(meta.pending_since);
-    state.pendingCandidates = Array.isArray(meta.pending_candidates) ? meta.pending_candidates : [];
-  }
+  if (meta) applyMeta(state, meta);
 
   const players = (await db.query<PlayerRow>(`SELECT * FROM players`)).rows;
   for (const r of players) state.players[r.id] = rowToPlayer(r);
@@ -273,8 +276,73 @@ async function loadFromDb() {
 
 export async function ensureLoaded() {
   const store = g();
-  if (!store.loaded) store.loaded = loadFromDb();
+  if (!store.loaded) {
+    store.loaded = loadFromDb();
+    refreshedAt.full = refreshedAt.light = Date.now();
+  }
   await store.loaded;
+  // Nur Website (TRACKER_MODE=web): Ein anderer Prozess schreibt die Daten. Den Stand im Speicher regelmäßig
+  // aus der DB nachziehen; die Anfrage wartet nicht darauf, sie bekommt den aktuellen Stand im Speicher.
+  if (!runsTracker()) maybeRefreshFromDb();
+}
+
+/* ---------- Nur Website: Stand aus der DB nachziehen ---------- */
+
+/** Leichter Abgleich höchstens so oft (nur bei Anfragen, eine ruhige Seite fragt die DB nicht ab) */
+const WEB_REFRESH_MS = 30_000;
+/** Vollständiges Neuladen (fängt auch gelöschte oder umgeschriebene ältere Ereignisse) */
+const WEB_FULL_RELOAD_MS = 6 * 3600_000;
+/** So weit zurück werden Ereignisse beim leichten Abgleich neu gelesen: der Tracker ergänzt Ereignisse nachträglich
+ * (VOD-Links, Abo-Minuten, Todesursachen) */
+const WEB_EVENT_WINDOW_MS = 2 * 3600_000;
+const refreshedAt = { light: 0, full: 0 };
+let refreshing: Promise<void> | null = null;
+
+function maybeRefreshFromDb() {
+  const now = Date.now();
+  if (refreshing || now - refreshedAt.light < WEB_REFRESH_MS) return;
+  const full = now - refreshedAt.full >= WEB_FULL_RELOAD_MS;
+  refreshing = (full ? reloadAllFromDb() : refreshRecentFromDb())
+    .catch((err: unknown) => console.warn("[web] Abgleich mit der DB fehlgeschlagen:", err instanceof Error ? err.message : err))
+    .finally(() => {
+      refreshedAt.light = Date.now();
+      if (full) refreshedAt.full = Date.now();
+      refreshing = null;
+    });
+}
+
+async function reloadAllFromDb() {
+  await loadFromDb();
+}
+
+async function refreshRecentFromDb() {
+  const store = g();
+  const state = store.state;
+  if (!state) return;
+  const db = await getDb();
+  const lastHistoryAt = state.history.length ? state.history[state.history.length - 1].at : null;
+  const lastEventAt = store.events.length ? Date.parse(store.events[store.events.length - 1].at) : 0;
+  const since = new Date(Math.max(0, lastEventAt - WEB_EVENT_WINDOW_MS));
+  const [meta, players, hist, events, total] = await Promise.all([
+    db.query<MetaRow>(`SELECT * FROM tracker_meta WHERE id = 1`).then((r) => r.rows[0]),
+    db.query<PlayerRow>(`SELECT * FROM players`).then((r) => r.rows),
+    db.query<HistoryRow>(`SELECT * FROM history WHERE at > $1 ORDER BY at`, [lastHistoryAt ? new Date(lastHistoryAt) : new Date(0)]).then((r) => r.rows),
+    db.query<EventRow>(`SELECT * FROM events WHERE at >= $1 ORDER BY at, id`, [since]).then((r) => r.rows),
+    db.query<{ n: number | string }>(`SELECT count(*)::int AS n FROM events`).then((r) => r.rows[0]),
+  ]);
+  if (meta) applyMeta(state, meta);
+  const nextPlayers: TrackerState["players"] = {};
+  for (const r of players) nextPlayers[r.id] = rowToPlayer(r);
+  state.players = nextPlayers;
+  if (hist.length) {
+    state.history = [...state.history, ...hist.map(rowToPoint)].slice(-MAX_HISTORY_POINTS);
+    store.historySaved = state.history.length;
+  }
+  // Ereignisse im Zeitfenster ersetzen (neue und nachträglich geänderte), ältere bleiben
+  const cutoff = since.getTime();
+  const keep = store.events.filter((e) => Date.parse(e.at) < cutoff);
+  store.events = [...keep, ...events.map(rowToEvent)].slice(-MAX_EVENTS_IN_MEMORY);
+  state.eventCount = Math.max(state.eventCount, Number(total?.n ?? 0));
 }
 
 export async function getState(): Promise<TrackerState> {

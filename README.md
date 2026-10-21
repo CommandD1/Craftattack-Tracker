@@ -50,6 +50,9 @@ Der Poller startet automatisch mit dem Server (`instrumentation.ts`).
 | `tracker` | `npm run dev:tracker` / `npm run start:tracker` | Nur der Tracker. Alle Seiten antworten mit HTTP 503; erreichbar bleiben `/api/tracker` (Status) sowie die Poll-Endpunkte. |
 
 Beide Modi gleichzeitig auf einem Rechner brauchen verschiedene Ports, z. B. `PORT=3001 npm run start:tracker`.
+Im Modus `web` lädt die Website den Stand beim Start aus der DB und gleicht ihn danach bei Anfragen höchstens alle
+30 Sekunden ab (Tracker-Stand, Spieler, neue und kürzlich geänderte Ereignisse), alle 6 Stunden vollständig. Die
+Poll-Endpunkte antworten dort mit HTTP 409: Cron-Aufrufe gehören an den Tracker-Dienst, sonst schreiben zwei Poller.
 Sie teilen sich dieselbe Datenbank (`DATABASE_URL`); der Tracker schreibt, die Website liest.
 Auf Render lässt sich der Tracker so als eigener Worker-Service mit `npm run start:tracker` betreiben.
 
