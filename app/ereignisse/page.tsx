@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
-import { EVENT_GROUPS, EVENT_META, EVENT_TYPES, TIME_RANGES, isShownEvent, typesForGroup } from "@/lib/events";
+import { EVENT_GROUPS, EVENT_META, EVENT_TYPES, TIME_RANGES, isShownEvent, sharedChatPlayers, typesForGroup } from "@/lib/events";
 import type { EventType } from "@/lib/types";
 import { num } from "@/lib/format";
 import { EventFeed } from "@/components/EventFeed";
@@ -52,7 +52,7 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
   let base = [...events].reverse().filter(isShownEvent);
   if (since) base = base.filter((e) => Date.parse(e.at) >= since);
   if (where) base = base.filter((e) => e.where === where);
-  if (player) base = base.filter((e) => e.player === player || e.meta?.raidTargetPlayerId === player);
+  if (player) base = base.filter((e) => e.player === player || e.meta?.raidTargetPlayerId === player || sharedChatPlayers(e).includes(player));
 
   const types = t ? [t] : typesForGroup(g);
   const list = types ? base.filter((e) => types.includes(e.type)) : base;

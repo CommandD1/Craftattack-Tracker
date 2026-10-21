@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { appendLiveEvent, getEvents, getState, incrementLiveSubscriptionEvent, saveTwitchChatMessage } from "./store";
+import { observeSharedChatPair } from "./sharedChat";
 import { KNOWN_LOGINS } from "./tracker";
 import type { PlayerState, TrackerEvent } from "./types";
 
@@ -100,6 +101,8 @@ interface IrcState {
   processing: Promise<void>;
   seenIds: Set<string>;
   seenOrder: string[];
+  /** Twitch-Raum-ID → Kanal-Login (aus ROOMSTATE/PRIVMSG), um geteilte Nachrichten ihrem Ursprung zuzuordnen */
+  roomIds: Map<string, string>;
 }
 
 type Globals = typeof globalThis & { __acTwitchIrc?: IrcState };
@@ -119,8 +122,10 @@ function state(): IrcState {
       processing: Promise.resolve(),
       seenIds: new Set(),
       seenOrder: [],
+      roomIds: new Map(),
     };
   }
+  gl.__acTwitchIrc.roomIds ??= new Map();
   return gl.__acTwitchIrc;
 }
 
@@ -396,31 +401,60 @@ async function handleLine(irc: IrcState, socket: WebSocket, line: string) {
     reconcileChannels(irc);
     return;
   }
+  if (message.command === "ROOMSTATE") {
+    const channel = safeChannel(message.params[0] ?? "");
+    if (channel && message.tags["room-id"]) irc.roomIds.set(message.tags["room-id"], channel);
+    return;
+  }
   if (message.command === "PRIVMSG") {
     const channel = safeChannel(message.params[0] ?? "");
     const senderLogin = safeChannel(message.prefix?.split("!", 1)[0] ?? message.tags.login ?? "");
     const owner = channel ? irc.desired.get(channel) : undefined;
     if (!channel || !senderLogin || !owner || !message.trailing?.trim()) return;
+    const roomId = message.tags["room-id"];
+    if (roomId) irc.roomIds.set(roomId, channel);
+
+    // Geteilter Chat (Stream Together): Twitch liefert die Nachricht in jedem beteiligten Kanal aus. Kopien tragen
+    // die Raum-ID des Ursprungskanals und die ID der Originalnachricht. Gespeichert wird sie nur einmal, beim
+    // Kanal, in dem sie geschrieben wurde; die anderen Kanäle landen in `sharedWith`.
+    const sourceRoomId = message.tags["source-room-id"];
+    const isCopy = Boolean(sourceRoomId && roomId && sourceRoomId !== roomId);
+    const sourceChannel = isCopy ? irc.roomIds.get(sourceRoomId!) : channel;
+    const sourceOwner = sourceChannel ? irc.desired.get(sourceChannel) : undefined;
 
     const currentState = await getState();
-    const sender = playerForTwitchLogin(currentState.players, senderLogin);
-    if (!sender || sender.id === owner.id || !currentState.players[owner.id]) return;
-
     const sentAt = Number(message.tags["tmi-sent-ts"]);
     const timestamp = new Date(sentAt);
     const at = Number.isFinite(sentAt) && sentAt > 0 && Number.isFinite(timestamp.getTime())
       ? timestamp.toISOString()
       : new Date().toISOString();
-    const idSource = message.tags.id ?? `${channel}:${sender.id}:${at}:${message.trailing}`;
+
+    // Hinweis auf einen geteilten Chat zwischen zwei erfassten Kanälen (nur ohne Twitch-API-Zugang ausgewertet)
+    if (isCopy && sourceOwner && currentState.players[sourceOwner.id] && currentState.players[owner.id]) {
+      for (const event of await observeSharedChatPair(sourceOwner.id, owner.id, currentState.players, at)) {
+        if (irc.seenIds.has(event.id)) continue;
+        await appendLiveEvent(event);
+        rememberEventId(irc, event.id);
+      }
+    }
+
+    // Ursprung ist kein erfasster Spieler-Kanal: keine Nachricht zwischen Spielern
+    if (!sourceOwner || !currentState.players[sourceOwner.id]) return;
+    const sender = playerForTwitchLogin(currentState.players, senderLogin);
+    // Eigener Chat (auch wenn er per geteiltem Chat bei anderen erscheint) zählt nicht
+    if (!sender || sender.id === sourceOwner.id) return;
+
+    const idSource = message.tags["source-id"] ?? message.tags.id ?? `${sourceChannel}:${sender.id}:${at}:${message.trailing}`;
     const id = `twitch-chat-${createHash("sha256").update(idSource).digest("hex").slice(0, 32)}`;
     await saveTwitchChatMessage({
       id,
       at,
       senderId: sender.id,
       senderName: sender.name,
-      channelId: owner.id,
-      channelName: owner.name,
+      channelId: sourceOwner.id,
+      channelName: sourceOwner.name,
       message: message.trailing,
+      sharedWith: isCopy && owner.id !== sourceOwner.id && owner.id !== sender.id ? [owner.id] : [],
     });
     return;
   }

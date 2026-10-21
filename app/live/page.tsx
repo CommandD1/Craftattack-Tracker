@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { getHistoryRange } from "@/lib/analytics";
-import { getHistoryAll, getTwitchLiveSubscriptionCounts } from "@/lib/store";
+import { getActiveSharedChatSessions, getHistoryAll, getTwitchLiveSubscriptionCounts } from "@/lib/store";
 import { ago, headUrl, num } from "@/lib/format";
 import { Sparkline } from "@/components/Sparkline";
 import { EventFeed } from "@/components/EventFeed";
@@ -46,6 +46,11 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
     live.map((p) => ({ player: p.id, startedAt: p.liveSince ?? p.live?.startedAt ?? null })),
   );
   const liveStreamSubs = live.reduce((total, player) => total + (streamSubs.get(player.id) ?? 0), 0);
+  // Geteilter Chat (Stream Together): Partner je live streamendem Spieler
+  const sharedOf = new Map<string, { partners: string[]; others: number }>();
+  for (const s of await getActiveSharedChatSessions()) {
+    for (const id of s.participants) sharedOf.set(id, { partners: s.participants.filter((x) => x !== id), others: s.otherCount });
+  }
   const liveStreamFollowers = live.reduce(
     (total, player) => total + (player.followersLiveAtSample === player.liveSince ? (player.followersOnLiveStream ?? 0) : 0),
     0,
@@ -168,6 +173,18 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
                       <p className="muted" style={{ fontSize: ".8125rem", marginTop: 4 }}>
                         Live seit {p.liveSince ? ago(p.liveSince).replace("vor ", "") : "–"}
                       </p>
+                      {sharedOf.has(p.id) && (
+                        <p className="stream__shared">
+                          <span className="tag" data-tone="twitch">
+                            Geteilter Chat
+                          </span>{" "}
+                          mit{" "}
+                          {[
+                            ...sharedOf.get(p.id)!.partners.map((id) => state.players[id]?.name ?? id),
+                            ...(sharedOf.get(p.id)!.others > 0 ? [`${sharedOf.get(p.id)!.others} weiteren Kanälen`] : []),
+                          ].join(", ") || "anderen Kanälen"}
+                        </p>
+                      )}
                       <div className="stream__stats">
                         <span className="stream__stat" data-tone="pink">
                           <strong className="num">

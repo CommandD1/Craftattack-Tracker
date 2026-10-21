@@ -206,6 +206,18 @@ export const EVENT_META: Record<EventType, EventMeta> = {
     tone: "twitch",
     text: (e) => `hat ${e.meta?.raidTargetName ?? "einen anderen Spieler"} geraidet`,
   },
+  shared_chat_start: {
+    label: "Geteilter Chat",
+    tone: "twitch",
+    text: (e) => `streamt mit geteiltem Chat mit ${sharedChatWho(e)}`,
+    sub: (e) => (e.meta?.sharedChatSource === "chat" ? "Aus geteilten Chat-Nachrichten erkannt" : "Stream Together laut Twitch"),
+  },
+  shared_chat_end: {
+    label: "Geteilter Chat Ende",
+    tone: "twitch",
+    text: (e) => `hat den geteilten Chat mit ${sharedChatWho(e)} beendet`,
+    sub: (e) => (e.delta ? `Dauer ${duration(e.delta)}` : null),
+  },
   server_online: { label: "Server", tone: "grass", text: () => "Der Server ist wieder online" },
   server_offline: { label: "Server", tone: "redstone", text: () => "Der Server ist offline gegangen" },
   first_join: {
@@ -265,7 +277,7 @@ export const EVENT_GROUPS: { key: string; label: string; tone: string; types: Ev
   { key: "server", label: "Server", tone: "grass", types: ["join", "leave", "afk_start", "afk_mobs_start", "afk_mobs_end", "afk_blocks_start", "afk_blocks_end", "afk_end", "server_online", "server_offline", "tracker_start"] },
   { key: "death", label: "Tode", tone: "redstone", types: ["death"] },
   { key: "loot", label: "Loot & Arbeit", tone: "gold", types: ["diamonds", "blocksBroken", "mobsKilled", "distance", "damageDealt", "totemsUsed", "foodEaten"] },
-  { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title", "subscription", "subscription_gift", "follower_burst", "raid"] },
+  { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title", "subscription", "subscription_gift", "follower_burst", "raid", "shared_chat_start", "shared_chat_end"] },
   { key: "highlights", label: "Highlights", tone: "amethyst", types: ["achievement", "first_join", "rank", "milestone", "record"] },
 ];
 
@@ -305,6 +317,10 @@ export function eventBadge(e: TrackerEvent): string | null {
       return `+${num(e.delta ?? 0)} Follower`;
     case "raid":
       return e.value !== undefined ? `${num(e.value)} Zuschauer` : null;
+    case "shared_chat_start":
+      return e.value !== undefined ? `${num(e.value)} Kanäle` : null;
+    case "shared_chat_end":
+      return e.delta ? duration(e.delta) : null;
     case "stream_end": {
       const s = Number(e.meta?.streamSeconds ?? 0);
       return s > 0 ? duration(s) : null;
@@ -359,6 +375,8 @@ export const EVENT_TYPES: EventType[] = [
   "subscription_gift",
   "follower_burst",
   "raid",
+  "shared_chat_start",
+  "shared_chat_end",
   "rank",
   "milestone",
   "record",
@@ -385,4 +403,19 @@ export const EVENT_MIN_DELTA = { foodEaten: 3, damageDealt: 401 } as const;
 export function isShownEvent(e: Pick<TrackerEvent, "type" | "delta">): boolean {
   if (e.type === "foodEaten" || e.type === "damageDealt") return (e.delta ?? 0) >= EVENT_MIN_DELTA[e.type];
   return true;
+}
+
+/** Beteiligte eines geteilten Chats als Text, z. B. „Papaplatte, Trymacs und 1 weiterer Kanal" */
+export function sharedChatWho(e: Pick<TrackerEvent, "meta" | "player">): string {
+  // Der Spieler des Ereignisses steht schon vorne im Satz
+  const ids = sharedChatPlayers(e);
+  const names = String(e.meta?.sharedChatNames ?? "").split(", ").filter((name, i) => name && ids[i] !== e.player);
+  const others = Number(e.meta?.sharedChatOthers ?? 0);
+  const parts = [...names, ...(others > 0 ? [`${others} ${others === 1 ? "weiterer Kanal" : "weitere Kanäle"}`] : [])];
+  return parts.length <= 1 ? (parts[0] ?? "") : `${parts.slice(0, -1).join(", ")} und ${parts[parts.length - 1]}`;
+}
+
+/** Spieler-IDs, die an einem Geteilter-Chat-Ereignis beteiligt sind */
+export function sharedChatPlayers(e: Pick<TrackerEvent, "meta">): string[] {
+  return String(e.meta?.sharedChatPlayers ?? "").split(",").filter(Boolean);
 }

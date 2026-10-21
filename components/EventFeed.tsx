@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BOARD_KEYS, type BoardKey, type EventType, type TrackerEvent } from "@/lib/types";
-import { EVENT_META, eventBadge, isShownEvent } from "@/lib/events";
+import { EVENT_META, eventBadge, isShownEvent, sharedChatPlayers } from "@/lib/events";
 import { headUrl, time } from "@/lib/format";
 import { BOARD_ICON, EVENT_ICON, Icon } from "./Icons";
 
@@ -121,7 +121,12 @@ export function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlaye
   const vod = typeof e.meta?.vodUrl === "string" ? e.meta.vodUrl : null;
   const liveUrl = typeof e.meta?.liveUrl === "string" ? e.meta.liveUrl : null;
   const link = liveUrl ? { href: liveUrl, title: "Läuft gerade – Stream auf Twitch ansehen", live: true } : vod ? { href: vod, title: e.type === "death" ? "Diesen Moment im VOD ansehen" : "Aufzeichnung auf Twitch ansehen", live: false } : null;
-  const withHead = Boolean(e.player) && !SERVER_TYPES.has(e.type);
+  const isShared = e.type === "shared_chat_start" || e.type === "shared_chat_end";
+  const withHead = Boolean(e.player) && !SERVER_TYPES.has(e.type) && !isShared;
+  // Geteilter Chat: Köpfe aller beteiligten Spieler (höchstens vier), auf jeder Seite
+  const sharedIds = isShared ? sharedChatPlayers(e) : [];
+  const sharedUuids = isShared ? String(e.meta?.sharedChatUuids ?? "").split(",") : [];
+  const sharedNames = isShared ? String(e.meta?.sharedChatNames ?? "").split(", ") : [];
   const offServer = e.type === "stream_start" && e.meta?.onServer === false;
   // Rang / Meilenstein: statt des Listennamens nur das Icon der Liste (Name steht im Tooltip)
   const board = (e.type === "rank" || e.type === "milestone") && BOARD_KEYS.includes(e.meta?.board as BoardKey) ? (e.meta!.board as BoardKey) : null;
@@ -134,6 +139,15 @@ export function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlaye
           <img src={headUrl(e.uuid, 32, e.player)} alt="" width={32} height={32} loading="lazy" decoding="async" />
         </Link>
       ) : null}
+      {sharedIds.length > 0 && (
+        <span className="tile__heads" aria-label={`Geteilter Chat: ${sharedNames.join(", ")}`}>
+          {sharedIds.slice(0, 4).map((pid, i) => (
+            <Link key={pid} className="tile__head" href={`/spieler/${encodeURIComponent(pid)}`} title={sharedNames[i] ?? pid}>
+              <img src={headUrl(sharedUuids[i] || undefined, 32, pid)} alt="" width={32} height={32} loading="lazy" decoding="async" />
+            </Link>
+          ))}
+        </span>
+      )}
       {e.type === "subscription_gift" && showPlayer && typeof e.meta?.giftGiverPlayerId === "string" && (
         <Link
           className="tile__head tile__head--gift"

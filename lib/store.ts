@@ -578,16 +578,33 @@ export interface TwitchChatMessage {
   channelId: string;
   channelName: string;
   message: string;
+  /** Geteilter Chat: weitere Spieler-Kanäle, in denen dieselbe Nachricht erschien */
+  sharedWith?: string[];
 }
 
+/**
+ * Speichert eine Chat-Nachricht genau einmal. Im geteilten Chat (Stream Together) kommt dieselbe Nachricht in
+ * jedem beteiligten Kanal an; alle Kopien haben dieselbe ID. Spätere Kopien ergänzen nur `shared_with`.
+ */
 export async function saveTwitchChatMessage(message: TwitchChatMessage): Promise<void> {
   const db = await getDb();
+  const shared = message.sharedWith ?? [];
   const inserted = await db.query(
-    `INSERT INTO twitch_chat_messages (id, at, sender_id, sender_name, channel_id, channel_name, message)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING RETURNING id`,
-    [message.id, toDate(message.at), message.senderId, message.senderName, message.channelId, message.channelName, message.message],
+    `INSERT INTO twitch_chat_messages (id, at, sender_id, sender_name, channel_id, channel_name, message, shared_with)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (id) DO NOTHING RETURNING id`,
+    [message.id, toDate(message.at), message.senderId, message.senderName, message.channelId, message.channelName, message.message, shared.length ? shared : null],
   );
-  if (inserted.rows.length === 0) return;
+  if (inserted.rows.length === 0) {
+    if (shared.length) {
+      await db.query(
+        `UPDATE twitch_chat_messages
+            SET shared_with = ARRAY(SELECT DISTINCT unnest(COALESCE(shared_with, '{}') || $2::text[]))
+          WHERE id = $1 AND NOT (COALESCE(shared_with, '{}') @> $2::text[])`,
+        [message.id, shared],
+      );
+    }
+    return;
+  }
 
   twitchChatWritesSincePrune += 1;
   if (twitchChatWritesSincePrune >= 100) {
@@ -610,6 +627,7 @@ type ChatRow = {
   channel_id: string;
   channel_name: string;
   message: string;
+  shared_with: string[] | null;
 };
 const chatFromRow = (row: ChatRow): TwitchChatMessage => ({
   id: row.id,
@@ -619,6 +637,7 @@ const chatFromRow = (row: ChatRow): TwitchChatMessage => ({
   channelId: row.channel_id,
   channelName: row.channel_name,
   message: row.message,
+  sharedWith: row.shared_with ?? [],
 });
 
 export interface ChatPartner {
@@ -643,7 +662,7 @@ export interface PlayerChat {
 /** Chat eines Spielers fürs Profil: beide Richtungen plus die häufigsten Partner. Nutzt die Indizes auf sender_id/channel_id. */
 export async function getPlayerTwitchChat(id: string, limit = 30): Promise<PlayerChat> {
   const db = await getDb();
-  const cols = "id, at, sender_id, sender_name, channel_id, channel_name, message";
+  const cols = "id, at, sender_id, sender_name, channel_id, channel_name, message, shared_with";
   const [sent, received, writesIn, visitors] = await Promise.all([
     db.query<ChatRow>(`SELECT ${cols} FROM twitch_chat_messages WHERE sender_id = $1 ORDER BY at DESC, id DESC LIMIT $2`, [id, limit]),
     db.query<ChatRow>(`SELECT ${cols} FROM twitch_chat_messages WHERE channel_id = $1 ORDER BY at DESC, id DESC LIMIT $2`, [id, limit]),
@@ -765,28 +784,65 @@ export async function getPlayerTopHistory(id: string, hours = 25, bucketMinutes 
 
 export async function getRecentTwitchChatMessages(limit = 50): Promise<TwitchChatMessage[]> {
   const db = await getDb();
-  const rows = await db.query<{
-    id: string;
-    at: Date;
-    sender_id: string;
-    sender_name: string;
-    channel_id: string;
-    channel_name: string;
-    message: string;
-  }>(
-    `SELECT id, at, sender_id, sender_name, channel_id, channel_name, message
+  const rows = await db.query<ChatRow>(
+    `SELECT id, at, sender_id, sender_name, channel_id, channel_name, message, shared_with
        FROM twitch_chat_messages ORDER BY at DESC, id DESC LIMIT $1`,
     [limit],
   );
-  return rows.rows.map((row) => ({
-    id: row.id,
-    at: iso(row.at)!,
-    senderId: row.sender_id,
-    senderName: row.sender_name,
-    channelId: row.channel_id,
-    channelName: row.channel_name,
-    message: row.message,
-  }));
+  return rows.rows.map(chatFromRow);
+}
+
+/* ---------- Geteilter Chat (Stream Together) ---------- */
+
+export interface SharedChatSession {
+  key: string;
+  sessionId: string | null;
+  /** "api": von Twitch bestätigt, "chat": aus geteilten Nachrichten erschlossen */
+  source: "api" | "chat";
+  /** Beteiligte erfasste Spieler (IDs) */
+  participants: string[];
+  /** Weitere beteiligte Kanäle, die keine erfassten Spieler sind */
+  otherCount: number;
+  startedAt: string;
+  lastSeenAt: string;
+  endedAt: string | null;
+}
+
+type SharedRow = { key: string; session_id: string | null; source: string; participants: string[]; other_count: number; started_at: Date; last_seen_at: Date; ended_at: Date | null };
+const sharedFromRow = (r: SharedRow): SharedChatSession => ({
+  key: r.key,
+  sessionId: r.session_id,
+  source: r.source === "api" ? "api" : "chat",
+  participants: r.participants,
+  otherCount: r.other_count,
+  startedAt: iso(r.started_at)!,
+  lastSeenAt: iso(r.last_seen_at)!,
+  endedAt: iso(r.ended_at),
+});
+
+export async function saveSharedChatSession(s: SharedChatSession): Promise<void> {
+  const db = await getDb();
+  await db.query(
+    `INSERT INTO shared_chat_sessions (key, session_id, source, participants, other_count, started_at, last_seen_at, ended_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (key) DO UPDATE SET participants = EXCLUDED.participants, other_count = EXCLUDED.other_count,
+       last_seen_at = EXCLUDED.last_seen_at, ended_at = EXCLUDED.ended_at`,
+    [s.key, s.sessionId, s.source, s.participants, s.otherCount, toDate(s.startedAt), toDate(s.lastSeenAt), toDate(s.endedAt)],
+  );
+}
+
+/** Noch laufende geteilte Chats (für den Neustart des Trackers und die Anzeige) */
+export async function getActiveSharedChatSessions(): Promise<SharedChatSession[]> {
+  const db = await getDb();
+  return (await db.query<SharedRow>(`SELECT * FROM shared_chat_sessions WHERE ended_at IS NULL ORDER BY started_at DESC`)).rows.map(sharedFromRow);
+}
+
+/** Geteilte Chats eines Spielers, neueste zuerst */
+export async function getPlayerSharedChatSessions(id: string, limit = 20): Promise<SharedChatSession[]> {
+  const db = await getDb();
+  return (
+    await db.query<SharedRow>(`SELECT * FROM shared_chat_sessions WHERE $1 = ANY(participants) ORDER BY started_at DESC LIMIT $2`, [id, limit])
+  ).rows.map(sharedFromRow);
 }
 
 export interface TwitchSubscriptionProfile {

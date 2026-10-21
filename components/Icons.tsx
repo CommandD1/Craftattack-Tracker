@@ -182,6 +182,8 @@ export const EVENT_ICON: Record<EventType, keyof typeof Icon> = {
   subscription_gift: "gift",
   follower_burst: "users",
   raid: "raid",
+  shared_chat_start: "users",
+  shared_chat_end: "users",
   server_online: "server",
   server_offline: "server",
   tracker_start: "bolt",
