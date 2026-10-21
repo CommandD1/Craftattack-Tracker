@@ -56,7 +56,13 @@ Auf Render lässt sich der Tracker so als eigener Worker-Service mit `npm run st
 ## Render (512 MB)
 
 `render.yaml` richtet einen Render-Starter-Web-Service ein. Der Produktionsserver
-begrenzt V8s Heap auf 320 MB; Next.js hält höchstens 16 MB Cache im Speicher und
+begrenzt V8s Heap auf 280 MB Old Space plus 16 MB Semi Space (`--max-semi-space-size`), zusammen
+gut 340 MB. Ohne die Semi-Space-Grenze darf Node 24 den Heap auf über 530 MB wachsen lassen, mehr als die
+Instanz hat; dann beendet Render den Prozess samt Tracker. Teure Abfragen (Rang-Verlauf, Raten, Sessions,
+Bestenlisten) werden zwischengespeichert, gleichzeitige Anfragen teilen sich eine Berechnung, abgelaufene
+Einträge werden sofort ausgeliefert und im Hintergrund erneuert (`lib/swrCache.ts`); `/api/warm` füllt sie
+kurz nach dem Start. Für noch mehr Sicherheit lässt sich der Tracker als eigener Dienst betreiben
+(siehe „Nur Website oder nur Tracker“). Next.js hält höchstens 16 MB Cache im Speicher und
 verwendet beim Build einen Worker. Die verbleibende Speichermarge ist für Node.js,
 native Module und den Tracker vorgesehen.
 

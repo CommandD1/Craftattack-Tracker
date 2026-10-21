@@ -1,6 +1,6 @@
 import "server-only";
 import { getDb } from "./db";
-import { assignEventPlayer, deleteBackfilledEvents, deleteEvents, ensureLoaded, getAllSessions, getState, insertPastEvents, type StoredSession } from "./store";
+import { assignEventPlayer, deleteBackfilledEvents, deleteEvents, ensureLoaded, loadAllSessions, getState, insertPastEvents, type StoredSession } from "./store";
 import { loadAfkSpans } from "./analytics";
 import { AFK_MS, UNKNOWN_DEATH_GRACE_MS } from "./tracker";
 import { trackedSecondsOf } from "./playtime";
@@ -62,7 +62,7 @@ export async function assignUnknownDeaths(): Promise<number> {
     )
   ).rows;
   if (unknowns.length === 0) return 0;
-  const [state, sessions] = await Promise.all([getState(), getAllSessions()]);
+  const [state, sessions] = await Promise.all([getState(), loadAllSessions()]);
   const now = Date.now();
   const noExt = Object.values(state.players).filter((p) => !p.twitchLogin);
   // Wer im Zeitfenster ein eigenes Tod-Ereignis hat, stand in der Tode-Top-10: sein Tod war erklärt, der unbekannte ist nicht seiner
@@ -175,7 +175,7 @@ async function fixCountersAndPlaytime(): Promise<void> {
   ).rows.length;
 
   // 2) Spielzeit
-  const [state, sessions] = await Promise.all([getState(), getAllSessions()]);
+  const [state, sessions] = await Promise.all([getState(), loadAllSessions()]);
   const now = Date.now();
   const rows = (
     await db.query<{ player: string; at: Date; playtime_seconds: number | string }>(
@@ -297,7 +297,7 @@ export async function backfillAfkFarmEvents(): Promise<number> {
 /** Baut die allgemeinen AFK-Start-/Ende-Ereignisse aus den mit der aktuellen Schwelle erkannten Phasen neu auf. */
 export async function backfillAfkEvents(): Promise<number> {
   await ensureLoaded();
-  const [state, sessions] = await Promise.all([getState(), getAllSessions()]);
+  const [state, sessions] = await Promise.all([getState(), loadAllSessions()]);
   const db = await getDb();
   const now = Date.now();
   const spans = await loadAfkSpans(0, now, now);

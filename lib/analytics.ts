@@ -7,6 +7,7 @@ import { AFK_MS, AFK_FARM_WINDOW_MS, POLL_INTERVAL_MS, farmKindOf } from "./trac
 import type { BoardKey, TrackerEvent, TrackerState, AfkKind } from "./types";
 import { BOARD_KEYS } from "./types";
 import { EXTRA_HISTORY_KEYS, type ExtraStatKey } from "./playerStats";
+import { createSwrCache } from "./swrCache";
 
 /* ============================================================ Tage (Europe/Berlin) */
 
@@ -47,14 +48,10 @@ function berlinSlot(ms: number): { dow: number; hour: number } {
 
 /* ============================================================ Cache */
 
-const cache = new Map<string, { at: number; value: unknown }>();
+const swr = createSwrCache();
 async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
   await connection();
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < ttlMs) return hit.value as T;
-  const value = await load();
-  cache.set(key, { at: Date.now(), value });
-  return value;
+  return swr(key, ttlMs, load);
 }
 
 /* ============================================================ Streams als Sessions */
@@ -1100,8 +1097,16 @@ export async function getPlayerRates(): Promise<{ players: Record<string, Player
     const db = await getDb();
     const cols = Object.values(RATE_COL).join(", ");
     const [firstRows, lastRows, state] = await Promise.all([
-      db.query<EdgeRow>(`SELECT DISTINCT ON (player) player, ${cols} FROM player_history WHERE deaths IS NOT NULL ORDER BY player, at ASC`).then((r) => r.rows),
-      db.query<EdgeRow>(`SELECT DISTINCT ON (player) player, ${cols} FROM player_history WHERE deaths IS NOT NULL ORDER BY player, at DESC`).then((r) => r.rows),
+      // Erster und letzter Messpunkt je Spieler über den Primärschlüssel (player, at): ein Index-Zugriff je Spieler
+      // statt zweimal die ganze Tabelle zu sortieren
+      db.query<EdgeRow>(
+        `SELECT p.id AS player, h.* FROM players p
+           CROSS JOIN LATERAL (SELECT ${cols} FROM player_history WHERE player = p.id AND deaths IS NOT NULL ORDER BY at ASC LIMIT 1) h`,
+      ).then((r) => r.rows),
+      db.query<EdgeRow>(
+        `SELECT p.id AS player, h.* FROM players p
+           CROSS JOIN LATERAL (SELECT ${cols} FROM player_history WHERE player = p.id AND deaths IS NOT NULL ORDER BY at DESC LIMIT 1) h`,
+      ).then((r) => r.rows),
       getState(),
     ]);
     const first = new Map(firstRows.map((r) => [r.player, r]));
@@ -1170,20 +1175,31 @@ export async function getRankHistory(): Promise<RankHistory> {
     const db = await getDb();
     const cols = RANK_KEYS.map((k) => RANK_COL[k]);
     const anyValue = cols.map((c) => `${c} IS NOT NULL`).join(" OR ");
-    const first = (await db.query<{ at: Date | null }>(`SELECT min(at) AS at FROM player_history WHERE ${anyValue}`)).rows[0]?.at ?? null;
+    // Ältester Messpunkt: je Spieler ein Index-Zugriff statt eines Durchlaufs über die ganze Tabelle
+    const first = (
+      await db.query<{ at: Date | null }>(
+        `SELECT min(h.at) AS at FROM players p CROSS JOIN LATERAL (SELECT at FROM player_history WHERE player = p.id ORDER BY at LIMIT 1) h`,
+      )
+    ).rows[0]?.at ?? null;
     if (!first) return { buckets: [], bucketMinutes: 60, players: {}, of: {}, extra: {} };
     const spanMin = (Date.now() - new Date(first).getTime()) / 60_000;
     const steps = [30, 60, 120, 180, 360, 720, 1440];
     const minutes = steps.find((s) => spanMin / s <= 120) ?? 1440;
-    // Je Spieler, Bündel und Liste der letzte Nicht-NULL-Wert im Bündel
+    // Je Spieler und Bündel der letzte Messpunkt mit Werten: ein Index-Zugriff über (player, at) je Paar statt die
+    // ganze Tabelle zu gruppieren. Leere Spalten übernimmt die Fortschreibung unten aus dem vorigen Bündel.
+    const bucketsSql = `SELECT generate_series(to_timestamp(floor(extract(epoch FROM $2::timestamptz) / ($1 * 60)) * ($1 * 60)), now(), make_interval(mins => $1::int)) AS bucket`;
     const rows = (
       await db.query<Record<string, unknown> & { player: string; bucket: Date }>(
-        `SELECT player, bucket, ${cols.map((c) => `(array_agg(${c} ORDER BY at DESC) FILTER (WHERE ${c} IS NOT NULL))[1] AS ${c}`).join(", ")}
-           FROM (SELECT *, to_timestamp(floor(extract(epoch FROM at) / ($1 * 60)) * ($1 * 60)) AS bucket
-                   FROM player_history WHERE ${anyValue}) x
-          GROUP BY player, bucket
-          ORDER BY bucket`,
-        [minutes],
+        `WITH b AS (${bucketsSql})
+         SELECT p.id AS player, b.bucket, h.*
+           FROM players p CROSS JOIN b
+           CROSS JOIN LATERAL (
+             SELECT ${cols.join(", ")} FROM player_history
+              WHERE player = p.id AND at >= b.bucket AND at < b.bucket + make_interval(mins => $1::int) AND (${anyValue})
+              ORDER BY at DESC LIMIT 1
+           ) h
+          ORDER BY b.bucket`,
+        [minutes, first],
       )
     ).rows;
     const buckets: number[] = [];
@@ -1221,12 +1237,15 @@ export async function getRankHistory(): Promise<RankHistory> {
     // Zusatzwerte: gleiche Bündel, Werte aus dem kompakten integer[] (nur jede ~5. Zeile hat es)
     const extraRows = (
       await db.query<{ player: string; bucket: Date; extra_stats: (number | null)[] }>(
-        `SELECT DISTINCT ON (player, bucket) player, bucket, extra_stats
-           FROM (SELECT player, at, extra_stats,
-                        to_timestamp(floor(extract(epoch FROM at) / ($1 * 60)) * ($1 * 60)) AS bucket
-                   FROM player_history WHERE extra_stats IS NOT NULL) x
-          ORDER BY player, bucket, at DESC`,
-        [minutes],
+        `WITH b AS (${bucketsSql})
+         SELECT p.id AS player, b.bucket, h.extra_stats
+           FROM players p CROSS JOIN b
+           CROSS JOIN LATERAL (
+             SELECT extra_stats FROM player_history
+              WHERE player = p.id AND at >= b.bucket AND at < b.bucket + make_interval(mins => $1::int) AND extra_stats IS NOT NULL
+              ORDER BY at DESC LIMIT 1
+           ) h`,
+        [minutes, first],
       )
     ).rows;
     const extraByBucket = new Map<number, typeof extraRows>();
