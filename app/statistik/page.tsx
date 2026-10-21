@@ -135,7 +135,6 @@ async function Stats(props: PageProps<"/statistik">) {
   const mostSubscriptions = subscriptionBoard[0] ?? null;
   const busiestDay = top(extras.days, (d) => d.playerHours);
   const mostAfk = extras.afk.perPlayer[0] ?? null;
-  const peakDay = top(hist.points, (h) => h.onlineCount);
 
   const h = hist.points;
   const series = (k: keyof (typeof h)[number]) => h.map((p) => ({ at: p.at, v: Number(p[k]) }));
@@ -196,42 +195,70 @@ async function Stats(props: PageProps<"/statistik">) {
           <h2 className="t-2" id="rec-h" style={{ marginBottom: 16 }}>
             Rekorde
           </h2>
-          <dl className="grid records-grid">
-            <Record label="Gleichzeitig online" tone={METRIC_TONE.onlineCount} value={state.records.peakOnline ? num(state.records.peakOnline.value) : "–"} when={state.records.peakOnline?.at} />
-            <Record label="Gleichzeitig live" tone={METRIC_TONE.liveCount} value={state.records.peakLive ? num(state.records.peakLive.value) : "–"} when={state.records.peakLive?.at} />
-            <Record label="Zuschauer gesamt" tone={METRIC_TONE.viewers} value={state.records.peakViewers ? num(state.records.peakViewers.value) : "–"} when={state.records.peakViewers?.at} />
-            <Record label="Meiste Zuschauer (ein Stream)" tone={METRIC_TONE.viewers} value={topViewers ? num(topViewers.peakViewers) : "–"} who={who(topViewers)} uuid={topViewers?.uuid} />
-            <Record label="Längste Session" tone={METRIC_TONE.tracked} value={longest ? duration(longest.longestSession) : "–"} who={who(longest)} uuid={longest?.uuid} />
-            <Record label="Meiste Online-Zeit" tone={METRIC_TONE.tracked} value={mostTracked ? duration(tracked(mostTracked)) : "–"} who={who(mostTracked)} uuid={mostTracked?.uuid} />
-            <Record label="Meiste Sessions" tone={METRIC_TONE.sessions} value={mostSessions ? num(mostSessions.sessions) : "–"} who={who(mostSessions)} uuid={mostSessions?.uuid} />
-            <Record label="Aktivster Tag" tone={METRIC_TONE.tracked} value={busiestDay ? `${num(busiestDay.playerHours)} Spielerstunden` : "–"} whenLabel={busiestDay ? dayLabel(busiestDay.day) : null} />
-            <Record label="Meiste AFK-Zeit" tone={METRIC_TONE.afkSeconds} value={mostAfk ? duration(mostAfk.seconds) : "–"} who={mostAfk ? { id: mostAfk.id, name: mostAfk.name } : null} uuid={mostAfk?.uuid} />
-            <Record label="Längste AFK-Phase" tone={METRIC_TONE.afkSeconds} value={extras.afk.longest ? duration(extras.afk.longest.seconds) : "–"} who={extras.afk.longest ? { id: extras.afk.longest.id, name: extras.afk.longest.name } : null} uuid={extras.afk.longest?.uuid} when={extras.afk.longest?.from} />
-            <Record label="Meiste Tode" tone={BOARD_TONE.deaths} value={mostDeaths ? num(mostDeaths.stats.deaths ?? 0) : "–"} who={who(mostDeaths)} uuid={mostDeaths?.uuid} />
-            <Record
-              label="Meiste Twitch Subs"
-              tone={METRIC_TONE.twitchSubs}
-              value={mostSubscriptions ? num(mostSubscriptions.value) : "–"}
-              who={mostSubscriptions ? { id: mostSubscriptions.id, name: mostSubscriptions.name } : null}
-              uuid={mostSubscriptions?.uuid}
-            />
-            <Record
-              label="Meiste Subs in einer Minute"
-              tone={METRIC_TONE.twitchSubs}
-              value={subscriptionMinuteRecord ? num(subscriptionMinuteRecord.value) : "–"}
-              who={subscriptionMinuteRecord ? { id: subscriptionMinuteRecord.id, name: subscriptionMinuteRecord.name } : null}
-              uuid={subscriptionMinuteRecord?.uuid}
-              when={subscriptionMinuteRecord?.at}
-            />
-            <Record label="Vollster Moment" tone={METRIC_TONE.onlineCount} value={peakDay ? `${num(peakDay.onlineCount)} online` : "–"} when={peakDay?.at} />
-            <Record label="Größter Diamanten-Fund" tone={BOARD_TONE.diamonds} value={bigDiamonds[0]?.delta ? num(bigDiamonds[0].delta) : "–"} who={bigDiamonds[0]?.player ? { id: bigDiamonds[0].player, name: bigDiamonds[0].playerName ?? bigDiamonds[0].player } : null} uuid={bigDiamonds[0]?.uuid} when={bigDiamonds[0]?.at} />
-            <Record label="Weitester Marsch am Stück" tone={BOARD_TONE.distance} value={bigDistance[0]?.delta ? boardValue("distance", bigDistance[0].delta) : "–"} who={bigDistance[0]?.player ? { id: bigDistance[0].player, name: bigDistance[0].playerName ?? bigDistance[0].player } : null} uuid={bigDistance[0]?.uuid} when={bigDistance[0]?.at} />
-            <Record label="Größter Abriss am Stück" tone={BOARD_TONE.blocksBroken} value={bigBlocks[0]?.delta ? `${num(bigBlocks[0].delta)} Blöcke` : "–"} who={bigBlocks[0]?.player ? { id: bigBlocks[0].player, name: bigBlocks[0].playerName ?? bigBlocks[0].player } : null} uuid={bigBlocks[0]?.uuid} when={bigBlocks[0]?.at} />
-            <Record label="Größte Mob-Schlacht am Stück" tone={BOARD_TONE.mobsKilled} value={bigMobs[0]?.delta ? `${num(bigMobs[0].delta)} Mobs` : "–"} who={bigMobs[0]?.player ? { id: bigMobs[0].player, name: bigMobs[0].playerName ?? bigMobs[0].player } : null} uuid={bigMobs[0]?.uuid} when={bigMobs[0]?.at} />
-            <Record label="Größter Schaden am Stück" tone={BOARD_TONE.damageDealt} value={bigDamage[0]?.delta ? boardValue("damageDealt", bigDamage[0].delta) : "–"} who={bigDamage[0]?.player ? { id: bigDamage[0].player, name: bigDamage[0].playerName ?? bigDamage[0].player } : null} uuid={bigDamage[0]?.uuid} when={bigDamage[0]?.at} />
-            <Record label="Meiste Totems am Stück" tone={BOARD_TONE.totemsUsed} value={bigTotems[0]?.delta ? `${num(bigTotems[0].delta)} Totems` : "–"} who={bigTotems[0]?.player ? { id: bigTotems[0].player, name: bigTotems[0].playerName ?? bigTotems[0].player } : null} uuid={bigTotems[0]?.uuid} when={bigTotems[0]?.at} />
-            <Record label="Meistes Essen am Stück" tone={BOARD_TONE.foodEaten} value={bigFood[0]?.delta ? `${num(bigFood[0].delta)} Essen` : "–"} who={bigFood[0]?.player ? { id: bigFood[0].player, name: bigFood[0].playerName ?? bigFood[0].player } : null} uuid={bigFood[0]?.uuid} when={bigFood[0]?.at} />
-          </dl>
+          {/* Nach Art der Kennzahl gruppiert: jede Gruppe hat ihre Farbe (lib/statTone.ts) */}
+          <div className="records-groups">
+            <section className="records-group" aria-labelledby="rec-server">
+              <h3 className="eyebrow records-group__h" id="rec-server">
+                Server & Spielzeit
+              </h3>
+              <dl className="grid records-grid">
+                <Record label="Gleichzeitig online" tone={METRIC_TONE.onlineCount} value={state.records.peakOnline ? num(state.records.peakOnline.value) : "–"} when={state.records.peakOnline?.at} />
+                <Record label="Aktivster Tag" tone={METRIC_TONE.tracked} value={busiestDay ? `${num(busiestDay.playerHours)} Spielerstunden` : "–"} whenLabel={busiestDay ? dayLabel(busiestDay.day) : null} />
+                <Record label="Meiste Online-Zeit" tone={METRIC_TONE.tracked} value={mostTracked ? duration(tracked(mostTracked)) : "–"} who={who(mostTracked)} uuid={mostTracked?.uuid} />
+                <Record label="Längste Session" tone={METRIC_TONE.tracked} value={longest ? duration(longest.longestSession) : "–"} who={who(longest)} uuid={longest?.uuid} />
+                <Record label="Meiste Sessions" tone={METRIC_TONE.sessions} value={mostSessions ? num(mostSessions.sessions) : "–"} who={who(mostSessions)} uuid={mostSessions?.uuid} />
+              </dl>
+            </section>
+            <section className="records-group" aria-labelledby="rec-twitch">
+              <h3 className="eyebrow records-group__h" id="rec-twitch">
+                Twitch
+              </h3>
+              <dl className="grid records-grid">
+                <Record label="Gleichzeitig live" tone={METRIC_TONE.liveCount} value={state.records.peakLive ? num(state.records.peakLive.value) : "–"} when={state.records.peakLive?.at} />
+                <Record label="Zuschauer gesamt" tone={METRIC_TONE.viewers} value={state.records.peakViewers ? num(state.records.peakViewers.value) : "–"} when={state.records.peakViewers?.at} />
+                <Record label="Meiste Zuschauer (ein Stream)" tone={METRIC_TONE.viewers} value={topViewers ? num(topViewers.peakViewers) : "–"} who={who(topViewers)} uuid={topViewers?.uuid} />
+                <Record
+                  label="Meiste Twitch Subs"
+                  tone={METRIC_TONE.twitchSubs}
+                  value={mostSubscriptions ? num(mostSubscriptions.value) : "–"}
+                  who={mostSubscriptions ? { id: mostSubscriptions.id, name: mostSubscriptions.name } : null}
+                  uuid={mostSubscriptions?.uuid}
+                />
+                <Record
+                  label="Meiste Subs in einer Minute"
+                  tone={METRIC_TONE.twitchSubs}
+                  value={subscriptionMinuteRecord ? num(subscriptionMinuteRecord.value) : "–"}
+                  who={subscriptionMinuteRecord ? { id: subscriptionMinuteRecord.id, name: subscriptionMinuteRecord.name } : null}
+                  uuid={subscriptionMinuteRecord?.uuid}
+                  when={subscriptionMinuteRecord?.at}
+                />
+              </dl>
+            </section>
+            <section className="records-group" aria-labelledby="rec-afk">
+              <h3 className="eyebrow records-group__h" id="rec-afk">
+                AFK
+              </h3>
+              <dl className="grid records-grid">
+                <Record label="Meiste AFK-Zeit" tone={METRIC_TONE.afkSeconds} value={mostAfk ? duration(mostAfk.seconds) : "–"} who={mostAfk ? { id: mostAfk.id, name: mostAfk.name } : null} uuid={mostAfk?.uuid} />
+                <Record label="Längste AFK-Phase" tone={METRIC_TONE.afkSeconds} value={extras.afk.longest ? duration(extras.afk.longest.seconds) : "–"} who={extras.afk.longest ? { id: extras.afk.longest.id, name: extras.afk.longest.name } : null} uuid={extras.afk.longest?.uuid} when={extras.afk.longest?.from} />
+              </dl>
+            </section>
+            <section className="records-group" aria-labelledby="rec-stats">
+              <h3 className="eyebrow records-group__h" id="rec-stats">
+                Spielstatistik
+              </h3>
+              <dl className="grid records-grid">
+                <Record label="Größter Diamanten-Fund" tone={BOARD_TONE.diamonds} value={bigDiamonds[0]?.delta ? num(bigDiamonds[0].delta) : "–"} who={bigDiamonds[0]?.player ? { id: bigDiamonds[0].player, name: bigDiamonds[0].playerName ?? bigDiamonds[0].player } : null} uuid={bigDiamonds[0]?.uuid} when={bigDiamonds[0]?.at} />
+                <Record label="Meiste Tode" tone={BOARD_TONE.deaths} value={mostDeaths ? num(mostDeaths.stats.deaths ?? 0) : "–"} who={who(mostDeaths)} uuid={mostDeaths?.uuid} />
+                <Record label="Größter Abriss am Stück" tone={BOARD_TONE.blocksBroken} value={bigBlocks[0]?.delta ? `${num(bigBlocks[0].delta)} Blöcke` : "–"} who={bigBlocks[0]?.player ? { id: bigBlocks[0].player, name: bigBlocks[0].playerName ?? bigBlocks[0].player } : null} uuid={bigBlocks[0]?.uuid} when={bigBlocks[0]?.at} />
+                <Record label="Größte Mob-Schlacht am Stück" tone={BOARD_TONE.mobsKilled} value={bigMobs[0]?.delta ? `${num(bigMobs[0].delta)} Mobs` : "–"} who={bigMobs[0]?.player ? { id: bigMobs[0].player, name: bigMobs[0].playerName ?? bigMobs[0].player } : null} uuid={bigMobs[0]?.uuid} when={bigMobs[0]?.at} />
+                <Record label="Weitester Marsch am Stück" tone={BOARD_TONE.distance} value={bigDistance[0]?.delta ? boardValue("distance", bigDistance[0].delta) : "–"} who={bigDistance[0]?.player ? { id: bigDistance[0].player, name: bigDistance[0].playerName ?? bigDistance[0].player } : null} uuid={bigDistance[0]?.uuid} when={bigDistance[0]?.at} />
+                <Record label="Meiste Totems am Stück" tone={BOARD_TONE.totemsUsed} value={bigTotems[0]?.delta ? `${num(bigTotems[0].delta)} Totems` : "–"} who={bigTotems[0]?.player ? { id: bigTotems[0].player, name: bigTotems[0].playerName ?? bigTotems[0].player } : null} uuid={bigTotems[0]?.uuid} when={bigTotems[0]?.at} />
+                <Record label="Größter Schaden am Stück" tone={BOARD_TONE.damageDealt} value={bigDamage[0]?.delta ? boardValue("damageDealt", bigDamage[0].delta) : "–"} who={bigDamage[0]?.player ? { id: bigDamage[0].player, name: bigDamage[0].playerName ?? bigDamage[0].player } : null} uuid={bigDamage[0]?.uuid} when={bigDamage[0]?.at} />
+                <Record label="Meistes Essen am Stück" tone={BOARD_TONE.foodEaten} value={bigFood[0]?.delta ? `${num(bigFood[0].delta)} Essen` : "–"} who={bigFood[0]?.player ? { id: bigFood[0].player, name: bigFood[0].playerName ?? bigFood[0].player } : null} uuid={bigFood[0]?.uuid} when={bigFood[0]?.at} />
+              </dl>
+            </section>
+          </div>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
             „Am Stück“ heißt: innerhalb eines Abfrage-Intervalls (standardmäßig eine Minute). Online-Zeit, Sessions und Zuschauer misst der Tracker selbst seit
             seinem Start.

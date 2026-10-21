@@ -29,7 +29,7 @@ export const EVENT_META: Record<EventType, EventMeta> = {
   join: { label: "Join", tone: "white", text: () => "ist auf den Server gekommen" },
   afk_start: {
     label: "AFK",
-    tone: "paper",
+    tone: METRIC_TONE.afkSeconds,
     text: () => "ist AFK",
     sub: (e) => (typeof e.meta?.since === "string" ? `Keine Bewegung seit ${new Date(e.meta.since).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" })} Uhr` : null),
   },
@@ -59,7 +59,7 @@ export const EVENT_META: Record<EventType, EventMeta> = {
   },
   afk_end: {
     label: "Zurück",
-    tone: "paper",
+    tone: METRIC_TONE.afkSeconds,
     text: (e) => (e.meta?.byLeave ? "war bis zum Leave AFK" : "ist wieder da"),
     // Keine Farm-Menge über die ganze Phase: die steht minutengenau in den Farm-Ende-Ereignissen
     sub: (e) => {

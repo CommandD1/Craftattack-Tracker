@@ -102,7 +102,7 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
                             </span>
                           )}
                           {p.online && p.afkSince && (
-                            <span className="tag" data-tone="paper" title={`Keine Bewegung seit ${ago(p.afkSince).replace("vor ", "")}${p.afkFarm ? ` · ${p.afkFarm === "mobs" ? "farmt dabei Mobs" : "baut dabei Blöcke ab"}` : ""}`}>
+                            <span className="tag" data-tone="idle" title={`Keine Bewegung seit ${ago(p.afkSince).replace("vor ", "")}${p.afkFarm ? ` · ${p.afkFarm === "mobs" ? "farmt dabei Mobs" : "baut dabei Blöcke ab"}` : ""}`}>
                               AFK{p.afkFarm ? ` · ${p.afkFarm === "mobs" ? "Mobs" : "Blöcke"}` : ""}
                             </span>
                           )}

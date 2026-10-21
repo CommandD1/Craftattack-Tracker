@@ -82,7 +82,7 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
   return (
     <>
       <dl className="grid st-figs st-figs--6" style={{ marginBottom: 32 }}>
-        <div className="box st-fig" data-tone="white">
+        <div className="box st-fig" data-tone={METRIC_TONE.onlineCount}>
           <dt>Server erreichbar</dt>
           <dd className="num">{d.availability.ratio === null ? "–" : `${(Math.round(d.availability.ratio * 1000) / 10).toLocaleString("de-DE")} %`}</dd>
         </div>
@@ -90,15 +90,15 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
           <dt>Spielerstunden</dt>
           <dd className="num">{num(d.totals.playerHours)}</dd>
         </div>
-        <div className="box st-fig" data-tone="white">
+        <div className="box st-fig" data-tone={METRIC_TONE.onlineCount}>
           <dt>Spieler bisher</dt>
           <dd className="num">{num(d.totals.players)}</dd>
         </div>
-        <div className="box st-fig" data-tone="white">
+        <div className="box st-fig" data-tone={METRIC_TONE.onlineCount}>
           <dt>Aktiv in 24 h</dt>
           <dd className="num">{num(d.loyalty.groups.h24)}</dd>
         </div>
-        <div className="box st-fig" data-tone="white">
+        <div className="box st-fig" data-tone={METRIC_TONE.onlineCount}>
           <dt>Länger als 1 Tag weg</dt>
           <dd className="num">{num(d.loyalty.groups.d3 + d.loyalty.groups.d7 + d.loyalty.groups.gone)}</dd>
         </div>

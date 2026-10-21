@@ -5,11 +5,11 @@ import type { StatGroup } from "./playerStats";
  * Eine Farbe je Kennzahl – überall dieselbe: Kacheln, Bestenlisten, Graph-Auswahl, Ereignisse, Profil.
  *
  * Die neun Hauptlisten bekommen je einen eigenen Ton. Alles rund um Twitch ist `twitch`, "auf dem Server"
- * teilt sich den Ton der Spielzeit, reine Tracker-Zähler (Sessions, Ereignisse) sind neutral – so bedeutet
- * Farbe immer "welche Kennzahl".
+ * (online, Sessions, Online-Zeit) teilt sich den Ton der Spielzeit, AFK ist grau (`idle`) – so bedeutet
+ * Farbe immer "welche Kennzahl". Kacheln einer Reihe sollten nie teils farbig, teils neutral sein.
  * Zusatzwerte erben den Ton ihrer Gruppe; AFK-Farmen den Ton dessen, was gefarmt wird.
  */
-export type Tone = "sky" | "diamond" | "redstone" | "gold" | "grass" | "pink" | "amethyst" | "lava" | "ender" | "twitch" | "white" | "paper";
+export type Tone = "sky" | "diamond" | "redstone" | "gold" | "grass" | "pink" | "amethyst" | "lava" | "ender" | "twitch" | "idle" | "white" | "paper";
 
 export const BOARD_TONE: Record<BoardKey, Tone> = {
   playtimeSeconds: "sky",
@@ -30,7 +30,7 @@ export const GROUP_TONE: Record<StatGroup, Tone> = {
   bewegung: BOARD_TONE.distance,
   items: BOARD_TONE.foodEaten,
   tiere: BOARD_TONE.mobsKilled,
-  afk: "paper",
+  afk: "idle",
 };
 
 /** Kennzahlen außerhalb der Hauptlisten */
@@ -46,11 +46,9 @@ export const METRIC_TONE = {
   online: BOARD_TONE.playtimeSeconds,
   /** Vom Tracker gemessene Online-Zeit */
   tracked: BOARD_TONE.playtimeSeconds,
-  // Zähler des Trackers: neutral
-  sessions: "white",
-  events: "white",
-  // AFK: neutral, Farmen in der Farbe dessen, was gefarmt wird
-  afkSeconds: "paper",
+  sessions: BOARD_TONE.playtimeSeconds,
+  // AFK: eigener grauer Ton (CSS: --idle), Farmen in der Farbe dessen, was gefarmt wird
+  afkSeconds: "idle",
   afkMobsSeconds: BOARD_TONE.mobsKilled,
   afkBlocksSeconds: BOARD_TONE.blocksBroken,
 } satisfies Record<string, Tone>;

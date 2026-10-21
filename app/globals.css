@@ -143,6 +143,7 @@ p {
 [data-tone="pink"] { --bg: var(--pink); --fg: var(--on-tone); }
 [data-tone="sky"] { --bg: var(--sky); --fg: var(--on-tone); }
 [data-tone="twitch"] { --bg: var(--twitch); --fg: #fff; }
+[data-tone="idle"] { --bg: var(--idle); --fg: var(--ink); }
 
 /* ---------- Layout-Primitives ---------- */
 .wrap {
@@ -555,6 +556,7 @@ a.box {
     --gap: 24px;
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+  .st-figs--5,
   .st-figs--6 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -562,6 +564,9 @@ a.box {
 @media (width >= 1000px) {
   .st-figs--6 {
     grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .st-figs--5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 .st-fig {
@@ -573,6 +578,10 @@ a.box {
   margin-block: 4px 8px;
   display: flex;
   text-decoration: none;
+}
+/* Verlinkte Kacheln: `a.box` setzt display: block – sonst stünde das Label über statt unter der Zahl */
+a.box.st-fig {
+  display: flex;
 }
 .st-fig dt {
   font-family: var(--font-display);
@@ -588,6 +597,7 @@ a.box {
   font-weight: 700;
   line-height: 1;
 }
+.st-figs--5 .st-fig dd,
 .st-figs--6 .st-fig dd {
   font-size: clamp(1.5rem, 5vw, 2.75rem);
 }
@@ -1530,6 +1540,23 @@ a.spark-card--link:hover .eyebrow {
   --min: 200px;
   --gap: 16px;
   margin: 0;
+}
+/* Auf dem Telefon zwei Spalten statt einer langen Liste */
+@media (width <= 560px) {
+  .records-grid {
+    --min: 140px;
+    --gap: 12px;
+  }
+  .records-grid .record__val {
+    font-size: 1.125rem;
+  }
+}
+.records-groups {
+  display: grid;
+  gap: 32px;
+}
+.records-group__h {
+  margin-bottom: 12px;
 }
 .record {
   min-width: 0;
