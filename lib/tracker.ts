@@ -427,32 +427,25 @@ function ensurePlayer(
   return ps;
 }
 
-/** Vergleicht neuen Snapshot mit dem gespeicherten Zustand und erzeugt Ereignisse. */
-function diffSnapshot(
-  state: TrackerState,
-  stats: ApiStats,
-  feed: ApiFeed,
-  nowDate = new Date(),
-  ext: Map<string, ExtPlayer> = new Map(),
-  /** Live-Streams laut Twitch (Login → Stream); `null` = nicht abgefragt/fehlgeschlagen, dann zählt die API */
-  twitch: Map<string, TwitchStream> | null = null,
-  /** Twitch-Login je Spieler-ID laut /api/player */
-  extLoginOf: Map<string, string> = new Map(),
-  /** Spieler-IDs, die /api/player nicht kennt (für die Zuordnung per Ausschluss, siehe `deathCandidates`) */
-  extMissing: Set<string> = new Set(),
-  followerCounts: Map<string, number> = new Map(),
-): TrackerEvent[] {
-  const now = nowDate.toISOString();
-  const events: TrackerEvent[] = [];
-  const pushAt = (at: string, e: Omit<TrackerEvent, "id" | "at">) => events.push({ id: eventId(at), at, ...e });
-  const push = (e: Omit<TrackerEvent, "id" | "at">) => pushAt(now, e);
+/** Gemeinsamer Stand eines Polls, den alle Abschnitte von `diffSnapshot` lesen */
+interface DiffContext {
+  state: TrackerState;
+  stats: ApiStats;
+  nowDate: Date;
+  now: string;
+  /** Erster Poll ohne gespeicherten Stand: Zustand aufbauen, keine Ereignisse melden */
+  first: boolean;
+  /** Sekunden seit dem letzten erfolgreichen Poll (für Stream- und AFK-Zeit), gedeckelt auf 5 Min */
+  sinceLast: number;
+  onlineNow: Set<string>;
+  events: TrackerEvent[];
+  push: (e: Omit<TrackerEvent, "id" | "at">) => void;
+  pushAt: (at: string, e: Omit<TrackerEvent, "id" | "at">) => void;
+}
 
-  const first = state.latest === null;
-  const currentFeed = feed.feed.slice(0, 10);
-  const newItems = newFeedItems(state.latestFeed, currentFeed);
-  const onlineBeforePoll = new Map(Object.values(state.players).map((player) => [player.id, player.online]));
-
-  // --- Server-Status
+/** Server-Status */
+function diffServerStatus(ctx: DiffContext) {
+  const { state, stats, push } = ctx;
   if (state.serverOnline !== null && state.serverOnline !== stats.serverOnline) {
     push({
       type: stats.serverOnline ? "server_online" : "server_offline",
@@ -461,13 +454,11 @@ function diffSnapshot(
     });
   }
   state.serverOnline = stats.serverOnline;
+}
 
-  // Sekunden seit dem letzten erfolgreichen Poll (für Stream- und AFK-Zeit), gedeckelt auf 5 Min
-  const sinceLast = state.lastOk ? Math.min(Math.max(0, (nowDate.getTime() - Date.parse(state.lastOk)) / 1000), 300) : 0;
-
-  // --- Online-Spieler: Join / Leave
-  newPlayers.clear();
-  const onlineNow = new Set(stats.online.map((p) => p.id));
+/** Online-Spieler: Join / Leave */
+function diffJoinLeave(ctx: DiffContext) {
+  const { state, stats, nowDate, now, first, sinceLast, onlineNow, push } = ctx;
   for (const p of stats.online) {
     const ps = ensurePlayer(state, p, now);
     ps.lastSeen = now;
@@ -515,10 +506,15 @@ function diffSnapshot(
       });
     }
   }
+}
 
-  // --- Twitch: Live-Status / Titel / Viewer
-  // Quelle ist bevorzugt Twitch selbst (Helix `streams` für alle gespeicherten Logins); die Haupt-API kennt
-  // nur Streams von Spielern, die gerade auf dem Server sind. Ohne Twitch-Zugangsdaten bleibt die API die Quelle.
+/**
+ * Live-Stand je Spieler aus Twitch und API zusammenführen.
+ * Quelle ist bevorzugt Twitch selbst (Helix `streams` für alle gespeicherten Logins); die Haupt-API kennt
+ * nur Streams von Spielern, die gerade auf dem Server sind. Ohne Twitch-Zugangsdaten bleibt die API die Quelle.
+ */
+function mergeLiveSources(ctx: DiffContext, twitch: Map<string, TwitchStream> | null): Map<string, ApiStats["live"][number]> {
+  const { state, stats, now, onlineNow } = ctx;
   const liveNow = new Map<string, ApiStats["live"][number]>();
   const apiLive = new Map<string, ApiStats["live"][number]>();
   for (const l of stats.live ?? []) apiLive.set(l.id, l);
@@ -554,8 +550,12 @@ function diffSnapshot(
     for (const l of apiLive.values()) liveNow.set(l.id, l);
   }
   for (const l of liveNow.values()) l.onServer = onlineNow.has(l.id);
+  return liveNow;
+}
 
-
+/** Twitch: Stream-Beginn, -Ende, Titelwechsel, Zuschauer-Spitzen und Stream-Zeit je Spieler */
+function diffStreams(ctx: DiffContext, liveNow: Map<string, ApiStats["live"][number]>) {
+  const { state, nowDate, now, first, sinceLast, onlineNow, push } = ctx;
   for (const l of liveNow.values()) {
     const ps = ensurePlayer(state, { id: l.id, name: l.name, uuid: state.players[l.id]?.uuid ?? "" }, now);
     const prev = ps.live;
@@ -626,7 +626,10 @@ function diffSnapshot(
       ps.livePeakViewers = 0;
     }
   }
-  // Zusammengeführten Live-Stand in den Snapshot schreiben, damit alle Seiten dieselbe Quelle sehen
+}
+
+/** Zusammengeführten Live-Stand in den Snapshot schreiben, damit alle Seiten dieselbe Quelle sehen */
+function writeLiveToSnapshot(stats: ApiStats, liveNow: Map<string, ApiStats["live"][number]>) {
   stats.live = [...liveNow.values()];
   for (const p of stats.online) {
     const l = liveNow.get(p.id);
@@ -642,8 +645,11 @@ function diffSnapshot(
         }
       : null;
   }
+}
 
-  // --- Einzelstatistiken (/api/player/<id>): Name, Ränge und Zusatzwerte für alle abgefragten Spieler übernehmen
+/** Einzelstatistiken (/api/player/<id>): Name, Ränge und Zusatzwerte für alle abgefragten Spieler übernehmen */
+function applyPlayerDetails(ctx: DiffContext, ext: Map<string, ExtPlayer>, extLoginOf: Map<string, string>) {
+  const { state, now } = ctx;
   freshDetail = new Set([...ext.values()].filter((x) => x.fresh).map((x) => x.id));
   for (const [id, x] of ext) {
     const ps = ensurePlayer(state, { id, name: x.name, uuid: state.players[id]?.uuid ?? "" }, now);
@@ -653,8 +659,11 @@ function diffSnapshot(
     const login = extLoginOf.get(id);
     if (login && !ps.twitchLogin) ps.twitchLogin = login;
   }
+}
 
-  // --- Twitch-Follower: nur Zuwächse zwischen zwei Messungen auf dem Server zählen
+/** Twitch-Follower: nur Zuwächse zwischen zwei Messungen auf dem Server zählen */
+function diffFollowers(ctx: DiffContext, followerCounts: Map<string, number>, onlineBeforePoll: Map<string, boolean>) {
+  const { state, nowDate, now, first, onlineNow, push } = ctx;
   for (const [id, value] of followerCounts) {
     const ps = state.players[id];
     if (!ps) continue;
@@ -685,8 +694,11 @@ function diffSnapshot(
       });
     }
   }
+}
 
-  // --- Boards: Zähler-Deltas
+/** Boards: Zähler-Deltas, Meilensteine und Rang-Aufstiege in den Top 3 */
+function diffBoards(ctx: DiffContext, ext: Map<string, ExtPlayer>) {
+  const { state, stats, nowDate, now, first, push } = ctx;
   freshStats = new Map();
   for (const key of BOARD_KEYS) {
     const list = stats.boards?.[key] ?? [];
@@ -771,127 +783,134 @@ function diffSnapshot(
       }
     }
   }
+}
 
-  // --- AFK: online, aber die Strecke steigt seit AFK_MS nicht mehr. Nur möglich, wenn es Streckendaten gibt.
-  if (!first) {
-    for (const ps of Object.values(state.players)) {
-      if (!ps.online || ps.stats.distance === undefined) continue;
-      // Keine frische Strecke in dieser Abfrage (ext fehlgeschlagen/unbekannt): nichts bewerten. Läuft keine
-      // AFK-Phase, startet die Bewegungsuhr neu, damit die Datenlücke nicht als Stillstand zählt.
-      if (!freshStats.get(ps.id)?.has("distance")) {
-        if (!ps.afkSince) ps.lastMoveAt = now;
-        continue;
-      }
-      // War schon online, bevor es die Bewegungsuhr gab (oder kam mit unbekannter Strecke): jetzt starten
-      if (!ps.lastMoveAt) {
-        ps.lastMoveAt = now;
-        continue;
-      }
-      const idle = nowDate.getTime() - Date.parse(ps.lastMoveAt);
-      if (ps.afkSince) {
-        ps.afkSeconds = (ps.afkSeconds ?? 0) + sinceLast;
-        const farm = afkFarmDelta(ps);
-        if (idle < AFK_MS) {
-          // Bewegung: AFK-Phase ist vorbei
-          const afk = Math.max(0, Math.round((nowDate.getTime() - Date.parse(ps.afkSince)) / 1000));
-          const farmEnd = farmEndEvent(ps, nowDate.getTime(), false);
-          if (farmEnd) push(farmEnd);
-          push({ type: "afk_end", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { afkSeconds: afk, since: ps.afkSince, farm: ps.afkFarm, ...farm } });
-          endAfk(ps);
-        } else {
-          // Steht still: Farm-Rate fensterweise prüfen. Nur Abschnitte mit ≥ AFK_FARM_MIN pro Minute sind Farm,
-          // der Rest der Phase ist normales AFK (ohne neues AFK-Start-Ereignis).
-          const check = ps.afkCheck ?? (ps.afkCheck = checkWindow(ps, now));
-          const windowMs = nowDate.getTime() - Date.parse(check.at);
-          const fresh = freshStats.get(ps.id);
-          // Ohne frische Zähler würde die Rate zu niedrig ausfallen: Fenster einfach weiterlaufen lassen
-          if (windowMs >= AFK_FARM_WINDOW_MS && fresh?.has("mobsKilled") && fresh.has("blocksBroken")) {
-            const m = gainedSince(ps.stats.mobsKilled, check.mobs);
-            const b = gainedSince(ps.stats.blocksBroken, check.blocks);
-            const kind = farmKindOf(m, b, windowMs);
-            if (kind !== ps.afkFarm) {
-              // Die alte Farm endete mit Beginn dieses Fensters (dort fiel die Rate unter die Schwelle)
-              const farmEnd = farmEndEvent(ps, Date.parse(check.at), false, true);
-              if (farmEnd) push(farmEnd);
-              ps.afkFarm = kind;
-              check.farmSince = kind ? check.at : null;
-              check.farmAt = kind ? (kind === "mobs" ? check.mobs : check.blocks) : null;
-              if (kind) {
-                const value = kind === "mobs" ? m : b;
-                push({
-                  type: kind === "mobs" ? "afk_mobs_start" : "afk_blocks_start",
-                  player: ps.id,
-                  playerName: ps.name,
-                  uuid: ps.uuid,
-                  where: "server",
-                  value,
-                  meta: { kind, since: check.at, afkSince: ps.afkSince, windowSeconds: Math.round(windowMs / 1000), [kind]: value },
-                });
-              }
-            }
-            ps.afkCheck = checkWindow(ps, now);
-          }
-        }
-      } else if (idle >= AFK_MS) {
-        // AFK beginnt rückwirkend mit der letzten Bewegung
-        ps.afkSince = ps.lastMoveAt;
-        ps.afkSeconds = (ps.afkSeconds ?? 0) + idle / 1000;
-        ps.afkFarm = null;
-        ps.afkMobsAt = ps.stats.mobsKilled ?? null;
-        ps.afkBlocksAt = ps.stats.blocksBroken ?? null;
-        ps.afkCheck = null; // erst leeren, damit kein alter Farm-Beginn übernommen wird
-        ps.afkCheck = checkWindow(ps, now);
-        pushAt(ps.afkSince, { type: "afk_start", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { since: ps.afkSince } });
-      }
+/** AFK: online, aber die Strecke steigt seit AFK_MS nicht mehr. Nur möglich, wenn es Streckendaten gibt. */
+function diffAfk(ctx: DiffContext) {
+  const { state, nowDate, now, first, sinceLast, push, pushAt } = ctx;
+  if (first) return;
+  for (const ps of Object.values(state.players)) {
+    if (!ps.online || ps.stats.distance === undefined) continue;
+    // Keine frische Strecke in dieser Abfrage (ext fehlgeschlagen/unbekannt): nichts bewerten. Läuft keine
+    // AFK-Phase, startet die Bewegungsuhr neu, damit die Datenlücke nicht als Stillstand zählt.
+    if (!freshStats.get(ps.id)?.has("distance")) {
+      if (!ps.afkSince) ps.lastMoveAt = now;
+      continue;
     }
-  }
-
-  // --- Totals: Tode, die keinem Spieler zugeordnet werden konnten
-  // (z. B. Spieler, die der Tracker noch nie gesehen hat, oder wenn die ext-Abfrage fehlgeschlagen ist)
-  if (!first && state.latest) {
-    const prevDeaths = state.latest.totals?.deaths ?? 0;
-    const explained = events.filter((e) => e.type === "death").reduce((s, e) => s + (e.delta ?? 0), 0);
-    // Nicht sofort melden: oft liefert /api/player den Tod erst einen Poll später (Timeout, Reihenfolge, Cache).
-    // Offene Tode werden gesammelt und mit später erklärten verrechnet; erst was nach der Wartezeit übrig
-    // bleibt, wird als „unbekannt“ gemeldet.
-    const unexplained = (stats.totals?.deaths ?? 0) - prevDeaths - explained;
-    state.pendingDeaths = Math.max(0, (state.pendingDeaths ?? 0) + unexplained);
-    if (state.pendingDeaths === 0) {
-      state.pendingSince = null;
-      state.pendingCandidates = [];
-    } else if (!state.pendingSince) {
-      state.pendingSince = now;
-      // Wer kommt in Frage? Wird beim Auftauchen des Todes festgehalten, nicht erst nach der Wartezeit.
-      state.pendingCandidates = deathCandidates(state, stats, ext, extMissing);
-    } else if (nowDate.getTime() - Date.parse(state.pendingSince) >= UNKNOWN_DEATH_GRACE_MS) {
-      const candidates = state.pendingCandidates ?? [];
-      const only = candidates.length === 1 ? state.players[candidates[0]] : undefined;
-      if (only) {
-        // Genau ein Spieler ohne Einzelstatistik war online: ihm werden die Tode per Ausschluss zugeordnet
-        push({
-          type: "death",
-          player: only.id,
-          playerName: only.name,
-          uuid: only.uuid,
-          where: "server",
-          delta: state.pendingDeaths,
-          meta: { inferred: true, ...(only.live ? { live: true, twitchLogin: only.live.login, streamStartedAt: only.liveSince } : {}) },
-        });
+    // War schon online, bevor es die Bewegungsuhr gab (oder kam mit unbekannter Strecke): jetzt starten
+    if (!ps.lastMoveAt) {
+      ps.lastMoveAt = now;
+      continue;
+    }
+    const idle = nowDate.getTime() - Date.parse(ps.lastMoveAt);
+    if (ps.afkSince) {
+      ps.afkSeconds = (ps.afkSeconds ?? 0) + sinceLast;
+      const farm = afkFarmDelta(ps);
+      if (idle < AFK_MS) {
+        // Bewegung: AFK-Phase ist vorbei
+        const afk = Math.max(0, Math.round((nowDate.getTime() - Date.parse(ps.afkSince)) / 1000));
+        const farmEnd = farmEndEvent(ps, nowDate.getTime(), false);
+        if (farmEnd) push(farmEnd);
+        push({ type: "afk_end", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { afkSeconds: afk, since: ps.afkSince, farm: ps.afkFarm, ...farm } });
+        endAfk(ps);
       } else {
-        push({
-          type: "death",
-          where: "server",
-          delta: state.pendingDeaths,
-          value: stats.totals.deaths,
-          meta: { unknown: true, candidates: candidates.length },
-        });
+        // Steht still: Farm-Rate fensterweise prüfen. Nur Abschnitte mit ≥ AFK_FARM_MIN pro Minute sind Farm,
+        // der Rest der Phase ist normales AFK (ohne neues AFK-Start-Ereignis).
+        const check = ps.afkCheck ?? (ps.afkCheck = checkWindow(ps, now));
+        const windowMs = nowDate.getTime() - Date.parse(check.at);
+        const fresh = freshStats.get(ps.id);
+        // Ohne frische Zähler würde die Rate zu niedrig ausfallen: Fenster einfach weiterlaufen lassen
+        if (windowMs >= AFK_FARM_WINDOW_MS && fresh?.has("mobsKilled") && fresh.has("blocksBroken")) {
+          const m = gainedSince(ps.stats.mobsKilled, check.mobs);
+          const b = gainedSince(ps.stats.blocksBroken, check.blocks);
+          const kind = farmKindOf(m, b, windowMs);
+          if (kind !== ps.afkFarm) {
+            // Die alte Farm endete mit Beginn dieses Fensters (dort fiel die Rate unter die Schwelle)
+            const farmEnd = farmEndEvent(ps, Date.parse(check.at), false, true);
+            if (farmEnd) push(farmEnd);
+            ps.afkFarm = kind;
+            check.farmSince = kind ? check.at : null;
+            check.farmAt = kind ? (kind === "mobs" ? check.mobs : check.blocks) : null;
+            if (kind) {
+              const value = kind === "mobs" ? m : b;
+              push({
+                type: kind === "mobs" ? "afk_mobs_start" : "afk_blocks_start",
+                player: ps.id,
+                playerName: ps.name,
+                uuid: ps.uuid,
+                where: "server",
+                value,
+                meta: { kind, since: check.at, afkSince: ps.afkSince, windowSeconds: Math.round(windowMs / 1000), [kind]: value },
+              });
+            }
+          }
+          ps.afkCheck = checkWindow(ps, now);
+        }
       }
-      state.pendingDeaths = 0;
-      state.pendingSince = null;
-      state.pendingCandidates = [];
+    } else if (idle >= AFK_MS) {
+      // AFK beginnt rückwirkend mit der letzten Bewegung
+      ps.afkSince = ps.lastMoveAt;
+      ps.afkSeconds = (ps.afkSeconds ?? 0) + idle / 1000;
+      ps.afkFarm = null;
+      ps.afkMobsAt = ps.stats.mobsKilled ?? null;
+      ps.afkBlocksAt = ps.stats.blocksBroken ?? null;
+      ps.afkCheck = null; // erst leeren, damit kein alter Farm-Beginn übernommen wird
+      ps.afkCheck = checkWindow(ps, now);
+      pushAt(ps.afkSince, { type: "afk_start", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { since: ps.afkSince } });
     }
   }
+}
 
+/** Totals: Tode, die keinem Spieler zugeordnet werden konnten (z. B. Spieler, die der Tracker noch nie gesehen hat, oder wenn die ext-Abfrage fehlgeschlagen ist) */
+function diffUnknownDeaths(ctx: DiffContext, ext: Map<string, ExtPlayer>, extMissing: Set<string>) {
+  const { state, stats, nowDate, now, first, events, push } = ctx;
+  if (first || !state.latest) return;
+  const prevDeaths = state.latest.totals?.deaths ?? 0;
+  const explained = events.filter((e) => e.type === "death").reduce((s, e) => s + (e.delta ?? 0), 0);
+  // Nicht sofort melden: oft liefert /api/player den Tod erst einen Poll später (Timeout, Reihenfolge, Cache).
+  // Offene Tode werden gesammelt und mit später erklärten verrechnet; erst was nach der Wartezeit übrig
+  // bleibt, wird als „unbekannt“ gemeldet.
+  const unexplained = (stats.totals?.deaths ?? 0) - prevDeaths - explained;
+  state.pendingDeaths = Math.max(0, (state.pendingDeaths ?? 0) + unexplained);
+  if (state.pendingDeaths === 0) {
+    state.pendingSince = null;
+    state.pendingCandidates = [];
+  } else if (!state.pendingSince) {
+    state.pendingSince = now;
+    // Wer kommt in Frage? Wird beim Auftauchen des Todes festgehalten, nicht erst nach der Wartezeit.
+    state.pendingCandidates = deathCandidates(state, stats, ext, extMissing);
+  } else if (nowDate.getTime() - Date.parse(state.pendingSince) >= UNKNOWN_DEATH_GRACE_MS) {
+    const candidates = state.pendingCandidates ?? [];
+    const only = candidates.length === 1 ? state.players[candidates[0]] : undefined;
+    if (only) {
+      // Genau ein Spieler ohne Einzelstatistik war online: ihm werden die Tode per Ausschluss zugeordnet
+      push({
+        type: "death",
+        player: only.id,
+        playerName: only.name,
+        uuid: only.uuid,
+        where: "server",
+        delta: state.pendingDeaths,
+        meta: { inferred: true, ...(only.live ? { live: true, twitchLogin: only.live.login, streamStartedAt: only.liveSince } : {}) },
+      });
+    } else {
+      push({
+        type: "death",
+        where: "server",
+        delta: state.pendingDeaths,
+        value: stats.totals.deaths,
+        meta: { unknown: true, candidates: candidates.length },
+      });
+    }
+    state.pendingDeaths = 0;
+    state.pendingSince = null;
+    state.pendingCandidates = [];
+  }
+}
+
+/** Erfolge aus dem Feed */
+function diffFeed(ctx: DiffContext, newItems: ApiFeed["feed"]) {
+  const { events } = ctx;
   for (const item of newItems) {
     if (item.type !== "achievement") continue;
     events.push({
@@ -913,9 +932,11 @@ function diffSnapshot(
       },
     });
   }
-  state.latestFeed = currentFeed;
+}
 
-  // --- Verlauf
+/** Verlauf: ein Messpunkt je Poll. Liefert die Live-Streams auf dem Server und ihre Zuschauer. */
+function recordHistory(ctx: DiffContext, liveNow: Map<string, ApiStats["live"][number]>): { liveOnServer: ApiStats["live"]; viewers: number } {
+  const { state, stats, now } = ctx;
   // Globale Zuschauer: nur Streams von Spielern, die gerade auf dem Server sind
   const liveOnServer = [...liveNow.values()].filter((l) => l.onServer);
   const viewers = liveOnServer.reduce((s, l) => s + l.viewers, 0);
@@ -928,8 +949,12 @@ function diffSnapshot(
     playtimeSeconds: stats.totals?.playtimeSeconds ?? 0,
     deaths: stats.totals?.deaths ?? 0,
   });
+  return { liveOnServer, viewers };
+}
 
-  // --- Rekorde (seit Tracker-Start)
+/** Rekorde (seit Tracker-Start) */
+function diffRecords(ctx: DiffContext, liveOnServer: ApiStats["live"], viewers: number) {
+  const { state, stats, now, first, push } = ctx;
   const rec = state.records;
   const bump = (key: keyof typeof rec, value: number, label: string, notify: (prev: number) => boolean) => {
     const prev = rec[key]?.value ?? -1;
@@ -943,6 +968,51 @@ function diffSnapshot(
   bump("peakOnline", stats.onlineCount, "Spieler gleichzeitig online", () => true);
   bump("peakLive", liveOnServer.length, "Streams gleichzeitig live", () => true);
   bump("peakViewers", viewers, "Zuschauer gesamt", (prev) => Math.floor(viewers / 10000) > Math.floor(prev / 10000));
+}
+
+/** Vergleicht neuen Snapshot mit dem gespeicherten Zustand und erzeugt Ereignisse. */
+function diffSnapshot(
+  state: TrackerState,
+  stats: ApiStats,
+  feed: ApiFeed,
+  nowDate = new Date(),
+  ext: Map<string, ExtPlayer> = new Map(),
+  /** Live-Streams laut Twitch (Login → Stream); `null` = nicht abgefragt/fehlgeschlagen, dann zählt die API */
+  twitch: Map<string, TwitchStream> | null = null,
+  /** Twitch-Login je Spieler-ID laut /api/player */
+  extLoginOf: Map<string, string> = new Map(),
+  /** Spieler-IDs, die /api/player nicht kennt (für die Zuordnung per Ausschluss, siehe `deathCandidates`) */
+  extMissing: Set<string> = new Set(),
+  followerCounts: Map<string, number> = new Map(),
+): TrackerEvent[] {
+  const now = nowDate.toISOString();
+  const events: TrackerEvent[] = [];
+  const pushAt = (at: string, e: Omit<TrackerEvent, "id" | "at">) => events.push({ id: eventId(at), at, ...e });
+  const push = (e: Omit<TrackerEvent, "id" | "at">) => pushAt(now, e);
+
+  const first = state.latest === null;
+  const currentFeed = feed.feed.slice(0, 10);
+  const newItems = newFeedItems(state.latestFeed, currentFeed);
+  const onlineBeforePoll = new Map(Object.values(state.players).map((player) => [player.id, player.online]));
+  const sinceLast = state.lastOk ? Math.min(Math.max(0, (nowDate.getTime() - Date.parse(state.lastOk)) / 1000), 300) : 0;
+  newPlayers.clear();
+  const onlineNow = new Set(stats.online.map((p) => p.id));
+  const ctx: DiffContext = { state, stats, nowDate, now, first, sinceLast, onlineNow, events, push, pushAt };
+
+  diffServerStatus(ctx);
+  diffJoinLeave(ctx);
+  const liveNow = mergeLiveSources(ctx, twitch);
+  diffStreams(ctx, liveNow);
+  writeLiveToSnapshot(stats, liveNow);
+  applyPlayerDetails(ctx, ext, extLoginOf);
+  diffFollowers(ctx, followerCounts, onlineBeforePoll);
+  diffBoards(ctx, ext);
+  diffAfk(ctx);
+  diffUnknownDeaths(ctx, ext, extMissing);
+  diffFeed(ctx, newItems);
+  state.latestFeed = currentFeed;
+  const { liveOnServer, viewers } = recordHistory(ctx, liveNow);
+  diffRecords(ctx, liveOnServer, viewers);
 
   state.latest = stats;
   state.lastOk = now;
