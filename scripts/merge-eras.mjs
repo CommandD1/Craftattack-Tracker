@@ -130,7 +130,6 @@ try {
     ["feed_items", ["id"]],
     ["twitch_chat_messages", ["id"]],
     ["shared_chat_sessions", ["key"]],
-    ["user_files", ["id"]],
   ];
   for (const [table, key] of union) {
     const dstCols = await columns((s, p) => dst.query(s, p), table);

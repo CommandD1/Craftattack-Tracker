@@ -13,7 +13,6 @@ const LINKS = [
   { href: "/zeitstrahl", label: "Zeitstrahl" },
   { href: "/live", label: "Live" },
   { href: "/events", label: "Events" },
-  { href: "/konto", label: "Mein Konto" },
 ] as const;
 
 function List({ path }: { path: string | null }) {
