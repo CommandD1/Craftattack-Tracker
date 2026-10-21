@@ -139,7 +139,7 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
     getTwitchSubscriptionProfile(id, p.live ? p.liveSince ?? p.live.startedAt ?? null : null),
     getTwitchSubscriptionBoard(),
     getFullBoard("followers"),
-    getPlayerTwitchChat(id),
+    getPlayerTwitchChat(id, 20),
     getPlayerTopHistory(id),
   ]);
   const overlaps = overlapsFor(id, allSessions, now);
@@ -400,56 +400,6 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
       />
       <PlayerDetails id={id} detail={p.detail} name={p.name} now={now} topHistory={topHistory} />
 
-      {(chat.sentTotal > 0 || chat.receivedTotal > 0) && (
-        <section className="block block--tight" data-tone="paper" aria-labelledby="chat-h">
-          <div className="wrap">
-            <div className="section-head">
-              <h2 className="t-2" id="chat-h">
-                Chat
-              </h2>
-              <p className="muted">Nachrichten zwischen {p.name} und anderen Spielern in Twitch-Chats.</p>
-            </div>
-            <div className="chatpair">
-              <div className="box chatbox" data-tone="white">
-                <div className="chatbox__head">
-                  <p className="eyebrow">
-                    Schreibt bei anderen <span className="num">({num(chat.sentTotal)})</span>
-                  </p>
-                  <ChatPartners partners={chat.writesIn} label={`In wessen Chat ${p.name} schreibt`} />
-                </div>
-                <div className="chatbox__scroll">
-                  <ChatFeed
-                    messages={chat.sent}
-                    uuidOf={(pid) => state.players[pid]?.uuid}
-                    now={now}
-                    show="channel"
-                    empty={`${p.name} hat noch in keinem Spieler-Chat geschrieben.`}
-                    label={`Nachrichten von ${p.name}`}
-                  />
-                </div>
-              </div>
-              <div className="box chatbox" data-tone="white">
-                <div className="chatbox__head">
-                  <p className="eyebrow">
-                    Im eigenen Chat <span className="num">({num(chat.receivedTotal)})</span>
-                  </p>
-                  <ChatPartners partners={chat.visitors} label={`Wer im Chat von ${p.name} schreibt`} />
-                </div>
-                <div className="chatbox__scroll">
-                  <ChatFeed
-                    messages={chat.received}
-                    uuidOf={(pid) => state.players[pid]?.uuid}
-                    now={now}
-                    show="sender"
-                    empty={`Im Chat von ${p.name} hat noch kein Spieler geschrieben.`}
-                    label={`Nachrichten im Chat von ${p.name}`}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
 
       <section className="block" data-tone="paper">
         <div className="wrap">
@@ -606,6 +556,55 @@ async function Player({ params }: { params: PageProps<"/spieler/[id]">["params"]
           </div>
         </div>
       </section>
+
+      {(chat.sentTotal > 0 || chat.receivedTotal > 0) && (
+        <section className="block block--tight" data-tone="paper" aria-labelledby="chat-h">
+          <div className="wrap">
+            <div className="section-head">
+              <h2 className="t-2" id="chat-h">
+                Chat
+              </h2>
+              <p className="muted">Nachrichten zwischen {p.name} und anderen Spielern in Twitch-Chats.</p>
+            </div>
+            <div className="chatpair">
+              <div className="box chatbox" data-tone="white">
+                <div className="chatbox__head">
+                  <p className="eyebrow">
+                    Schreibt bei anderen <span className="num">({num(chat.sentTotal)})</span>
+                  </p>
+                  <ChatPartners partners={chat.writesIn} label={`In wessen Chat ${p.name} schreibt`} />
+                </div>
+                <div className="chatbox__scroll">
+                  <ChatFeed
+                    messages={chat.sent}
+                    uuidOf={(pid) => state.players[pid]?.uuid}
+                    now={now}
+                    empty={`${p.name} hat noch in keinem Spieler-Chat geschrieben.`}
+                    label={`Nachrichten von ${p.name}`}
+                  />
+                </div>
+              </div>
+              <div className="box chatbox" data-tone="white">
+                <div className="chatbox__head">
+                  <p className="eyebrow">
+                    Im eigenen Chat <span className="num">({num(chat.receivedTotal)})</span>
+                  </p>
+                  <ChatPartners partners={chat.visitors} label={`Wer im Chat von ${p.name} schreibt`} />
+                </div>
+                <div className="chatbox__scroll">
+                  <ChatFeed
+                    messages={chat.received}
+                    uuidOf={(pid) => state.players[pid]?.uuid}
+                    now={now}
+                    empty={`Im Chat von ${p.name} hat noch kein Spieler geschrieben.`}
+                    label={`Nachrichten im Chat von ${p.name}`}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
     </>
   );
 }
