@@ -90,6 +90,12 @@ export const Icon = {
       <path d="M12 6H8.5a2.5 2.5 0 1 1 2.5-2.5V6zm0 0h3.5a2.5 2.5 0 1 0-2.5-2.5V6z" />
     </svg>
   ),
+  chat: (p: P) => (
+    <svg {...base} {...p}>
+      <path d="M4 5h16v11H10l-4 4v-4H4z" />
+      <path d="M8 9h8M8 12h5" />
+    </svg>
+  ),
   raid: (p: P) => (
     <svg {...base} {...p}>
       <circle cx="7" cy="8" r="3" />
@@ -182,6 +188,7 @@ export const EVENT_ICON: Record<EventType, keyof typeof Icon> = {
   subscription_gift: "gift",
   follower_burst: "users",
   raid: "raid",
+  chat: "chat",
   shared_chat_start: "users",
   shared_chat_end: "users",
   server_online: "server",

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { TwitchChatMessage } from "@/lib/store";
 import { ago, dateTime } from "@/lib/format";
 import { Head } from "./Head";
+import { Icon } from "./Icons";
 
 const dayFmt = new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Berlin" });
 const keyFmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" });
@@ -35,6 +36,7 @@ export function ChatFeed({
   now,
   empty,
   label,
+  vodOf,
 }: {
   messages: TwitchChatMessage[];
   /** Spieler-ID → Minecraft-UUID für den Kopf */
@@ -44,6 +46,8 @@ export function ChatFeed({
   now: number;
   empty: string;
   label: string;
+  /** Nachrichten-ID → VOD-Link an der Stelle, an der die Nachricht geschrieben wurde */
+  vodOf?: (messageId: string) => string | undefined;
 }) {
   if (messages.length === 0) return <p className="muted chat__empty">{empty}</p>;
   const days: { label: string; items: TwitchChatMessage[] }[] = [];
@@ -82,7 +86,16 @@ export function ChatFeed({
                     {ago(m.at, now)}
                   </time>
                 </p>
-                <p className="chat__text">{m.message}</p>
+                {vodOf?.(m.id) ? (
+                  <a className="chat__text chat__text--vod" href={vodOf(m.id)} target="_blank" rel="noopener" title="Diese Stelle im VOD ansehen">
+                    {m.message}
+                    <span className="chat__vod" aria-hidden="true">
+                      <Icon.twitch width={14} height={14} /> VOD
+                    </span>
+                  </a>
+                ) : (
+                  <p className="chat__text">{m.message}</p>
+                )}
               </li>
             ))}
           </ol>

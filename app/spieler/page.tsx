@@ -8,6 +8,7 @@ import { playtimeOf } from "@/lib/playtime";
 import { getRecentTwitchChatMessages, getTwitchSubscriptionBoard } from "@/lib/store";
 import { ChatFeed } from "@/components/ChatFeed";
 import { Head } from "@/components/Head";
+import { chatVodLinks } from "@/lib/events";
 
 
 export const metadata: Metadata = { title: "Spieler" };
@@ -24,12 +25,13 @@ export default function Page(props: PageProps<"/spieler">) {
 async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["searchParams"] }) {
   const sp = await searchParams;
   const filter = typeof sp.filter === "string" ? sp.filter : "alle";
-  const [{ state, now }, subscriptionBoard, chatMessages] = await Promise.all([
+  const [{ state, events, now }, subscriptionBoard, chatMessages] = await Promise.all([
     loadTracker(),
     getTwitchSubscriptionBoard(),
     getRecentTwitchChatMessages(20),
   ]);
   const subscriptions = new Map(subscriptionBoard.map((entry) => [entry.id, entry.value]));
+  const chatVods = chatVodLinks(events);
 
   let players = Object.values(state.players);
   if (filter === "online") players = players.filter((p) => p.online);
@@ -167,6 +169,7 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
                     nameOf={(id) => state.players[id]?.name ?? id}
                     now={now}
                     empty="Noch keine Nachrichten zwischen erfassten Spielern."
+                    vodOf={(mid) => chatVods.get(mid)}
                     label="Neueste Nachrichten von Spielern in Twitch-Chats"
                   />
                 </div>

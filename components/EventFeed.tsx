@@ -92,6 +92,8 @@ function detail(e: TrackerEvent): string | null {
             : null;
     case "achievement":
       return typeof e.meta?.title === "string" ? e.meta.title : null;
+    case "chat":
+      return typeof e.meta?.message === "string" ? e.meta.message : null;
     // Zähler: die kleinen Icons sind nicht eindeutig, daher ein Wort dazu
     case "diamonds":
       return "Diamanten";
@@ -133,7 +135,7 @@ function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlayer?: boo
   const info = detail(e);
   const vod = typeof e.meta?.vodUrl === "string" ? e.meta.vodUrl : null;
   const liveUrl = typeof e.meta?.liveUrl === "string" ? e.meta.liveUrl : null;
-  const link = liveUrl ? { href: liveUrl, title: "Läuft gerade – Stream auf Twitch ansehen", live: true } : vod ? { href: vod, title: e.type === "death" ? "Diesen Moment im VOD ansehen" : "Aufzeichnung auf Twitch ansehen", live: false } : null;
+  const link = liveUrl ? { href: liveUrl, title: "Läuft gerade – Stream auf Twitch ansehen", live: true } : vod ? { href: vod, title: e.type === "death" || e.type === "chat" ? "Diesen Moment im VOD ansehen" : "Aufzeichnung auf Twitch ansehen", live: false } : null;
   const isShared = e.type === "shared_chat_start" || e.type === "shared_chat_end";
   const withHead = Boolean(e.player) && !SERVER_TYPES.has(e.type) && !isShared;
   // Geteilter Chat: Köpfe aller beteiligten Spieler (höchstens vier), auf jeder Seite
@@ -201,6 +203,25 @@ function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlayer?: boo
             decorative
           />
         </Link>
+      )}
+      {e.type === "chat" && typeof e.meta?.channelId === "string" && (
+        <>
+          <span className="tile__raid-arrow" aria-hidden="true">
+            <svg viewBox="0 0 16 10" width={12} height={8}>
+              <path d="M0 4h11V1l5 4-5 4V6H0z" fill="currentColor" />
+            </svg>
+          </span>
+          <Link className="tile__head" href={`/spieler/${encodeURIComponent(e.meta.channelId)}`} aria-label={`Im Chat von ${String(e.meta.channelName ?? e.meta.channelId)}`}>
+            <Head
+              id={e.meta.channelId}
+              uuid={typeof e.meta.channelUuid === "string" ? e.meta.channelUuid : null}
+              name={`Im Chat von ${String(e.meta.channelName ?? e.meta.channelId)}`}
+              size={32}
+              className=""
+              decorative
+            />
+          </Link>
+        </>
       )}
       <Link className="tile__icon" data-tone={meta.tone} href={`/ereignisse?t=${e.type}`} aria-label={meta.label} title={`Nur „${meta.label}“ zeigen`}>
         <IconCmp aria-hidden="true" />

@@ -675,11 +675,52 @@ export interface TwitchChatMessage {
   sharedWith?: string[];
 }
 
+/** Länge, bis zu der eine Chat-Nachricht im Ereignis steht (die volle Nachricht bleibt im Chat-Verlauf) */
+const CHAT_EVENT_MAX_LENGTH = 300;
+
+/**
+ * Chat-Nachricht eines Spielers im Kanal eines anderen als Ereignis. Die ID hängt an der Nachricht, damit
+ * Kopien aus dem geteilten Chat und der Nachtrag beim Start dasselbe Ereignis treffen. `channelLogin` braucht
+ * `attachVods`, um die Stelle im VOD des Kanals zu verlinken.
+ */
+export function chatEvent(message: TwitchChatMessage, players: TrackerState["players"]): TrackerEvent {
+  const text = message.message.length > CHAT_EVENT_MAX_LENGTH ? `${message.message.slice(0, CHAT_EVENT_MAX_LENGTH - 1)}…` : message.message;
+  return {
+    id: `chat-${message.id}`,
+    at: message.at,
+    type: "chat",
+    player: message.senderId,
+    playerName: message.senderName,
+    uuid: players[message.senderId]?.uuid,
+    where: "twitch",
+    meta: {
+      channelId: message.channelId,
+      channelName: message.channelName,
+      channelUuid: players[message.channelId]?.uuid ?? null,
+      channelLogin: players[message.channelId]?.twitchLogin ?? message.channelId,
+      message: text,
+    },
+  };
+}
+
+/** Ereignisse für gespeicherte Chat-Nachrichten, die noch keins haben (einmal beim Start). */
+export async function backfillChatEvents(): Promise<number> {
+  await ensureLoaded();
+  const store = g();
+  const db = await getDb();
+  const rows = (await db.query<ChatRow>(`SELECT id, at, sender_id, sender_name, channel_id, channel_name, message, shared_with FROM twitch_chat_messages ORDER BY at`)).rows;
+  if (rows.length === 0 || !store.state) return 0;
+  const inserted = await appendEvents(rows.map((row) => chatEvent(chatFromRow(row), store.state!.players)));
+  store.state.eventCount += inserted.size;
+  return inserted.size;
+}
+
 /**
  * Speichert eine Chat-Nachricht genau einmal. Im geteilten Chat (Stream Together) kommt dieselbe Nachricht in
  * jedem beteiligten Kanal an; alle Kopien haben dieselbe ID. Spätere Kopien ergänzen nur `shared_with`.
+ * Liefert `true`, wenn die Nachricht neu war.
  */
-export async function saveTwitchChatMessage(message: TwitchChatMessage): Promise<void> {
+export async function saveTwitchChatMessage(message: TwitchChatMessage): Promise<boolean> {
   const db = await getDb();
   const shared = message.sharedWith ?? [];
   const inserted = await db.query(
@@ -696,7 +737,7 @@ export async function saveTwitchChatMessage(message: TwitchChatMessage): Promise
         [message.id, shared],
       );
     }
-    return;
+    return false;
   }
 
   twitchChatWritesSincePrune += 1;
@@ -710,6 +751,7 @@ export async function saveTwitchChatMessage(message: TwitchChatMessage): Promise
     );
     twitchChatWritesSincePrune = 0;
   }
+  return true;
 }
 
 type ChatRow = {
@@ -964,9 +1006,9 @@ export async function getTwitchSubscriptionProfile(
       ? db.query<{ count: number | string }>(
           `SELECT COALESCE(SUM(delta), 0) AS count
              FROM events
-            WHERE type IN ('subscription', 'subscription_gift') AND player = $1 AND meta->>'streamStartedAt' = $2
+            WHERE type IN ('subscription', 'subscription_gift') AND player = $1 AND at >= $2
               AND meta->>'serverOnline' = 'true'`,
-          [player, streamStartedAt],
+          [player, toDate(streamStartedAt)],
         )
       : Promise.resolve({ rows: [{ count: 0 }] }),
   ]);
@@ -988,13 +1030,15 @@ export async function getTwitchLiveSubscriptionCounts(
   const db = await getDb();
   const values = wanted.map((_, index) => `($${index * 2 + 1}, $${index * 2 + 2})`).join(", ");
   const params = wanted.flatMap((stream) => [stream.player, stream.startedAt]);
-  const rows = await db.query<{ player: string; stream_started_at: string; count: number | string }>(
-    `SELECT e.player, e.meta->>'streamStartedAt' AS stream_started_at, SUM(e.delta) AS count
+  const rows = await db.query<{ player: string; count: number | string }>(
+    // Alle Abos seit dem Beginn des laufenden Streams – nicht über den in jedem Abo gespeicherten Startwert,
+    // der bei einem vom Tracker verpassten Stream-Ende noch auf einen alten Stream zeigen kann
+    `SELECT e.player, SUM(e.delta) AS count
        FROM events e
        JOIN (VALUES ${values}) AS active(player, stream_started_at)
-         ON e.player = active.player AND e.meta->>'streamStartedAt' = active.stream_started_at
+         ON e.player = active.player AND e.at >= active.stream_started_at::timestamptz
       WHERE e.type IN ('subscription', 'subscription_gift') AND e.meta->>'serverOnline' = 'true'
-      GROUP BY e.player, e.meta->>'streamStartedAt'`,
+      GROUP BY e.player`,
     params,
   );
   for (const row of rows.rows) counts.set(row.player, Number(row.count));

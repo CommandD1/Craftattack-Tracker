@@ -268,7 +268,8 @@ const NEG_CACHE_MS = 10 * 60_000;
 const negative = new Map<string, number>();
 
 /**
- * Hängt an Tod-Ereignisse live gestreamter Spieler einen VOD-Link (`meta.vodUrl`).
+ * Hängt an Tod-Ereignisse live gestreamter Spieler und an Chat-Nachrichten in live streamenden Kanälen
+ * einen VOD-Link (`meta.vodUrl`).
  * Bereits aufgelöste Ereignisse werden nicht erneut abgefragt, Treffer landen dauerhaft in der DB.
  * Rückwirkend: der Stream wird über die Stream-an/aus-Ereignisse des Spielers oder direkt über Twitch bestimmt.
  */
@@ -290,7 +291,11 @@ export async function attachVods(
       e.meta?.noVod !== true &&
       !(e.type === "stream_start" && liveNow.some((l) => l.player === e.player && Date.parse(e.at) >= Date.parse(l.since) - 60_000)),
   );
-  if (todo.length === 0 && streamTodo.length === 0) return;
+  // Chat zwischen Spielern: VOD des Kanals, in dem geschrieben wurde, an genau dieser Stelle
+  const chatTodo = events.filter(
+    (e) => e.type === "chat" && typeof e.meta?.channelId === "string" && e.meta?.vodUrl === undefined && e.meta?.noVod !== true,
+  );
+  if (todo.length === 0 && streamTodo.length === 0 && chatTodo.length === 0) return;
 
   // Streams pro Spieler aus den Ereignissen rekonstruieren (für alte Tode ohne live-Markierung)
   const streams = new Map<string, { start: number; end: number; login: string | null }[]>();
@@ -368,6 +373,31 @@ export async function attachVods(
         }
       } catch (err) {
         console.warn("[twitch] VOD-Abfrage fehlgeschlagen:", err instanceof Error ? err.message : err);
+        negative.set(negKey, now);
+      }
+    }),
+  );
+  await Promise.all(
+    chatTodo.map(async (e) => {
+      const at = Date.parse(e.at);
+      const channel = String(e.meta!.channelId);
+      const stream = (streams.get(channel) ?? []).find((s) => at >= s.start - 60_000 && at <= s.end + 60_000);
+      // Kanal war zu dem Zeitpunkt nicht live: kein VOD (kein API-Aufruf, keine dauerhafte Markierung)
+      if (!stream) return;
+      const login = stream.login || (typeof e.meta?.channelLogin === "string" && e.meta.channelLogin) || loginOf(channel);
+      if (!login) return;
+      const negKey = `${login}|${e.id}`;
+      const neg = negative.get(negKey);
+      if (neg && now - neg < NEG_CACHE_MS) return;
+      try {
+        const hit = await findVod(login, at);
+        if (hit) await updateEventMeta(e, { vodUrl: vodLink(hit.vodId, hit.offset), vodId: hit.vodId, vodOffset: Math.round(hit.offset) });
+        else {
+          negative.set(negKey, now);
+          if (now - at > 24 * 3600_000) await updateEventMeta(e, { noVod: true });
+        }
+      } catch (err) {
+        console.warn("[twitch] VOD-Abfrage (Chat) fehlgeschlagen:", err instanceof Error ? err.message : err);
         negative.set(negKey, now);
       }
     }),

@@ -50,7 +50,7 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
   const players = Object.values(state.players);
   const live = players.filter((p) => p.live).sort((a, b) => (b.live!.viewers ?? 0) - (a.live!.viewers ?? 0));
   const streamSubs = await getTwitchLiveSubscriptionCounts(
-    live.map((p) => ({ player: p.id, startedAt: p.liveSince ?? p.live?.startedAt ?? null })),
+    live.map((p) => ({ player: p.id, startedAt: p.live?.startedAt ?? p.liveSince ?? null })),
   );
   const liveStreamSubs = live.reduce((total, player) => total + (streamSubs.get(player.id) ?? 0), 0);
   // Geteilter Chat (Stream Together): Partner je live streamendem Spieler
