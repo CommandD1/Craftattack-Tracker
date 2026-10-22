@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BOARD_KEYS, type BoardKey, type EventType, type TrackerEvent } from "@/lib/types";
-import { EVENT_META, eventBadge, isShownEvent, sharedChatPlayers } from "@/lib/events";
+import { EVENT_META, eventBadge, eventHref, isShownEvent, sharedChatPlayers } from "@/lib/events";
 import { time } from "@/lib/format";
 import { Head } from "./Head";
 import { BOARD_ICON, EVENT_ICON, Icon } from "./Icons";
@@ -94,21 +94,6 @@ function detail(e: TrackerEvent): string | null {
       return typeof e.meta?.title === "string" ? e.meta.title : null;
     case "chat":
       return typeof e.meta?.message === "string" ? e.meta.message : null;
-    // Zähler: die kleinen Icons sind nicht eindeutig, daher ein Wort dazu
-    case "diamonds":
-      return "Diamanten";
-    case "blocksBroken":
-      return "Blöcke abgebaut";
-    case "mobsKilled":
-      return "Mobs";
-    case "distance":
-      return "gelaufen";
-    case "damageDealt":
-      return "Schaden verursacht";
-    case "totemsUsed":
-      return "Totems benutzt";
-    case "foodEaten":
-      return "Essen gegessen";
     case "afk_start":
       return "AFK";
     case "afk_mobs_start":
@@ -124,8 +109,14 @@ function detail(e: TrackerEvent): string | null {
   }
 }
 
-/** Kompakte Kachel für ein Ereignis. Der volle Satz steht im Tooltip. */
-function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlayer?: boolean }) {
+/**
+ * Kompakte Kachel für ein Ereignis. Der volle Satz steht im Tooltip. Überall gleich aufgebaut: Kopf des Handelnden,
+ * Pfeil bzw. Schwert zum zweiten Beteiligten, Icon und Wert. Nur der Kopf des Spielers, um den es auf der Seite geht
+ * (`focus`), entfällt, wenn er selbst handelt – Beteiligte auf der anderen Seite bleiben immer sichtbar.
+ * Ein Klick auf die Kachel zeigt alle Ereignisse dieser Art von diesem Spieler, mit diesem hervorgehoben.
+ */
+function EventTile({ e, focus, highlight }: { e: TrackerEvent; focus?: string; highlight?: boolean }) {
+  const showPlayer = !focus || e.player !== focus;
   const meta = EVENT_META[e.type];
   const IconCmp = Icon[EVENT_ICON[e.type]];
   const sub = meta.sub?.(e);
@@ -150,8 +141,9 @@ function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlayer?: boo
   const killerName = typeof e.meta?.killerName === "string" ? e.meta.killerName : killer;
 
   return (
-    <li className="tile" data-tone={meta.tone} data-type={e.type} title={`${time(e.at)} · ${sentence}`}>
-      {withHead && (showPlayer || e.type === "raid") ? (
+    <li className="tile" id={`ev-${e.id}`} data-tone={meta.tone} data-type={e.type} data-highlight={highlight || undefined} title={`${time(e.at)} · ${sentence}`}>
+      <Link className="tile__hit" href={eventHref(e)} aria-label={`Alle „${meta.label}“${e.player ? ` von ${e.playerName ?? e.player}` : ""} zeigen`} />
+      {withHead && showPlayer ? (
         <Link className="tile__head" href={`/spieler/${encodeURIComponent(e.player!)}`} aria-label={e.playerName ?? e.player}>
           <Head id={e.player!} uuid={e.uuid} name={e.playerName} size={32} className="" decorative />
         </Link>
@@ -165,7 +157,7 @@ function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlayer?: boo
           ))}
         </span>
       )}
-      {e.type === "subscription_gift" && showPlayer && typeof e.meta?.giftGiverPlayerId === "string" && (
+      {e.type === "subscription_gift" && typeof e.meta?.giftGiverPlayerId === "string" && (
         <Link
           className="tile__head tile__head--gift"
           href={`/spieler/${encodeURIComponent(e.meta.giftGiverPlayerId)}`}
@@ -223,9 +215,9 @@ function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlayer?: boo
           </Link>
         </>
       )}
-      <Link className="tile__icon" data-tone={meta.tone} href={`/ereignisse?t=${e.type}`} aria-label={meta.label} title={`Nur „${meta.label}“ zeigen`}>
-        <IconCmp aria-hidden="true" />
-      </Link>
+      <span className="tile__icon" data-tone={meta.tone} aria-hidden="true">
+        <IconCmp />
+      </span>
       {badge && <span className="tile__val num">{badge}</span>}
       {killer && (
         <>
@@ -261,12 +253,16 @@ function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlayer?: boo
 /** Feed: links die Minute, rechts alle Ereignisse dieser Minute als Kacheln. */
 export function EventFeed({
   events,
-  showPlayer = true,
+  focus,
+  highlight,
   empty = "Noch nichts passiert. Der Tracker braucht erst zwei Abfragen, um Unterschiede zu sehen.",
   getTimeState,
 }: {
   events: TrackerEvent[];
-  showPlayer?: boolean;
+  /** Spieler, um den es auf der Seite geht: sein eigener Kopf entfällt, wenn er selbst handelt */
+  focus?: string;
+  /** Hervorgehobenes Ereignis (nach einem Klick auf eine Kachel) */
+  highlight?: string;
   empty?: string;
   getTimeState?: (at: string) => { server: boolean; live: boolean; href?: string };
 }) {
@@ -298,7 +294,7 @@ export function EventFeed({
         )}
         <ul className="tiles">
           {bucket.map((e) => (
-            <EventTile key={e.id} e={e} showPlayer={showPlayer} />
+            <EventTile key={e.id} e={e} focus={focus} highlight={e.id === highlight} />
           ))}
         </ul>
       </li>,

@@ -3334,19 +3334,9 @@ a.spark-card--link:hover .eyebrow {
 .rankboard__chart .spark {
   height: 84px;
 }
-.rankboard .spark__line {
-  stroke: var(--fg);
-}
-.rankboard .spark__area {
-  fill: var(--fg);
-  opacity: 0.16;
-}
-.rankboard .spark__dot {
-  fill: var(--bg);
-  stroke: var(--fg);
-}
+/* Kurve wie in der Statistik: Fläche im Ton der Kennzahl, Linie in Tinte */
 .rankboard .spark__cursor {
-  stroke: var(--fg);
+  stroke: var(--ink);
 }
 .rankboard__empty {
   align-self: center;
@@ -3969,4 +3959,159 @@ a.rankboard__now {
 }
 .gb__loading {
   font-size: 0.8125rem;
+}
+
+/* Weitere Ränge: Fläche unter der Kurve im Ton der Rubrik */
+.rankmore__spark[data-tone] {
+  --accent: var(--bg);
+}
+.rankmore__spark[data-tone="ender"] {
+  --accent: var(--ender-2);
+}
+.rankmore__spark:is([data-tone="white"], [data-tone="paper"]) {
+  --accent: var(--ink);
+}
+.rankmore__spark:is([data-tone="white"], [data-tone="paper"]) .spark__area {
+  opacity: 0.12;
+}
+
+/* Bestenlisten: Auswahl links, Liste rechts – die Liste ist ohne Scrollen sichtbar */
+.bl-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 23rem) minmax(0, 760px);
+  gap: 20px 32px;
+  align-items: start;
+}
+.bl-side {
+  grid-column: 1;
+  grid-row: 1 / span 3;
+  position: sticky;
+  top: 84px;
+  max-height: calc(100dvh - 100px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.bl-side .ev-filters {
+  margin-bottom: 12px;
+  gap: 12px;
+}
+.bl-side .ev-filters__row {
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+.bl-side .ev-filters__row > .eyebrow {
+  padding-top: 0;
+}
+.bl-main {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.bl-layout > .how-link,
+.bl-layout > :is(p, a):not(.bl-jump) {
+  grid-column: 2;
+}
+.bl-jump {
+  display: none;
+}
+@media (width <= 900px) {
+  .bl-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .bl-main {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .bl-side {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    grid-row: 3;
+    grid-column: 1;
+  }
+  .bl-layout > .how-link,
+  .bl-layout > :is(p, a):not(.bl-jump) {
+    grid-column: 1;
+  }
+  .bl-jump {
+    display: inline-block;
+    grid-row: 2;
+    font-weight: 600;
+  }
+}
+
+/* Ereignis-Kachel: ganze Kachel klickbar (alle Ereignisse dieser Art vom Spieler), Köpfe/Twitch-Link darüber */
+.tile {
+  position: relative;
+}
+.tile__hit {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.tile > :not(.tile__hit) {
+  position: relative;
+  z-index: 1;
+}
+.tile > :not(a) {
+  pointer-events: none;
+}
+@media (hover: hover) {
+  .tile:has(> .tile__hit:hover) {
+    box-shadow: var(--outline), 0 0 0 2px var(--ink);
+  }
+}
+.tile__hit:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+/* Nach einem Klick: das gewählte Ereignis hervorheben */
+.tile[data-highlight] {
+  outline: 4px solid var(--gold);
+  outline-offset: 3px;
+  animation: tile-pulse 1.2s ease 2;
+  scroll-margin-block: 40vh;
+}
+@keyframes tile-pulse {
+  50% {
+    outline-offset: 7px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tile[data-highlight] {
+    animation: none;
+  }
+}
+
+/* Spielerfilter (Ereignisse): gewählte Köpfe + Suche mit Vorschlägen */
+.pfilter {
+  display: grid;
+  gap: 8px;
+}
+.pfilter__chips,
+.pfilter__suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pfilter__search input {
+  font: inherit;
+  font-weight: 600;
+  width: min(100%, 18rem);
+  padding: 6px 10px;
+  border: 2px solid var(--ink);
+  background: var(--white);
+  color: var(--ink);
+}
+.pfilter__suggest {
+  margin-top: 8px;
+}
+.pfilter__suggest button {
+  font: inherit;
+  cursor: pointer;
+}
+.pfilter__suggest .dot {
+  margin-left: 4px;
 }

@@ -4,7 +4,7 @@ import { Suspense, cache } from "react";
 import type { Metadata } from "next";
 import { BOARD_TONE } from "@/lib/statTone";
 import { loadTracker } from "@/lib/data";
-import { chatVodLinks, isShownEvent, sharedChatPlayers } from "@/lib/events";
+import { chatVodLinks, eventPlayers, isShownEvent, sharedChatPlayers } from "@/lib/events";
 import { thinHistory } from "@/lib/thinHistory";
 import { BOARD_KEYS, type BoardKey, type TrackerEvent } from "@/lib/types";
 import { ago, boardParts, dateTime, duration, num, skinUrl } from "@/lib/format";
@@ -488,7 +488,7 @@ async function DetailsSection({ params }: { params: Params }) {
 
 async function TimelineSection({ params }: { params: Params }) {
   const { id: raw } = await params;
-  const { id, state, now, p } = await getCtx(raw);
+  const { id, state, now, p, events } = await getCtx(raw);
   if (!p) return null;
   const [history, allSessions, afkSpans, mine] = await Promise.all([getPlayerHistory(id), getAllSessions(), getPlayerAfkSpans(id), getMine(raw)]);
   const sparkHistory = thinHistory(history);
@@ -509,7 +509,8 @@ async function TimelineSection({ params }: { params: Params }) {
     ...sess.map((s) => ({ ...s, kind: "server" as const, overlap: overlapSeconds(s, strm, now) })),
     ...strm.map((s) => ({ ...s, kind: "stream" as const, overlap: overlapSeconds(s, sess, now) })),
   ].sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
-  const shown = mine.filter(isShownEvent);
+  // Verlauf: alles, woran der Spieler beteiligt ist – auch als Täter, Raid-Ziel, Schenker oder Kanal
+  const shown = events.filter((e) => isShownEvent(e) && eventPlayers(e).includes(id));
   const recent = [...shown].reverse().slice(0, 150);
   const getTimeState = await getPlayerEventTimeState({
     playerEvents: mine.filter((event) => event.player === id),
@@ -531,7 +532,7 @@ async function TimelineSection({ params }: { params: Params }) {
                 Alle {num(shown.length)}
               </Link>
             </div>
-            <EventFeed events={recent} showPlayer={false} empty={`Für ${p.name} wurde noch nichts aufgezeichnet.`} getTimeState={getTimeState} />
+            <EventFeed events={recent} focus={id} empty={`Für ${p.name} wurde noch nichts aufgezeichnet.`} getTimeState={getTimeState} />
             <PresenceLegend />
           </div>
           <aside className="stack" style={{ "--stack": "16px" } as React.CSSProperties}>
