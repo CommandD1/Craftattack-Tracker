@@ -10,6 +10,7 @@ import { BOARD_ICON, Icon } from "./Icons";
 import { EXTRA_HISTORY_KEYS, EXTRA_STATS, STAT_GROUPS } from "@/lib/playerStats";
 import { LEADERBOARDS, boardHref } from "@/lib/leaderboards";
 import { graphHref, rankMetric } from "@/lib/graphQuery";
+import { GROUP_TONE } from "@/lib/statTone";
 
 const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
@@ -203,7 +204,7 @@ export function PlayerActivity({
                               <Link className="rankmore__name" href={boardHref(ch.k)} title={`Bestenliste „${LEADERBOARDS[ch.k].title}“ öffnen`}>
                                 {EXTRA_STATS[ch.k].label}
                               </Link>
-                              <Link className="rankmore__spark" href={graphHref(rankMetric(ch.k), [id])} title={`Platz in „${LEADERBOARDS[ch.k].title}“ im Graphen öffnen`}>
+                              <Link className="rankmore__spark" data-tone={GROUP_TONE[g.key]} href={graphHref(rankMetric(ch.k), [id])} title={`Platz in „${LEADERBOARDS[ch.k].title}“ im Graphen öffnen`}>
                                 {ch.points.length >= 2 ? <Sparkline points={ch.points} width={160} height={28} kind="rank" invert label={`Platz ${EXTRA_STATS[ch.k].label}`} /> : <span className="muted">–</span>}
                               </Link>
                               <Link className="rankmore__now num" href={boardHref(ch.k)} tabIndex={-1} data-top={ch.nowRank !== null && ch.nowRank <= 3 ? "true" : undefined}>

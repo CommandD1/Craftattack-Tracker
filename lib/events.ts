@@ -428,6 +428,34 @@ export function sharedChatPlayers(e: Pick<TrackerEvent, "meta">): string[] {
   return String(e.meta?.sharedChatPlayers ?? "").split(",").filter(Boolean);
 }
 
+/**
+ * Alle an einem Ereignis beteiligten Spieler, der Handelnde zuerst: Opfer und Täter eines Tods, Raid-Ziel,
+ * Sub-Schenker, Kanal einer Chatnachricht und die Spieler eines geteilten Chats.
+ */
+export function eventPlayers(e: Pick<TrackerEvent, "player" | "type" | "meta">): string[] {
+  const ids = [
+    e.player,
+    e.type === "death" ? e.meta?.killerId : null,
+    e.meta?.raidTargetPlayerId,
+    e.meta?.giftGiverPlayerId,
+    e.type === "chat" ? e.meta?.channelId : null,
+    ...sharedChatPlayers(e),
+  ];
+  return [...new Set(ids.filter((x): x is string => typeof x === "string" && x !== ""))];
+}
+
+/**
+ * Ziel eines Klicks auf ein Ereignis: die Ereignisse-Seite mit diesem Spieler und dieser Art, auf der Seite des
+ * Ereignisses und dorthin gescrollt.
+ */
+export function eventHref(e: Pick<TrackerEvent, "id" | "player" | "type">): string {
+  const p = new URLSearchParams();
+  if (e.player) p.set("spieler", e.player);
+  p.set("t", e.type);
+  p.set("ev", e.id);
+  return `/ereignisse?${p}#ev-${e.id}`;
+}
+
 /** VOD-Links der Chat-Ereignisse je Chat-Nachricht (ID ohne `chat-`), für klickbare Nachrichten im Chat-Verlauf */
 export function chatVodLinks(events: TrackerEvent[]): Map<string, string> {
   const out = new Map<string, string>();

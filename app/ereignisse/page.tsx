@@ -3,14 +3,15 @@ import { Suspense } from "react";
 import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
-import { EVENT_GROUPS, EVENT_META, EVENT_TYPES, TIME_RANGES, isShownEvent, sharedChatPlayers, typesForGroup } from "@/lib/events";
+import { EVENT_GROUPS, EVENT_META, EVENT_TYPES, TIME_RANGES, eventPlayers, isShownEvent, typesForGroup } from "@/lib/events";
 import type { EventType } from "@/lib/types";
 import { num } from "@/lib/format";
 import { EventFeed } from "@/components/EventFeed";
 import { EVENT_ICON, Icon } from "@/components/Icons";
 import { getAllSessions } from "@/lib/store";
 import { getPlayerEventTimeState } from "@/lib/playerEventStatus";
-import { Head } from "@/components/Head";
+import { PlayerFilter } from "@/components/PlayerFilter";
+import { ScrollToHighlight } from "@/components/ScrollToHighlight";
 import { PresenceLegend } from "@/components/HowLink";
 
 
@@ -27,7 +28,7 @@ export default function Page(props: PageProps<"/ereignisse">) {
   );
 }
 
-type Query = { g?: string; t?: string; wo?: string; spieler?: string; zeit?: string; seite?: string };
+type Query = { g?: string; t?: string; wo?: string; spieler?: string; zeit?: string; seite?: string; ev?: string };
 
 function qs(o: Query) {
   const p = new URLSearchParams();
@@ -44,12 +45,15 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
   // Einzeltyp gewinnt über die Gruppe; Gruppe des Typs wird mit angezeigt
   const g = t ? EVENT_GROUPS.find((grp) => grp.types.includes(t))?.key : str(sp.g);
   const where = str(sp.wo) === "server" || str(sp.wo) === "twitch" ? str(sp.wo) : undefined;
-  const player = str(sp.spieler);
   const zeit = TIME_RANGES.some((r) => r.key === str(sp.zeit)) ? str(sp.zeit) : undefined;
-  const page = Math.max(1, Number(sp.seite ?? 1) || 1);
-  const q: Query = { g, t, wo: where, spieler: player, zeit };
+  // Hervorgehobenes Ereignis (Klick auf eine Kachel): seine Seite wird gezeigt
+  const ev = str(sp.ev);
 
   const { state, events, now } = await loadTracker();
+  // Mehrere Spieler: `spieler=a,b`; ein Ereignis zählt, wenn irgendein gewählter Spieler beteiligt ist
+  const players = [...new Set((str(sp.spieler) ?? "").split(",").map((x) => x.trim().toLowerCase()).filter((x) => x && state.players[x]))];
+  const player = players.length === 1 ? players[0] : undefined;
+  const q: Query = { g, t, wo: where, spieler: players.join(",") || undefined, zeit };
 
   // Basisfilter (ohne Kategorie), damit die Zusammenfassung pro Kategorie stimmt
   const range = TIME_RANGES.find((r) => r.key === zeit)?.ms ?? null;
@@ -57,15 +61,16 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
   let base = [...events].reverse().filter(isShownEvent);
   if (since) base = base.filter((e) => Date.parse(e.at) >= since);
   if (where) base = base.filter((e) => e.where === where);
-  if (player) base = base.filter((e) => e.player === player || e.meta?.raidTargetPlayerId === player || sharedChatPlayers(e).includes(player));
+  if (players.length) base = base.filter((e) => eventPlayers(e).some((id) => players.includes(id)));
 
   const types = t ? [t] : typesForGroup(g);
   const list = types ? base.filter((e) => types.includes(e.type)) : base;
 
   const total = list.length;
   const pages = Math.max(1, Math.ceil(total / PAGE));
+  const evIndex = ev ? list.findIndex((e) => e.id === ev) : -1;
+  const page = evIndex >= 0 ? Math.floor(evIndex / PAGE) + 1 : Math.min(pages, Math.max(1, Number(sp.seite ?? 1) || 1));
   const slice = list.slice((page - 1) * PAGE, page * PAGE);
-  const playerName = player ? state.players[player]?.name ?? player : null;
   const getTimeState = player
     ? await getPlayerEventTimeState({
         playerEvents: events.filter((event) => event.player === player),
@@ -81,7 +86,9 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
   const groupTypes = g ? typesForGroup(g) ?? [] : [];
   const typeCounts = groupTypes.map((ty) => ({ type: ty, n: base.filter((e) => e.type === ty).length }));
 
-  const playersSorted = Object.values(state.players).sort((a, b) => a.name.localeCompare(b.name, "de"));
+  const playerOptions = Object.values(state.players)
+    .map((p) => ({ id: p.id, name: p.name, uuid: p.uuid, online: p.online }))
+    .sort((a, b) => a.name.localeCompare(b.name, "de"));
 
   return (
     <>
@@ -184,29 +191,7 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
 
             <div className="ev-filters__row">
               <p className="eyebrow">Spieler</p>
-              <form className="ev-form" method="get" action="/ereignisse">
-                {g && <input type="hidden" name="g" value={g} />}
-                {t && <input type="hidden" name="t" value={t} />}
-                {where && <input type="hidden" name="wo" value={where} />}
-                {zeit && <input type="hidden" name="zeit" value={zeit} />}
-                <select name="spieler" defaultValue={player ?? ""} aria-label="Spieler">
-                  <option value="">Alle Spieler</option>
-                  {playersSorted.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                      {p.online ? " · online" : ""}
-                    </option>
-                  ))}
-                </select>
-                <button className="btn btn--small" data-tone="ink" type="submit">
-                  Zeigen
-                </button>
-                {playerName && (
-                  <Link className="tag tag--head" data-tone="white" href={`/ereignisse${qs({ ...q, spieler: undefined })}`} aria-label={`Filter ${playerName} entfernen`}>
-                    <Head id={player!} uuid={state.players[player!]?.uuid} name={playerName} size={20} src={32} decorative /> {playerName} ✕
-                  </Link>
-                )}
-              </form>
+              <PlayerFilter players={playerOptions} selected={players} path="/ereignisse" query={{ g, t, wo: where, zeit }} />
             </div>
           </div>
 
@@ -215,14 +200,15 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
               {num(total)} Treffer
               {pages > 1 ? ` · Seite ${page} von ${pages}` : ""}
             </p>
-            {(g || t || where || player || zeit) && (
+            {(g || t || where || players.length > 0 || zeit) && (
               <Link className="btn btn--small" data-tone="white" href="/ereignisse">
                 Filter zurücksetzen
               </Link>
             )}
           </div>
 
-          <EventFeed events={slice} showPlayer={!player} getTimeState={getTimeState} />
+          <EventFeed events={slice} focus={player} highlight={evIndex >= 0 ? ev : undefined} getTimeState={getTimeState} />
+          {evIndex >= 0 && <ScrollToHighlight id={`ev-${ev}`} />}
           {player && (
             <PresenceLegend />
           )}

@@ -201,7 +201,9 @@ async function Boards(props: PageProps<"/bestenlisten">) {
       </section>
 
       <section className="block block--tight" data-tone="paper">
-        <div className="wrap">
+        <div className="wrap bl-layout">
+          {/* Auswahl links, die Liste daneben sofort sichtbar (schmal: Liste zuerst) */}
+          <aside className="bl-side" id="listen" aria-label="Liste wählen">
           <div className="ev-filters">
             {LEADERBOARD_GROUPS.map((g) => {
               const keys = LEADERBOARD_KEYS.filter((k) => LEADERBOARDS[k].group === g.key);
@@ -238,8 +240,9 @@ async function Boards(props: PageProps<"/bestenlisten">) {
               ))}
             </ul>
           )}
+          </aside>
 
-          <section className="box st-board" data-tone={b.tone} style={{ maxWidth: 760 }} aria-labelledby="fb-h">
+          <section className="box st-board bl-main" data-tone={b.tone} aria-labelledby="fb-h">
             <header className="st-board__head">
               <span className="st-board__icon">
                 <IconCmp aria-hidden="true" />
@@ -305,6 +308,9 @@ async function Boards(props: PageProps<"/bestenlisten">) {
             </ol>
           </section>
           <HowLink section="bestenlisten" />
+          <a className="bl-jump" href="#listen">
+            Liste wechseln ↓
+          </a>
         </div>
       </section>
     </>
