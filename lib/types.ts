@@ -75,6 +75,8 @@ export interface ApiPlayerDetail {
     ranks: Record<string, PlayerRank>;
     tops?: Record<string, PlayerTopEntry[]>;
   } | null;
+  /** Letzte Erfolge und Tode dieses Spielers, gleiches Format wie /api/feed (reicht weiter zurück als der Feed) */
+  events?: FeedItem[];
 }
 
 /**

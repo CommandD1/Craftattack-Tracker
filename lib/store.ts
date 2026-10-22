@@ -496,12 +496,13 @@ export async function saveState(state: TrackerState, { savePlayers = true }: { s
   store.historySaved = state.history.length;
 }
 
-export async function appendEvents(events: TrackerEvent[]) {
-  if (events.length === 0) return;
+/** Speichert Ereignisse; bereits vorhandene IDs werden übersprungen. Liefert die IDs, die neu dazukamen. */
+export async function appendEvents(events: TrackerEvent[]): Promise<Set<string>> {
+  if (events.length === 0) return new Set();
   await ensureLoaded();
   const store = g();
   const db = await getDb();
-  await insertRows(
+  const inserted = await insertRows(
     db,
     "events",
     ["id", "at", "type", "player", "player_name", "uuid", `"where"`, "delta", "value", "meta"],
@@ -510,12 +511,16 @@ export async function appendEvents(events: TrackerEvent[]) {
       e.where, e.delta ?? null, e.value ?? null, e.meta ? JSON.stringify(e.meta) : null,
     ]),
     "ON CONFLICT (id) DO NOTHING",
+    "id",
   );
-  store.events.push(...events);
+  const insertedIds = new Set(inserted.map((row) => row.id));
+  // Nur wirklich neue Ereignisse in den Speicher, sonst stünden erneut gelieferte Feed-Einträge doppelt darin
+  store.events.push(...events.filter((e) => insertedIds.has(e.id)));
   store.events.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.id.localeCompare(b.id));
   if (store.events.length > MAX_EVENTS_IN_MEMORY) {
     store.events = store.events.slice(-MAX_EVENTS_IN_MEMORY);
   }
+  return insertedIds;
 }
 
 export async function appendFeedItems(items: { id: string; item: FeedItem }[]) {
@@ -537,35 +542,54 @@ export async function appendFeedItems(items: { id: string; item: FeedItem }[]) {
   );
 }
 
+/** Todesnachricht und Mörder aus einem Feed-Eintrag (/api/feed oder `events` von /api/player) */
+function deathFeedMeta(item: DeathFeedItem): Record<string, string | null> {
+  return {
+    deathMessage: item.message,
+    feedAt: item.at,
+    victimMinecraft: item.victim.minecraft,
+    victimTwitch: item.victim.twitch,
+    killerId: item.killer?.id ?? null,
+    killerName: item.killer?.name ?? null,
+    killerUuid: item.killer?.uuid ?? null,
+    killerMinecraft: item.killer?.minecraft ?? null,
+    killerTwitch: item.killer?.twitch ?? null,
+  };
+}
+
+/**
+ * Ergänzt vom Tracker gezählte Tode (Zähler-Anstieg, ohne Ursache) um Nachricht und Mörder aus dem Feed:
+ * nächstgelegener Tod desselben Spielers, höchstens 2 Min vor bis 15 Min nach dem Feed-Zeitpunkt.
+ * Schon ergänzte Tode werden übersprungen, damit derselbe Eintrag bei jedem Poll keinen Schreibzugriff auslöst.
+ */
 export async function enrichDeathEvents(items: DeathFeedItem[]) {
   if (items.length === 0) return;
   await ensureLoaded();
   const store = g();
   const db = await getDb();
+  const victims = new Set(items.map((item) => item.victim.id));
+  const deathsOf = new Map<string, TrackerEvent[]>();
+  for (const e of store.events) {
+    if (e.type !== "death" || !e.player || !victims.has(e.player)) continue;
+    (deathsOf.get(e.player) ?? deathsOf.set(e.player, []).get(e.player)!).push(e);
+  }
   const usedEventIds = new Set<string>();
 
   for (const item of items) {
+    const candidates = deathsOf.get(item.victim.id) ?? [];
+    if (candidates.some((candidate) => candidate.meta?.feedAt === item.at)) continue;
     const feedAt = Date.parse(item.at);
-    const event = store.events
-      .filter((candidate) => candidate.type === "death" && candidate.player === item.victim.id && !usedEventIds.has(candidate.id))
-      .map((candidate) => ({ candidate, distance: Math.abs(Date.parse(candidate.at) - feedAt) }))
-      .filter(({ distance }) => distance <= 2 * 60_000)
-      .sort((a, b) => a.distance - b.distance)[0]?.candidate;
+    // Der Zähler steigt erst, wenn die Einzelstatistik neu abgefragt wird (bis zu 15 Min Cache): der vom
+    // Tracker gezählte Tod liegt daher meist nach dem echten Zeitpunkt, kaum davor
+    const event = candidates
+      .filter((candidate) => !usedEventIds.has(candidate.id) && !candidate.meta?.feedAt)
+      .map((candidate) => ({ candidate, offset: Date.parse(candidate.at) - feedAt }))
+      .filter(({ offset }) => offset >= -2 * 60_000 && offset <= 15 * 60_000)
+      .sort((a, b) => Math.abs(a.offset) - Math.abs(b.offset))[0]?.candidate;
     if (!event) continue;
 
     usedEventIds.add(event.id);
-    const meta = {
-      ...event.meta,
-      deathMessage: item.message,
-      feedAt: item.at,
-      victimMinecraft: item.victim.minecraft,
-      victimTwitch: item.victim.twitch,
-      killerId: item.killer?.id ?? null,
-      killerName: item.killer?.name ?? null,
-      killerUuid: item.killer?.uuid ?? null,
-      killerMinecraft: item.killer?.minecraft ?? null,
-      killerTwitch: item.killer?.twitch ?? null,
-    };
+    const meta = { ...event.meta, ...deathFeedMeta(item) };
     await db.query(`UPDATE events SET meta = COALESCE(meta, '{}'::jsonb) || $2::jsonb WHERE id = $1`, [
       event.id,
       JSON.stringify(meta),
