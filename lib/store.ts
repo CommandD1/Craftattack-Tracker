@@ -877,6 +877,37 @@ export async function recordTopSnapshots(players: PlayerState[], at: string, fre
 }
 
 /**
+ * Stand der Top-Listen aller Spieler zu einem früheren Zeitpunkt: letzter Anker davor plus alle Änderungen bis dahin.
+ * Für die ▲▼-Anzeige der Bestenlisten einzelner Blöcke/Mobs und der Vielfalt.
+ */
+export async function getTopSnapshotsAt(cutoff: Date): Promise<Map<string, TopSnapshot>> {
+  const db = await getDb();
+  const rows = (
+    await db.query<{ player: string; tops: TopSnapshot; anchor: boolean }>(
+      `SELECT t.player, t.tops, t.anchor
+         FROM player_top_history t
+         JOIN (SELECT player, max(at) AS anchor_at FROM player_top_history WHERE anchor AND at <= $1 GROUP BY player) a
+           ON a.player = t.player AND t.at >= a.anchor_at
+        WHERE t.at <= $1
+        ORDER BY t.player, t.at`,
+      [cutoff],
+    )
+  ).rows;
+  const out = new Map<string, TopSnapshot>();
+  for (const r of rows) {
+    const state = out.get(r.player);
+    if (r.anchor || !state) {
+      out.set(r.player, r.tops);
+      continue;
+    }
+    const merged: TopSnapshot = { ...state };
+    for (const [list, items] of Object.entries(r.tops)) merged[list] = { ...(merged[list] ?? {}), ...items };
+    out.set(r.player, merged);
+  }
+  return out;
+}
+
+/**
  * Verlauf der Top-Listen eines Spielers über die letzten `hours` Stunden, älteste zuerst.
  * Ab dem letzten Anker vor dem Zeitfenster werden die Änderungen aufaddiert; zurück kommt je
  * `bucketMinutes` der letzte Gesamtstand, damit das Profil nicht tausende Minutenpunkte verarbeiten muss.

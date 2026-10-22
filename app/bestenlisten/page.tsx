@@ -4,7 +4,7 @@ import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { getFullBoard, getTwitchSubscriptionBoard } from "@/lib/store";
-import { getAfkBoard, getAfkRanksBefore, getBoardRanksBefore, getFollowerRanksBefore, getTrackedRanksBefore } from "@/lib/analytics";
+import { getAfkBoard, getAfkRanksBefore, getBoardRanksBefore, getExtraRanksBefore, getFollowerRanksBefore, getTopRanksBefore, getTrackedRanksBefore } from "@/lib/analytics";
 import { BOARD_KEYS, type AfkKind, type BoardKey, type PlayerState } from "@/lib/types";
 import { ago, boardValue, duration, num } from "@/lib/format";
 import { BoardValue } from "@/components/BoardValue";
@@ -20,6 +20,9 @@ import {
   boardHref,
   isLeaderboardKey,
   itemBoardMeta,
+  itemHref,
+  itemRanking,
+  restRanking,
   parseItemParam,
   topCategoryLabel,
   type LeaderboardKey,
@@ -36,6 +39,7 @@ const afkKindOf = (k: string): AfkKind | undefined => (k === "afkmobs" ? "mobs" 
 const isBoardKey = (k: string): k is BoardKey => (BOARD_KEYS as readonly string[]).includes(k);
 const isExtraKey = (k: string): k is ExtraStatKey => k in EXTRA_STATS;
 const isRestKey = (k: string): k is `rest-${TopCategory}` => k.startsWith("rest-");
+const restCategory = (k: `rest-${TopCategory}`) => k.slice("rest-".length) as TopCategory;
 
 /** Vergleichszeitraum für die ▲/▼-Anzeige */
 const SPANS = {
@@ -46,11 +50,6 @@ const SPANS = {
   "7d": { hours: 168, label: "7 Tagen" },
 } as const;
 type Span = keyof typeof SPANS;
-
-/** Gesamtwert einer Top-10-Kategorie: Hauptlisten aus `stats`, die übrigen aus der Einzelstatistik */
-function categoryTotal(p: PlayerState, c: TopCategory): number | undefined {
-  return isBoardKey(c) ? p.stats[c] : p.detail?.stats[c];
-}
 
 /** Alle Blöcke, Mobs und Tiere aus den Top-10-Listen der Spieler, je Kategorie nach Anzahl Spieler sortiert */
 function itemOptions(players: PlayerState[]) {
@@ -88,8 +87,8 @@ async function Boards(props: PageProps<"/bestenlisten">) {
   const key: Key | "top" = item ? "top" : isLeaderboardKey(raw) ? raw : "playtimeSeconds";
   const span: Span = typeof sp.seit === "string" && sp.seit in SPANS ? (sp.seit as Span) : "24h";
   const hours = SPANS[span].hours;
-  // ▲▼ gibt es nur, wo der Tracker einen früheren Stand kennt
-  const hasMovement = key === "tracked" || key === "followers" || isAfkKey(key) || isBoardKey(key);
+  // ▲▼ gibt es überall, wo der Tracker einen früheren Stand kennt (Twitch-Abos zählen erst seit der IRC-Erfassung)
+  const hasMovement = key !== "twitchSubs";
   const [{ state, now }, ranksBefore]: [{ state: Awaited<ReturnType<typeof loadTracker>>["state"]; now: number }, Record<string, number>] = await Promise.all([
     loadTracker(),
     key === "tracked"
@@ -100,7 +99,13 @@ async function Boards(props: PageProps<"/bestenlisten">) {
           ? getFollowerRanksBefore(hours)
           : isBoardKey(key)
             ? getBoardRanksBefore(hours).then((r) => r[key] ?? {})
-            : Promise.resolve({}),
+            : isExtraKey(key)
+              ? getExtraRanksBefore(key, hours)
+              : isRestKey(key)
+                ? getTopRanksBefore(restCategory(key), hours)
+                : key === "top" && item
+                  ? getTopRanksBefore(item.category, hours, item.key)
+                  : Promise.resolve({}),
   ]);
   const players = Object.values(state.players);
   const options = itemOptions(players);
@@ -152,29 +157,31 @@ async function Boards(props: PageProps<"/bestenlisten">) {
     fmt = FORMATTERS[EXTRA_STATS[key].format];
   } else if (isRestKey(key)) {
     // Vielfalt: Gesamtwert minus Summe der eigenen Top 10
-    const c = key.slice("rest-".length) as TopCategory;
-    rows = players
-      .flatMap((p) => {
-        const total = categoryTotal(p, c);
-        const tops = p.detail?.tops[c];
-        if (typeof total !== "number" || total <= 0 || !tops?.length) return [];
-        const rest = Math.max(0, total - tops.reduce((s, e) => s + e.count, 0));
-        return rest > 0
-          ? [{ id: p.id, name: p.name, uuid: p.uuid, value: rest, at: p.detail!.fetchedAt, online: p.online, note: `${Math.round((rest / total) * 100)} % von ${num(total)}` }]
-          : [];
-      })
-      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, "de"));
+    rows = restRanking(players, restCategory(key)).map(({ player: p, rest, total }) => ({
+      id: p.id,
+      name: p.name,
+      uuid: p.uuid,
+      value: rest,
+      at: p.detail!.fetchedAt,
+      online: p.online,
+      note: `${Math.round((rest / total) * 100)} % von ${num(total)}`,
+    }));
   } else {
     // Einzelnes Item: nur Spieler, bei denen es in den eigenen Top 10 steht
-    rows = players
-      .flatMap((p) => {
-        const e = p.detail?.tops[item!.category]?.find((t) => t.key === item!.key);
-        return e ? [{ id: p.id, name: p.name, uuid: p.uuid, value: e.count, at: p.detail!.fetchedAt, online: p.online }] : [];
-      })
-      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, "de"));
+    rows = itemRanking(players, item!.category, item!.key).map(({ player: p, count }) => ({
+      id: p.id,
+      name: p.name,
+      uuid: p.uuid,
+      value: count,
+      at: p.detail!.fetchedAt,
+      online: p.online,
+    }));
   }
   const inApi = new Set((isBoardKey(key) ? (state.latest?.boards?.[key] ?? []) : []).map((e) => e.id));
   const IconCmp = Icon[b.icon as keyof typeof Icon] ?? Icon.trophy;
+  // Zeitraum wechseln, ohne die gewählte Liste (bei Einzel-Items samt Item) zu verlieren
+  const spanHref = (s: Span) =>
+    key === "top" ? `${itemHref(item!.category, item!.key)}${s !== "24h" ? `&seit=${s}` : ""}` : boardHref(key, s);
   const meta = (e: Row) => {
     if (e.note) return e.note;
     if (isAfkKey(key)) return e.afkNow ? (key === "afk" ? "gerade AFK" : "farmt gerade") : "";
@@ -250,7 +257,7 @@ async function Boards(props: PageProps<"/bestenlisten">) {
             <ul className="filters" aria-label="Vergleichszeitraum" style={{ marginTop: 8 }}>
               {(Object.keys(SPANS) as Span[]).map((sKey) => (
                 <li key={sKey}>
-                  <Link className="tag" data-tone={sKey === span ? undefined : "white"} aria-current={sKey === span ? "true" : undefined} href={boardHref(key as Key, sKey)}>
+                  <Link className="tag" data-tone={sKey === span ? undefined : "white"} aria-current={sKey === span ? "true" : undefined} href={spanHref(sKey)}>
                     ▲▼ vs. {SPANS[sKey].label}
                   </Link>
                 </li>
