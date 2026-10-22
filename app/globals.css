@@ -3728,3 +3728,11 @@ a.rankboard__now {
 .ptop__row--rest .ptop__name::before {
   content: none;
 }
+/* Platz in der Item- bzw. Vielfalt-Bestenliste neben der Anzahl */
+.ptop__place {
+  margin-left: 6px;
+  padding: 0 4px;
+  font-size: 0.6875rem;
+  vertical-align: 1px;
+  text-decoration: none;
+}

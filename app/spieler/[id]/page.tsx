@@ -26,7 +26,8 @@ import { getPlayerEventTimeState } from "@/lib/playerEventStatus";
 import { ChatSkeleton, DetailsSkeleton, HeadSkeleton, InsightsSkeleton, RanksSkeleton, TilesSkeleton, TimelineSkeleton } from "@/components/PlayerSkeletons";
 import { METRIC_TONE } from "@/lib/statTone";
 import { Head } from "@/components/Head";
-import { boardHref } from "@/lib/leaderboards";
+import { TOP_CATEGORIES, boardHref, itemRanking, restRanking } from "@/lib/leaderboards";
+import type { TopPlaces } from "@/components/PlayerDetails";
 
 
 export async function generateMetadata({ params }: PageProps<"/spieler/[id]">): Promise<Metadata> {
@@ -443,10 +444,32 @@ async function ActivitySection({ params }: { params: Params }) {
 }
 
 async function DetailsSection({ params }: { params: Params }) {
-  const { id, now, p } = await ctxFor(params);
+  const { id, state, now, p } = await ctxFor(params);
   if (!p) return null;
   const topHistory = await getPlayerTopHistory(id);
-  return <PlayerDetails id={id} detail={p.detail} name={p.name} now={now} topHistory={topHistory} totals={{ blocksBroken: p.stats.blocksBroken, mobsKilled: p.stats.mobsKilled }} />;
+  // Platz in den Bestenlisten der eigenen Top-Items und der Vielfalt (gleiche Rechnung wie /bestenlisten)
+  const all = Object.values(state.players);
+  const places: TopPlaces = { items: {}, rest: {} };
+  for (const c of TOP_CATEGORIES) {
+    for (const e of p.detail?.tops[c] ?? []) {
+      const ranking = itemRanking(all, c, e.key);
+      places.items[`${c}|${e.key}`] = { rank: ranking.findIndex((r) => r.player.id === id) + 1, of: ranking.length };
+    }
+    const rest = restRanking(all, c);
+    const at = rest.findIndex((r) => r.player.id === id);
+    if (at >= 0) places.rest[c] = { rank: at + 1, of: rest.length };
+  }
+  return (
+    <PlayerDetails
+      id={id}
+      detail={p.detail}
+      name={p.name}
+      now={now}
+      topHistory={topHistory}
+      totals={{ blocksBroken: p.stats.blocksBroken, mobsKilled: p.stats.mobsKilled }}
+      places={places}
+    />
+  );
 }
 
 async function TimelineSection({ params }: { params: Params }) {

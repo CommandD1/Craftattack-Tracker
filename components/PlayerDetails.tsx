@@ -16,8 +16,28 @@ const GROUP_ICON: Record<string, keyof typeof Icon> = {
   afk: "clock",
 };
 
+export interface ListPlace {
+  rank: number;
+  of: number;
+}
+export interface TopPlaces {
+  /** Schlüssel `<Kategorie>|<Item-Key>` */
+  items: Record<string, ListPlace>;
+  rest: Partial<Record<TopCategory, ListPlace>>;
+}
+
+/** Platz in einer Bestenliste als kleines Abzeichen mit Link */
+function Place({ place, href, list }: { place?: ListPlace; href: string; list: string }) {
+  if (!place || place.rank < 1) return null;
+  return (
+    <Link className="tag ptop__place" data-tone={place.rank <= 3 ? "gold" : "ink"} href={href} title={`Platz ${place.rank} von ${place.of} in der Bestenliste „${list}“`}>
+      #{place.rank}
+    </Link>
+  );
+}
+
 /** Alles außerhalb der eigenen Top 10 einer Kategorie, verlinkt auf die Vielfalt-Bestenliste */
-function RestRow({ category, list, total }: { category: TopCategory; list: { count: number }[]; total: number | undefined }) {
+function RestRow({ category, list, total, place }: { category: TopCategory; list: { count: number }[]; total: number | undefined; place?: ListPlace }) {
   if (typeof total !== "number") return null;
   const rest = Math.max(0, total - list.reduce((s, e) => s + e.count, 0));
   if (rest <= 0) return null;
@@ -28,7 +48,10 @@ function RestRow({ category, list, total }: { category: TopCategory; list: { cou
           Sonstiges
         </Link>
       </span>
-      <span className="ptop__count num">{num(rest)}</span>
+      <span className="ptop__count num">
+        {num(rest)}
+        <Place place={place} href={boardHref(`rest-${category}`)} list={LEADERBOARDS[`rest-${category}`].title} />
+      </span>
       <span className="ptop__track muted">{Math.round((rest / total) * 100)} % von {num(total)}</span>
     </li>
   );
@@ -57,11 +80,14 @@ export function PlayerDetails({
   now,
   topHistory = [],
   totals = {},
+  places = { items: {}, rest: {} },
 }: {
   id: string;
   detail: PlayerDetail | null;
   /** Gesamtwerte der Top-Kategorien, die nicht in `detail.stats` stehen (Abgebaut, Mobs) */
   totals?: Partial<Record<string, number>>;
+  /** Platz in den Bestenlisten der eigenen Top-Items und der Vielfalt */
+  places?: TopPlaces;
   name: string;
   now: number;
   /** Gespeicherte Stände der Top-Listen, älteste zuerst */
@@ -158,7 +184,10 @@ export function PlayerDetails({
                               entry.name
                             )}
                           </span>
-                          <span className="ptop__count num">{num(entry.count)}</span>
+                          <span className="ptop__count num">
+                            {num(entry.count)}
+                            {isTopCategory(key) && <Place place={places.items[`${key}|${entry.key}`]} href={itemHref(key, entry.key)} list={entry.name} />}
+                          </span>
                           <span className="ptop__track">
                             <span className="ptop__bar" aria-hidden="true">
                               <span style={{ width: `${(entry.count / max) * 100}%` }} />
@@ -169,7 +198,7 @@ export function PlayerDetails({
                         </li>
                         );
                       })}
-                      {isTopCategory(key) && <RestRow category={key} list={list} total={totals[key] ?? detail.stats[key]} />}
+                      {isTopCategory(key) && <RestRow category={key} list={list} total={totals[key] ?? detail.stats[key]} place={places.rest[key]} />}
                     </ol>
                   </div>
                 );

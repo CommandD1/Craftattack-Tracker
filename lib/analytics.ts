@@ -1,12 +1,13 @@
 import "server-only";
 import { connection } from "next/server";
 import { getDb } from "./db";
-import { ensureLoaded, getAllSessions, getDailyEventSum, getEvents, getState, type StoredSession } from "./store";
+import { ensureLoaded, getAllSessions, getDailyEventSum, getEvents, getState, getTopSnapshotsAt, type StoredSession } from "./store";
 import { EVENT_META } from "./events";
 import { AFK_MS, AFK_FARM_WINDOW_MS, POLL_INTERVAL_MS, farmKindOf } from "./tracker";
 import type { BoardKey, TrackerEvent, TrackerState, AfkKind } from "./types";
 import { BOARD_KEYS } from "./types";
-import { EXTRA_HISTORY_KEYS, type ExtraStatKey } from "./playerStats";
+import { EXTRA_HISTORY_KEYS, extraStatSql, type ExtraStatKey } from "./playerStats";
+import type { TopCategory } from "./leaderboards";
 import { createSwrCache } from "./swrCache";
 
 /* ============================================================ Tage (Europe/Berlin) */
@@ -1025,6 +1026,68 @@ export async function getBoardRanksBefore(hoursAgo = 24): Promise<Partial<Record
     }
 
     return out;
+  });
+}
+
+/** Letzter Wert je Spieler bis `cutoff` für einen Spaltenausdruck aus `player_history` (feste Ausdrücke, nie aus der Anfrage) */
+async function playerValuesAt(column: string, cutoff: Date): Promise<Map<string, number>> {
+  const db = await getDb();
+  const rows = (
+    await db.query<{ player: string; v: number | string }>(
+      `WITH known_players AS (SELECT DISTINCT player FROM player_history WHERE at <= $1)
+       SELECT players.player, x.v
+         FROM known_players players
+         JOIN LATERAL (
+           SELECT ${column} AS v FROM player_history
+            WHERE player = players.player AND at <= $1 AND ${column} IS NOT NULL
+            ORDER BY at DESC LIMIT 1
+         ) x ON true`,
+      [cutoff],
+    )
+  ).rows;
+  return new Map(rows.map((r) => [r.player, Number(r.v)]));
+}
+
+/** Rangfolge (1 = bester) aus Werten; nur Werte über 0, wie in den Bestenlisten */
+function ranksOf(values: Map<string, number>): Record<string, number> {
+  const ranked = [...values].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  return Object.fromEntries(ranked.map(([player], i) => [player, i + 1]));
+}
+
+/** Rang je Spieler in einer Zusatzwert-Liste vor `hoursAgo` Stunden (Verlauf in `player_history.extra_stats`, alle 5 Min) */
+export async function getExtraRanksBefore(key: ExtraStatKey, hoursAgo = 24): Promise<Record<string, number>> {
+  return cached(`extraRanksBefore:${key}:${hoursAgo}`, 300_000, async () => {
+    await ensureLoaded();
+    return ranksOf(await playerValuesAt(extraStatSql(key), new Date(Date.now() - hoursAgo * 3600_000)));
+  });
+}
+
+/**
+ * Rang je Spieler vor `hoursAgo` Stunden in der Liste eines einzelnen Items (`itemKey`) oder, ohne `itemKey`,
+ * in der Vielfalt-Liste der Kategorie (Gesamtwert damals minus Summe der damaligen Top 10).
+ */
+export async function getTopRanksBefore(category: TopCategory, hoursAgo = 24, itemKey?: string): Promise<Record<string, number>> {
+  return cached(`topRanksBefore:${category}:${itemKey ?? "*"}:${hoursAgo}`, 300_000, async () => {
+    await ensureLoaded();
+    const cutoff = new Date(Date.now() - hoursAgo * 3600_000);
+    const snapshots = await getTopSnapshotsAt(cutoff);
+    const values = new Map<string, number>();
+    if (itemKey) {
+      for (const [player, tops] of snapshots) {
+        const v = tops[category]?.[itemKey];
+        if (typeof v === "number") values.set(player, v);
+      }
+      return ranksOf(values);
+    }
+    const totalColumn = category === "blocksBroken" ? "blocks_broken" : category === "mobsKilled" ? "mobs_killed" : extraStatSql(category);
+    const totals = await playerValuesAt(totalColumn, cutoff);
+    for (const [player, tops] of snapshots) {
+      const total = totals.get(player);
+      const top = Object.values(tops[category] ?? {});
+      if (total === undefined || top.length === 0) continue;
+      values.set(player, Math.max(0, total - top.reduce((s, v) => s + v, 0)));
+    }
+    return ranksOf(values);
   });
 }
 

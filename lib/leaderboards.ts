@@ -1,7 +1,7 @@
 import { BOARD_STYLE } from "./boards";
 import { EXTRA_STATS, EXTRA_STAT_KEYS, TOP_LABELS, type ExtraStatKey, type StatGroup } from "./playerStats";
 import { BOARD_TONE, GROUP_TONE, METRIC_TONE, type Tone } from "./statTone";
-import type { BoardKey } from "./types";
+import type { BoardKey, PlayerState } from "./types";
 
 /**
  * Alle Bestenlisten an einem Ort: Titel, Untertitel, Ton, Icon und Rubrik. Genutzt von /bestenlisten und von
@@ -179,4 +179,39 @@ export function itemHref(category: TopCategory, itemKey: string): string {
 export function parseItemParam(v: string | undefined): { category: TopCategory; key: string } | null {
   const [category, key] = (v ?? "").split("|");
   return category && key && isTopCategory(category) ? { category, key } : null;
+}
+
+/* ---------- Ranglisten aus den Top-10-Listen (Bestenlisten-Seite und Profil rechnen gleich) ---------- */
+
+/** Gesamtwert einer Top-10-Kategorie: Abgebaut und Mobs aus den Hauptwerten, die übrigen aus der Einzelstatistik */
+export function categoryTotal(p: PlayerState, c: TopCategory): number | undefined {
+  return c === "blocksBroken" || c === "mobsKilled" ? p.stats[c] : p.detail?.stats[c];
+}
+
+/** Vielfalt: Gesamtwert ohne die eigenen Top 10; `null`, wenn Gesamtwert oder Top-Liste fehlen */
+export function restOf(p: PlayerState, c: TopCategory): { rest: number; total: number } | null {
+  const total = categoryTotal(p, c);
+  const tops = p.detail?.tops[c];
+  if (typeof total !== "number" || total <= 0 || !tops?.length) return null;
+  return { rest: Math.max(0, total - tops.reduce((s, e) => s + e.count, 0)), total };
+}
+
+/** Spieler einer Vielfalt-Liste, bester zuerst */
+export function restRanking(players: PlayerState[], c: TopCategory): { player: PlayerState; rest: number; total: number }[] {
+  return players
+    .flatMap((player) => {
+      const r = restOf(player, c);
+      return r && r.rest > 0 ? [{ player, ...r }] : [];
+    })
+    .sort((a, b) => b.rest - a.rest || a.player.name.localeCompare(b.player.name, "de"));
+}
+
+/** Spieler mit dem Item in den eigenen Top 10, bester zuerst */
+export function itemRanking(players: PlayerState[], c: TopCategory, itemKey: string): { player: PlayerState; count: number }[] {
+  return players
+    .flatMap((player) => {
+      const e = player.detail?.tops[c]?.find((t) => t.key === itemKey);
+      return e ? [{ player, count: e.count }] : [];
+    })
+    .sort((a, b) => b.count - a.count || a.player.name.localeCompare(b.player.name, "de"));
 }
