@@ -188,11 +188,63 @@ function feedEventId(item: FeedItem): string {
   return `feed-${createHash("sha256").update(feedItemKey(item)).digest("hex")}`;
 }
 
-function newFeedItems(previousFeed: FeedItem[] | null, currentFeed: FeedItem[]): FeedItem[] {
-  if (previousFeed === null) return currentFeed.slice(0, 10);
-  const previousKeys = new Set(previousFeed.map(feedItemKey));
-  const firstKnownIndex = currentFeed.findIndex((item) => previousKeys.has(feedItemKey(item)));
-  return firstKnownIndex === -1 ? currentFeed.slice(0, 10) : currentFeed.slice(0, firstKnownIndex);
+/**
+ * Feed-Einträge, die dieser Prozess schon gespeichert hat. Spart die Inserts für Einträge, die bei jedem Poll
+ * wieder geliefert werden; nach einem Neustart entdoppelt die DB über die Ereignis-ID.
+ */
+const seenFeedIds = new Set<string>();
+const MAX_SEEN_FEED_IDS = 50_000;
+
+/** Noch nicht gespeicherte Einträge aus /api/feed und den `events` von /api/player, nach Inhalt entdoppelt */
+function unseenFeedItems(items: FeedItem[]): { id: string; item: FeedItem }[] {
+  const unseen = new Map<string, FeedItem>();
+  for (const item of items) {
+    const id = feedEventId(item);
+    if (!seenFeedIds.has(id)) unseen.set(id, item);
+  }
+  return [...unseen].map(([id, item]) => ({ id, item }));
+}
+
+function markFeedSeen(items: { id: string }[]) {
+  for (const { id } of items) seenFeedIds.add(id);
+  // Älteste zuerst verwerfen (Set behält die Einfügereihenfolge)
+  for (const id of seenFeedIds) {
+    if (seenFeedIds.size <= MAX_SEEN_FEED_IDS) break;
+    seenFeedIds.delete(id);
+  }
+}
+
+/**
+ * Erfolge seit Tracker-Start als Ereignisse – auch die, die zwischen zwei Polls schon aus den zehn Einträgen
+ * von /api/feed gerutscht sind, aber noch in den `events` von /api/player stehen. Tode zählt der Tracker selbst
+ * über den Todeszähler; dafür ergänzt `enrichDeathEvents` nur Nachricht und Mörder.
+ */
+function achievementEvents(state: TrackerState, items: { id: string; item: FeedItem }[]): TrackerEvent[] {
+  const since = Date.parse(state.startedAt);
+  const events: TrackerEvent[] = [];
+  for (const { id, item } of items) {
+    if (item.type === "achievement" && Date.parse(item.at) >= since) {
+      events.push({
+        id,
+        at: item.at,
+        type: "achievement",
+        player: item.player.id,
+        playerName: item.player.name,
+        uuid: item.player.uuid,
+        where: "server",
+        meta: {
+          playerMinecraft: item.player.minecraft,
+          playerTwitch: item.player.twitch,
+          feedAt: item.at,
+          advancement: item.advancement,
+          frame: item.frame,
+          title: item.title,
+          message: item.message,
+        },
+      });
+    }
+  }
+  return events;
 }
 
 /** Einzelstatistik eines Spielers, aufbereitet aus /api/player/<id> */
@@ -207,6 +259,8 @@ interface ExtPlayer {
   ranks: Partial<Record<BoardKey, PlayerRank>>;
   /** Alle übrigen Werte und Top-Listen */
   detail: PlayerDetail;
+  /** Letzte Erfolge und Tode des Spielers (`events`), reicht weiter zurück als /api/feed */
+  feed: FeedItem[];
   /** In diesem Poll abgefragt (nicht aus dem Cache) */
   fresh: boolean;
 }
@@ -246,8 +300,20 @@ function toExtPlayer(data: ApiPlayerDetail, fetchedAt: string): ExtPlayer | null
       ranks: extraRanks,
       tops: data.player.tops ?? {},
     },
+    feed: playerFeedItems(data.events, data.participant.id),
     fresh: true,
   };
+}
+
+/** Nur gültige Einträge, die wirklich diesen Spieler betreffen (Erfolg von ihm, Tod von ihm) */
+function playerFeedItems(items: unknown, id: string): FeedItem[] {
+  if (!Array.isArray(items)) return [];
+  return items.filter((item): item is FeedItem => {
+    if (!item || typeof item.at !== "string" || Number.isNaN(Date.parse(item.at))) return false;
+    if (item.type === "achievement") return item.player?.id === id && typeof item.advancement === "string";
+    if (item.type === "death") return item.victim?.id === id && typeof item.message === "string";
+    return false;
+  });
 }
 
 /** Holt die Einzelstatistik eines Spielers per Spieler-ID; `null`, wenn die API ihn nicht kennt (HTTP 404). */
@@ -908,32 +974,6 @@ function diffUnknownDeaths(ctx: DiffContext, ext: Map<string, ExtPlayer>, extMis
   }
 }
 
-/** Erfolge aus dem Feed */
-function diffFeed(ctx: DiffContext, newItems: ApiFeed["feed"]) {
-  const { events } = ctx;
-  for (const item of newItems) {
-    if (item.type !== "achievement") continue;
-    events.push({
-      id: feedEventId(item),
-      at: item.at,
-      type: "achievement",
-      player: item.player.id,
-      playerName: item.player.name,
-      uuid: item.player.uuid,
-      where: "server",
-      meta: {
-        playerMinecraft: item.player.minecraft,
-        playerTwitch: item.player.twitch,
-        feedAt: item.at,
-        advancement: item.advancement,
-        frame: item.frame,
-        title: item.title,
-        message: item.message,
-      },
-    });
-  }
-}
-
 /** Verlauf: ein Messpunkt je Poll. Liefert die Live-Streams auf dem Server und ihre Zuschauer. */
 function recordHistory(ctx: DiffContext, liveNow: Map<string, ApiStats["live"][number]>): { liveOnServer: ApiStats["live"]; viewers: number } {
   const { state, stats, now } = ctx;
@@ -991,8 +1031,6 @@ function diffSnapshot(
   const push = (e: Omit<TrackerEvent, "id" | "at">) => pushAt(now, e);
 
   const first = state.latest === null;
-  const currentFeed = feed.feed.slice(0, 10);
-  const newItems = newFeedItems(state.latestFeed, currentFeed);
   const onlineBeforePoll = new Map(Object.values(state.players).map((player) => [player.id, player.online]));
   const sinceLast = state.lastOk ? Math.min(Math.max(0, (nowDate.getTime() - Date.parse(state.lastOk)) / 1000), 300) : 0;
   newPlayers.clear();
@@ -1009,8 +1047,7 @@ function diffSnapshot(
   diffBoards(ctx, ext);
   diffAfk(ctx);
   diffUnknownDeaths(ctx, ext, extMissing);
-  diffFeed(ctx, newItems);
-  state.latestFeed = currentFeed;
+  state.latestFeed = feed.feed.slice(0, 10);
   const { liveOnServer, viewers } = recordHistory(ctx, liveNow);
   diffRecords(ctx, liveOnServer, viewers);
 
@@ -1039,12 +1076,9 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
     state.lastPoll = now.toISOString();
     state.polls += 1;
     let snapshotApplied = false;
-    let feedCheckpointSaved = false;
-    const previousFeed = state.latestFeed;
     try {
       const stats = await fetchStats();
       const feed = await fetchFeed();
-      const freshFeedItems = newFeedItems(state.latestFeed, feed.feed.slice(0, 10));
       // Einzelstatistiken für alle bekannten Spieler – Fehler hier sind nicht fatal, dann gibt es eben nur die Top 10
       const ids = knownPlayerIds(state, stats);
       const logins = extLogins(state, stats, ids);
@@ -1101,16 +1135,20 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
         state.eventCount += 1;
       }
       state.lastError = null;
-      await appendFeedItems(freshFeedItems.map((item) => ({ id: feedEventId(item), item })));
-      await appendEvents(events);
-      await enrichDeathEvents(feed.feed.slice(0, 10).filter((item): item is Extract<FeedItem, { type: "death" }> => item.type === "death"));
+      // Erfolge und Tode: /api/feed (letzte zehn serverweit) plus `events` jeder frischen Einzelstatistik
+      const feedItems = [...feed.feed.slice(0, 10), ...[...ext.players.values()].filter((x) => x.fresh).flatMap((x) => x.feed)];
+      const unseen = unseenFeedItems(feedItems);
+      const fromFeed = achievementEvents(state, unseen);
+      await appendFeedItems(unseen);
+      const inserted = await appendEvents([...events, ...fromFeed]);
+      state.eventCount += fromFeed.filter((e) => inserted.has(e.id)).length;
+      markFeedSeen(unseen);
+      await enrichDeathEvents(feedItems.filter((item): item is Extract<FeedItem, { type: "death" }> => item.type === "death"));
       await saveState(state);
-      feedCheckpointSaved = true;
       await recordPlayerPoints(Object.values(state.players), now.toISOString(), freshStats, freshDetail);
       await recordTopSnapshots(Object.values(state.players), now.toISOString(), freshDetail);
       return { ok: true, events: events.length };
     } catch (err) {
-      if (!feedCheckpointSaved) state.latestFeed = previousFeed;
       state.lastError = err instanceof Error ? err.message : String(err);
       await saveState(state, { savePlayers: snapshotApplied });
       return { ok: false, events: 0, error: state.lastError };
