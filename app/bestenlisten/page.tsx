@@ -12,6 +12,7 @@ import { Icon } from "@/components/Icons";
 import { playtimeOf } from "@/lib/playtime";
 import { Head } from "@/components/Head";
 import { EXTRA_STATS, FORMATTERS, type ExtraStatKey } from "@/lib/playerStats";
+import { HowLink } from "@/components/HowLink";
 import {
   LEADERBOARDS,
   LEADERBOARD_GROUPS,
@@ -198,10 +199,7 @@ async function Boards(props: PageProps<"/bestenlisten">) {
         <div className="wrap">
           <p className="eyebrow">Mehr als Top 10</p>
           <h1 className="t-1">Bestenlisten</h1>
-          <p>
-            Die API zeigt pro Spielstatistik nur zehn Namen. Der Tracker merkt sich aber jeden, der dort je aufgetaucht ist,
-            mit seinem letzten bekannten Wert – auch für alle weiteren Werte aus den Spielerprofilen und einzelne Blöcke und Mobs.
-          </p>
+          <p>Jeder Spieler, den der Tracker je gesehen hat – nicht nur die Top 10 der API.</p>
         </div>
       </section>
 
@@ -322,9 +320,7 @@ async function Boards(props: PageProps<"/bestenlisten">) {
               )}
             </ol>
           </section>
-          <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem", maxWidth: 760 }}>
-            Bei den API-Listen ist der Wert der letzte, den der Tracker gesehen hat; der echte Wert kann inzwischen höher sein. Bei den Dauerzockern ist die Spielzeit außerhalb der API-Top-10 geschätzt oder die vom Tracker gemessene Online-Zeit. „Dauergäste“, „Standbilder“ und die AFK-Farmer misst der Tracker selbst, für alle. Weitere Werte, einzelne Blöcke und Mobs stammen aus den Spielerprofilen der API (nur Spieler, die der Tracker schon abgefragt hat; bei Blöcken und Mobs nur die eigenen Top 10). „Vielfalt“ ist der Gesamtwert ohne die eigenen Top 10. ▲▼ zeigt die Bewegung gegenüber dem Stand vor {SPANS[span].label}, „neu“ heißt: damals noch nicht in der Liste.
-          </p>
+          <HowLink section="bestenlisten" />
         </div>
       </section>
     </>

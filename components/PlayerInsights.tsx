@@ -119,7 +119,7 @@ export function PlayerInsights({
               Pro Online-Stunde
             </p>
             <p className="muted" style={{ fontSize: ".875rem", marginBottom: 12 }}>
-              {rates && rates.hours >= 0.5 ? `Zuwachs seit Tracker-Start geteilt durch ${duration(rates.hours * 3600)} gemessene Online-Zeit, daneben der Serverdurchschnitt.` : "Noch zu wenig gemessene Online-Zeit für belastbare Raten."}
+              {rates && rates.hours >= 0.5 ? `Pro Stunde in ${duration(rates.hours * 3600)} gemessener Online-Zeit, daneben der Server.` : "Noch zu wenig gemessene Online-Zeit für belastbare Raten."}
             </p>
             {rates && rates.hours >= 0.5 && (
               <ul className="rates">

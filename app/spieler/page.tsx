@@ -61,7 +61,6 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
           <h1 className="t-1">Spieler</h1>
           <p>
             Jeder, der seit Start des Trackers online war, gestreamt hat oder in einer Bestenliste aufgetaucht ist.
-            Die Zahlen sind der letzte bekannte Stand.
           </p>
         </div>
       </section>

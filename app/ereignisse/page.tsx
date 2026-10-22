@@ -11,6 +11,7 @@ import { EVENT_ICON, Icon } from "@/components/Icons";
 import { getAllSessions } from "@/lib/store";
 import { getPlayerEventTimeState } from "@/lib/playerEventStatus";
 import { Head } from "@/components/Head";
+import { PresenceLegend } from "@/components/HowLink";
 
 
 export const metadata: Metadata = { title: "Ereignisse" };
@@ -89,8 +90,7 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
           <p className="eyebrow">Chronik</p>
           <h1 className="t-1">Ereignisse</h1>
           <p>
-            Jede Änderung, die der Tracker in den offiziellen Stats oder im Twitch-Chat entdeckt hat. Joins,
-            Leaves, Tode, Loot, Streams und Raids – mit Uhrzeit.
+            Jede Änderung, die der Tracker in den offiziellen Stats oder im Twitch-Chat entdeckt hat – mit Uhrzeit.
           </p>
         </div>
       </section>
@@ -224,9 +224,7 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
 
           <EventFeed events={slice} showPlayer={!player} getTimeState={getTimeState} />
           {player && (
-            <p className="muted" style={{ marginTop: 10, fontSize: ".875rem" }}>
-              Die Farbe der Uhrzeit zeigt den Status: Grün = auf dem Server, Lila = live, beide Farben = gleichzeitig auf dem Server und live. Klickbare Uhrzeiten öffnen das VOD an diesem Zeitpunkt.
-            </p>
+            <PresenceLegend />
           )}
 
           {pages > 1 && (

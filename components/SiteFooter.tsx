@@ -38,6 +38,9 @@ export function SiteFooter() {
             <Link href="/live">Live</Link>
           </li>
           <li>
+            <Link href="/so-funktionierts">So funktioniert’s</Link>
+          </li>
+          <li>
             <a href="/api/tracker">JSON-API</a>
           </li>
           <li>
@@ -63,8 +66,7 @@ export function SiteFooter() {
             </ul>
           )}
           <p>
-            Der Tracker fragt die API standardmäßig etwa jede Minute in zufälligen Abständen ab. Alles, was dazwischen passiert, bleibt ein
-            Geheimnis.
+            Wie die Daten gesammelt werden: <Link href="/so-funktionierts">So funktioniert’s</Link>.
           </p>
           <p>
             Gebaut von{" "}
