@@ -28,6 +28,8 @@ import { METRIC_TONE } from "@/lib/statTone";
 import { Head } from "@/components/Head";
 import { TOP_CATEGORIES, boardHref, itemRanking, restRanking } from "@/lib/leaderboards";
 import type { TopPlaces } from "@/components/PlayerDetails";
+import { activeDays, dailyHighlights } from "@/lib/highlights";
+import { DayHighlights } from "@/components/DayHighlights";
 
 
 export async function generateMetadata({ params }: PageProps<"/spieler/[id]">): Promise<Metadata> {
@@ -56,7 +58,7 @@ type Params = PageProps<"/spieler/[id]">["params"];
  * Schnelles zuerst: Kopf und Kacheln brauchen fast nur den Tracker-Stand im Speicher.
  */
 export default function Page(props: PageProps<"/spieler/[id]">) {
-  const { params } = props;
+  const { params, searchParams } = props;
   return (
     <>
       <Suspense fallback={<HeadSkeleton />}>
@@ -64,6 +66,9 @@ export default function Page(props: PageProps<"/spieler/[id]">) {
       </Suspense>
       <Suspense fallback={<TilesSkeleton />}>
         <StatsSection params={params} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <HighlightsSection params={params} searchParams={searchParams} />
       </Suspense>
       <Suspense fallback={<InsightsSkeleton />}>
         <InsightsSection params={params} />
@@ -441,6 +446,18 @@ async function ActivitySection({ params }: { params: Params }) {
       now={now}
     />
   );
+}
+
+/** Tageshighlights: gewählter Tag (?tag=), sonst heute bzw. der letzte Tag mit Aktivität */
+async function HighlightsSection({ params, searchParams }: { params: Params; searchParams: PageProps<"/spieler/[id]">["searchParams"] }) {
+  const [{ id, state, events, now, p }, sp] = await Promise.all([ctxFor(params), searchParams]);
+  if (!p) return null;
+  const days = activeDays(events, id);
+  if (days.length === 0) return null;
+  const wanted = typeof sp.tag === "string" ? sp.tag : null;
+  const day = wanted && days.includes(wanted) ? wanted : days[0];
+  const { highlights, summary } = dailyHighlights(events, id, day);
+  return <DayHighlights id={id} name={p.name} day={day} days={days} highlights={highlights} summary={summary} players={state.players} now={now} />;
 }
 
 async function DetailsSection({ params }: { params: Params }) {
