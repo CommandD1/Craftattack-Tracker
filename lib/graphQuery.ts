@@ -120,6 +120,21 @@ export function parseItemMetric(m: string): { category: TopCategory; key: string
 }
 export const rankKeyOf = (m: string): RankKey | null => (m.startsWith("rank:") && isRankKey(m.slice(5)) ? (m.slice(5) as RankKey) : null);
 
+/** Name der Wert-Kennzahl einer Liste (Zusatzwerte heißen im Graphen teils anders, z. B. serverAfkSeconds) */
+const valueMetricOf = (k: RankKey): Metric => ((BOARD_KEYS as string[]).includes(k) ? k : EXTRA_STATS[k as ExtraStatKey].metric) as Metric;
+
+/** Platz-Kennzahl zu einer Wert-Kennzahl, falls es dafür einen Rang-Verlauf gibt */
+export function rankOfMetric(m: Metric): RankMetric | null {
+  const k = RANK_KEYS.find((x) => valueMetricOf(x) === m);
+  return k ? rankMetric(k) : null;
+}
+
+/** Wert-Kennzahl zu einer Platz-Kennzahl */
+export function valueOfRank(m: Metric): Metric | null {
+  const k = rankKeyOf(m);
+  return k ? valueMetricOf(k) : null;
+}
+
 export function isMetric(m: string): m is Metric {
   return m in METRICS || rankKeyOf(m) !== null || parseItemMetric(m) !== null;
 }
@@ -236,10 +251,12 @@ export function toSearch(q: GraphQuery) {
 }
 
 /** Link auf den Graphen, z. B. `graphHref("diamonds", ["fabo"], "alle")` */
-export function graphHref(metrics: Metric | Metric[], spieler: string[] = [], zeit = "alle"): string {
+export function graphHref(metrics: Metric | Metric[], spieler: string[] = [], zeit = "alle", opts: { modus?: "zuwachs"; raster?: string } = {}): string {
   const p = new URLSearchParams();
   p.set("metric", (Array.isArray(metrics) ? metrics : [metrics]).join(","));
   if (spieler.length) p.set("spieler", spieler.join(","));
   if (zeit !== "24h") p.set("zeit", zeit);
+  if (opts.raster) p.set("raster", opts.raster);
+  if (opts.modus) p.set("modus", opts.modus);
   return `/graph?${p}`;
 }

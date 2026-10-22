@@ -13,7 +13,9 @@ import {
   metaOf,
   parseItemMetric,
   rankMetric,
+  rankOfMetric,
   toSearch,
+  valueOfRank,
   type GraphQuery,
   type ItemOptions,
   type Metric,
@@ -46,14 +48,43 @@ function rangeParams(q: Pick<GraphQuery, "zeit" | "von" | "bis" | "raster">, now
   if (q.raster !== "auto") p.set("raster", q.raster);
 }
 
-function apiUrl(q: GraphQuery, metric: Metric, meta: MetricMeta, now: number) {
+function apiUrl(q: GraphQuery, metric: Metric, players: string[], now: number) {
   const p = new URLSearchParams();
   p.set("metric", metric);
-  if (q.spieler.length && meta.perPlayer) p.set("spieler", q.spieler.join(","));
+  if (players.length) p.set("spieler", players.join(","));
   rangeParams(q, now, p);
-  // Zuwachs nur bei Zählern – alles andere bleibt „Stand“
-  if (q.modus === "zuwachs" && meta.counter) p.set("modus", "zuwachs");
   return `/api/series?${p}`;
+}
+
+/** So lange gilt eine geladene Zeitreihe als frisch; danach wird sie bei der nächsten Änderung neu geholt */
+const CACHE_TTL_MS = 2 * 60_000;
+
+/** Geladene Linien eines Teils (eine Kennzahl für einen Spieler bzw. für Summe/beste fünf) */
+interface CacheEntry {
+  lines: ApiLine[];
+  bucketMinutes: number;
+  at: number;
+}
+
+/** Zeitraum im Cache-Schlüssel: relative Zeiträume über ihren Namen, damit „24 Std“ nicht ständig neu lädt */
+const rangeKey = (q: GraphQuery) => [q.zeit === "eigen" ? `${q.von}~${q.bis}` : q.zeit, q.raster].join(":");
+
+/**
+ * Datenteile einer Auswahl: je Kennzahl ein Teil pro gewähltem Spieler, sonst einer für Summe bzw. beste fünf.
+ * Einheit/% und Stand/Zuwachs gehören nicht dazu – sie ändern nur die Darstellung.
+ */
+function partsOf(q: GraphQuery, meta: (m: Metric) => MetricMeta): { metric: Metric; player: string | null; key: string }[] {
+  const range = rangeKey(q);
+  return q.metrics.flatMap((metric): { metric: Metric; player: string | null; key: string }[] =>
+    meta(metric).perPlayer && q.spieler.length
+      ? q.spieler.map((player) => ({ metric, player, key: `${metric}@${player}@${range}` }))
+      : [{ metric, player: null, key: `${metric}@*@${range}` }],
+  );
+}
+
+/** Zuwachs je Bündel aus dem Stand (wie der Server: Differenz zum vorigen Punkt, nie negativ) */
+function toDelta(points: { at: string; v: number }[]) {
+  return points.slice(1).map((p, i) => ({ at: p.at, v: Math.max(0, p.v - points[i].v) }));
 }
 
 function suggestionsUrl(q: GraphQuery, metric: Metric, now: number) {
@@ -312,13 +343,13 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
   const [picker, setPicker] = useState<PickerTab | null>(null);
   const [metricSearch, setMetricSearch] = useState("");
   const [playerScores, setPlayerScores] = useState<{ key: string; scores: Record<string, number>; error?: string } | null>(null);
-  // Ergebnis samt der Abfrage, zu der es gehört – „lädt“ heißt: Ergebnis passt noch nicht zur aktuellen Abfrage
-  const [result, setResult] = useState<{ key: string; lines?: Line[]; bucketMinutes?: number; error?: string } | null>(null);
+  // Geladene Teile (siehe `partsOf`); Darstellung entsteht daraus ohne neue Abfrage
+  const [cache, setCache] = useState<Map<string, CacheEntry>>(() => new Map());
+  const [loadError, setLoadError] = useState<{ key: string; message: string } | null>(null);
+  // Zuletzt vollständig gezeigte Auswahl: bleibt sichtbar, bis die neue komplett geladen ist
+  const [shownQ, setShownQ] = useState<GraphQuery | null>(null);
+  const inflight = useRef(new Set<string>());
   const [hidden, setHidden] = useState<Set<string>>(new Set());
-  const key = toSearch(q).toString();
-  const loading = result?.key !== key;
-  const lines = result?.lines ?? [];
-  const error = result?.key === key ? (result.error ?? null) : null;
   const nameOf = useMemo(() => new Map(players.map((p) => [p.id, p.name])), [players]);
   const itemNames = useMemo(() => {
     const m = new Map<string, string>();
@@ -338,8 +369,10 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
   const rankingKey = rankingMetric ? [rankingMetric, q.zeit, q.von, q.bis, q.raster, q.modus].join(":") : "";
   const currentScores = playerScores?.key === rankingKey && !playerScores.error ? playerScores.scores : null;
 
+  // Reihenfolge der Vorschläge erst holen, wenn die Spielersuche offen ist (und nur einmal je Auswahl)
+  const wantScores = playersOpen || search !== "";
   useEffect(() => {
-    if (!rankingMetric) return;
+    if (!rankingMetric || !wantScores || playerScores?.key === rankingKey) return;
     const ctrl = new AbortController();
     fetch(suggestionsUrl(q, rankingMetric, Date.now()), { signal: ctrl.signal })
       .then(async (response) => {
@@ -353,7 +386,7 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
       });
     return () => ctrl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rankingKey fasst alle relevanten Teile von q zusammen
-  }, [rankingMetric, rankingKey]);
+  }, [rankingMetric, rankingKey, wantScores]);
 
   // URL mitführen, damit die Auswahl teilbar ist
   useEffect(() => {
@@ -361,43 +394,82 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
     window.history.replaceState(null, "", `${window.location.pathname}${s ? `?${s}` : ""}`);
   }, [q]);
 
-  useEffect(() => {
-    const ctrl = new AbortController();
-    const now = Date.now();
-    Promise.all(
-      q.metrics.map(async (metric) => {
-        const m = meta(metric);
-        const r = await fetch(apiUrl(q, metric, m, now), { signal: ctrl.signal });
-        if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? `HTTP ${r.status}`);
-        return { metric, m, ...((await r.json()) as { series: ApiLine[]; bucketMinutes: number }) };
-      }),
-    )
-      .then((results) => {
-        const out: Line[] = [];
-        for (const res of results) {
-          for (const s of res.series) {
-            const single = q.metrics.length === 1;
-            out.push({
-              ...s,
-              id: `${res.metric}:${s.id}`,
-              name: single ? s.name : res.series.length > 1 || q.spieler.length || res.m.needsPlayers ? `${res.m.label} · ${s.name}` : res.m.label,
-              metric: res.metric,
-              meta: res.m,
-              color: res.metric === "twitchSubs" && res.series.length === 1 ? "var(--twitch)" : COLORS[out.length % COLORS.length],
-              format: res.m.format,
-            });
-          }
-        }
-        setResult({ key, lines: out, bucketMinutes: Math.max(...results.map((r) => r.bucketMinutes)) });
-      })
-      .catch((e: Error) => {
-        if (e.name === "AbortError") return;
-        setResult((prev) => ({ key, lines: prev?.lines, bucketMinutes: prev?.bucketMinutes, error: e.message }));
-      });
-    return () => ctrl.abort();
-  }, [q, key, meta]);
+  const dataKey = [q.metrics.join(","), q.spieler.join(","), rangeKey(q)].join("|");
+  const parts = useMemo(() => partsOf(q, meta), [q, meta]);
+  const isReady = (x: GraphQuery) => partsOf(x, meta).every((p) => cache.has(p.key));
+  const ready = isReady(q);
+  const viewQ = ready ? q : shownQ && isReady(shownQ) ? shownQ : null;
+  const loading = !ready;
+  const error = !ready && loadError?.key === dataKey ? loadError.message : null;
 
-  const set = (patch: Partial<GraphQuery>) => setQ((prev) => ({ ...prev, ...patch }));
+  // Nur fehlende oder veraltete Teile laden, je Kennzahl in einer Abfrage. Nicht abbrechen: auch Ergebnisse einer
+  // inzwischen geänderten Auswahl landen im Cache (z. B. beim schnellen Hin- und Herschalten).
+  useEffect(() => {
+    const now = Date.now();
+    const todo = new Map<Metric, { players: string[]; keys: string[] }>();
+    for (const p of parts) {
+      const hit = cache.get(p.key);
+      if (inflight.current.has(p.key) || (hit && now - hit.at < CACHE_TTL_MS)) continue;
+      const job = todo.get(p.metric) ?? { players: [], keys: [] };
+      if (p.player) job.players.push(p.player);
+      job.keys.push(p.key);
+      todo.set(p.metric, job);
+    }
+    for (const [metric, job] of todo) {
+      job.keys.forEach((k) => inflight.current.add(k));
+      fetch(apiUrl(q, metric, job.players, now))
+        .then(async (r) => {
+          if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? `HTTP ${r.status}`);
+          return (await r.json()) as { series: ApiLine[]; bucketMinutes: number };
+        })
+        .then(({ series, bucketMinutes }) =>
+          setCache((prev) => {
+            const next = new Map(prev);
+            const at = Date.now();
+            if (job.players.length) job.players.forEach((id, i) => next.set(job.keys[i], { lines: series.filter((l) => l.id === id), bucketMinutes, at }));
+            else next.set(job.keys[0], { lines: series, bucketMinutes, at });
+            return next;
+          }),
+        )
+        .catch((e: Error) => setLoadError({ key: dataKey, message: e.message }))
+        .finally(() => job.keys.forEach((k) => inflight.current.delete(k)));
+    }
+  }, [parts, cache, q, dataKey]);
+
+  // Linien aus dem Cache; Einheit/% und Stand/Zuwachs gelten sofort, auch für das noch stehende alte Bild
+  const view = useMemo(() => {
+    if (!viewQ) return null;
+    const vq: GraphQuery = { ...viewQ, achse: q.achse, modus: q.modus };
+    const lines: Line[] = [];
+    let bucketMinutes = 0;
+    for (const metric of vq.metrics) {
+      const m = meta(metric);
+      const entries = partsOf({ ...vq, metrics: [metric] }, meta).map((p) => cache.get(p.key)!);
+      const series = entries.flatMap((e) => e.lines);
+      bucketMinutes = Math.max(bucketMinutes, ...entries.map((e) => e.bucketMinutes));
+      const delta = vq.modus === "zuwachs" && m.counter;
+      for (const s of series) {
+        lines.push({
+          ...s,
+          points: delta ? toDelta(s.points) : s.points,
+          id: `${metric}:${s.id}`,
+          name: vq.metrics.length === 1 ? s.name : series.length > 1 || vq.spieler.length || m.needsPlayers ? `${m.label} · ${s.name}` : m.label,
+          metric,
+          meta: m,
+          color: metric === "twitchSubs" && series.length === 1 ? "var(--twitch)" : COLORS[lines.length % COLORS.length],
+          format: m.format,
+        });
+      }
+    }
+    return { q: vq, lines, bucketMinutes, key: toSearch(vq).toString() };
+  }, [viewQ, q.achse, q.modus, cache, meta]);
+  const lines = view?.lines ?? [];
+
+  const set = (patch: Partial<GraphQuery>) => {
+    // Das aktuelle Bild bleibt stehen, bis die neue Auswahl geladen ist
+    if (ready) setShownQ(q);
+    setQ({ ...q, ...patch });
+  };
   const toggleMetric = (m: Metric) => {
     if (q.metrics.includes(m)) {
       if (q.metrics.length > 1) set({ metrics: q.metrics.filter((x) => x !== m) });
@@ -429,7 +501,12 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
   const latest = (l: Line) => (l.points.length ? l.format(l.points[l.points.length - 1].v) : "–");
   const best = (l: Line) => (l.points.length ? l.format(l.meta.invert ? Math.min(...l.points.map((p) => p.v)) : Math.max(...l.points.map((p) => p.v))) : "–");
   const total = (l: Line) => l.format(l.points.reduce((s, p) => s + p.v, 0));
-  const bucket = result?.bucketMinutes;
+  const bucket = view?.bucketMinutes;
+  // Wert ↔ Platz: alle Kennzahlen mit Rang-Verlauf auf einmal umschalten
+  const rankable = q.metrics.some((m) => rankOfMetric(m) || valueOfRank(m));
+  const asRank = rankable && q.metrics.every((m) => !rankOfMetric(m));
+  const switchRank = (toRank: boolean) =>
+    set({ metrics: [...new Set(q.metrics.map((m) => (toRank ? rankOfMetric(m) : valueOfRank(m)) ?? m))] });
   const selectedItems = q.metrics.flatMap((m) => {
     const it = parseItemMetric(m);
     return it ? [`${it.category}|${it.key}`] : [];
@@ -575,6 +652,16 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
               </button>
             </div>
           )}
+          {rankable && (
+            <div className="gb__seg" role="group" aria-label="Wert oder Platz" title="Alle Kennzahlen als Platz in ihrer Bestenliste zeigen">
+              <button type="button" aria-pressed={!asRank} onClick={() => switchRank(false)}>
+                Wert
+              </button>
+              <button type="button" aria-pressed={asRank} onClick={() => switchRank(true)}>
+                Platz
+              </button>
+            </div>
+          )}
           <div className="gb__seg" role="group" aria-label="Y-Achse" title={mixedUnits ? "Verschiedene Einheiten werden immer in Prozent gezeigt" : undefined}>
             <button type="button" aria-pressed={q.achse === "einheit" && !mixedUnits} disabled={mixedUnits} onClick={() => set({ achse: "einheit" })}>
               Einheit
@@ -586,21 +673,20 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
         </div>
       </div>
 
-      <div className="box gb__chart" data-tone="white" aria-busy={loading} data-loading={loading || undefined}>
+      <div className="box gb__chart" data-tone="white" aria-busy={loading}>
         <div className="chart__head">
           <span className="eyebrow">
-            {metas.map((m) => m.label).join(" + ")}
+            {(view?.q.metrics ?? q.metrics).map((m) => meta(m).label).join(" + ")}
             {q.modus === "zuwachs" && anyCounter && " · Zuwachs"}
             {bucket !== undefined && <span className="muted"> · {bucket >= 60 ? `${bucket / 60} Std` : `${bucket} Min`} je Punkt</span>}
           </span>
-          {loading && <span className="muted">Lädt …</span>}
+          {loading && !error && <span className="muted gb__loading">Lädt …</span>}
+          {error && <span className="gb__loading">Fehler: {error}</span>}
         </div>
-        {error ? (
-          <p className="chart__empty">Fehler: {error}</p>
-        ) : result?.lines ? (
-          <MultiChart lines={lines} hidden={hidden} dataKey={result.key} percent={q.achse === "prozent"} />
+        {view ? (
+          <MultiChart lines={lines} hidden={hidden} dataKey={view.key} percent={q.achse === "prozent"} />
         ) : (
-          <p className="chart__empty">Lädt …</p>
+          <p className="chart__empty">{error ? `Fehler: ${error}` : "Lädt …"}</p>
         )}
         {lines.length > 0 && (
           <ul className="gb__legend" aria-label="Legende">

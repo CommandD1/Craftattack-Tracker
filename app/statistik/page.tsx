@@ -21,6 +21,8 @@ const dayLabel = (day: string) => new Intl.DateTimeFormat("de-DE", { weekday: "s
 const dtf = new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 
 type Kind = "num" | "playtimeSeconds" | "distance" | "damageDealt";
+/** Graph-Einstellung der „pro Tag“-Charts: Zuwachs je Tag */
+const DAILY = { modus: "zuwachs", raster: "1440" } as const;
 const fmt = (kind: Kind, v: number) => (kind === "num" ? num(v) : boardValue(kind, v));
 
 function Chart({
@@ -51,7 +53,13 @@ function Chart({
     const max = Math.max(...points.map((p) => p.v));
     body = (
       <>
-        <Sparkline points={points} width={320} height={110} kind={kind} step={step} label={label} />
+        {href ? (
+          <Link href={href} className="chart__body-link" title={`${label} im Graphen öffnen`}>
+            <Sparkline points={points} width={320} height={110} kind={kind} step={step} label={label} />
+          </Link>
+        ) : (
+          <Sparkline points={points} width={320} height={110} kind={kind} step={step} label={label} />
+        )}
         <div className="chart__axis">
           <span>{dtf.format(t0)}</span>
           <span className="chart__max">max {fmt(kind, max)}</span>
@@ -283,8 +291,8 @@ async function Stats(props: PageProps<"/statistik">) {
             <Chart label="Streams live" href={graphHref("liveCount")} tone={METRIC_TONE.liveCount} points={series("liveCount")} />
             <Chart label="Zuschauer gesamt" href={graphHref("viewers")} tone={METRIC_TONE.viewers} points={series("viewers")} />
             <Chart label="Spielzeit gesamt" href={graphHref("playtimeSeconds")} tone={BOARD_TONE.playtimeSeconds} points={series("playtimeSeconds")} kind="playtimeSeconds" step sub="Top 10 der API" />
-            <Chart label="Spielzeit pro Tag" href={graphHref("playtimeSeconds")} tone={METRIC_TONE.tracked} points={playPoints} kind="playtimeSeconds" step sub="alle Spieler, laut Tracker" />
-            <Chart label="AFK pro Tag" href={graphHref("afkSeconds")} tone={METRIC_TONE.afkSeconds} points={afkPoints} kind="playtimeSeconds" step sub="Teil der Spielzeit" />
+            <Chart label="Spielzeit pro Tag" href={graphHref("playtimeSeconds", [], "alle", DAILY)} tone={METRIC_TONE.tracked} points={playPoints} kind="playtimeSeconds" step sub="alle Spieler, laut Tracker" />
+            <Chart label="AFK pro Tag" href={graphHref("afkSeconds", [], "alle", DAILY)} tone={METRIC_TONE.afkSeconds} points={afkPoints} kind="playtimeSeconds" step sub="Teil der Spielzeit" />
             <Chart label="Tode gesamt" href={graphHref("deaths")} tone={BOARD_TONE.deaths} points={series("deaths")} step />
           </div>
         </div>
