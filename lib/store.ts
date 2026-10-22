@@ -1780,6 +1780,21 @@ export async function getSeries(q: SeriesQuery): Promise<{ series: SeriesLine[];
     ).rows;
     const byPlayer = new Map<string, SeriesLine>();
     for (const id of q.players) byPlayer.set(id, { id, name: players[id]?.name ?? id, points: [] });
+    if (q.metric === "viewers") {
+      // Zuschauer: nicht live = 0. Offline und nicht live speichert der Tracker keine Zeilen (nur den Wechsel);
+      // jedes Bündel, in dem der Tracker lief (Server-Verlauf hat einen Punkt), bekommt daher 0, wenn der Spieler
+      // dort keinen Wert hat. Echte Lücken (Tracker aus) bleiben leer.
+      const buckets = (
+        await db.query<{ at: Date }>(`SELECT DISTINCT ${bucket} AS at FROM history WHERE at >= $2 AND at <= $3 ORDER BY 1`, [minutes, from, to])
+      ).rows.map((r) => iso(r.at)!);
+      const values = new Map<string, Map<string, number>>();
+      for (const r of rows) {
+        if (r.v === null) continue;
+        (values.get(r.player) ?? values.set(r.player, new Map()).get(r.player)!).set(iso(r.at)!, Number(r.v));
+      }
+      for (const [id, line] of byPlayer) line.points = buckets.map((at) => ({ at, v: values.get(id)?.get(at) ?? 0 }));
+      return finish([...byPlayer.values()]);
+    }
     for (const r of rows) {
       if (r.v === null) continue;
       byPlayer.get(r.player)?.points.push({ at: iso(r.at)!, v: Number(r.v) });

@@ -101,6 +101,22 @@ function smoothPath(pts: (readonly [number, number])[]) {
   return d;
 }
 
+/**
+ * Teilt eine Linie an Datenlücken (z. B. Tracker aus): Abstand über dem Dreifachen des üblichen Abstands,
+ * mindestens 15 Min. Dort bleibt der Graph leer, statt eine Schräge über die fehlende Zeit zu ziehen.
+ */
+function splitAtGaps<T extends { at: string }>(points: T[]): T[][] {
+  if (points.length < 3) return [points];
+  const steps = points.slice(1).map((p, i) => Date.parse(p.at) - Date.parse(points[i].at)).sort((a, b) => a - b);
+  const limit = Math.max(15 * 60_000, steps[Math.floor(steps.length / 2)] * 3);
+  const parts: T[][] = [[points[0]]];
+  for (let i = 1; i < points.length; i++) {
+    if (Date.parse(points[i].at) - Date.parse(points[i - 1].at) > limit) parts.push([]);
+    parts[parts.length - 1].push(points[i]);
+  }
+  return parts;
+}
+
 /** „Schöne“ Achsenschritte */
 function niceStep(max: number, ticks: number) {
   const raw = max / ticks;
@@ -147,8 +163,10 @@ function MultiChart({ lines, hidden, dataKey }: { lines: Line[]; hidden: Set<str
   const paths = lines
     .filter((l) => l.points.length > 0)
     .map((l) => {
-      const pts = l.points.map((p) => [x(Date.parse(p.at)), y(l, p.v)] as const);
-      return { id: l.id, d: smoothPath(pts), color: l.color, off: hidden.has(l.id) };
+      const d = splitAtGaps(l.points)
+        .map((part) => smoothPath(part.map((p) => [x(Date.parse(p.at)), y(l, p.v)] as const)))
+        .join(" ");
+      return { id: l.id, d, color: l.color, off: hidden.has(l.id) };
     });
 
   const yTicks: number[] = [];

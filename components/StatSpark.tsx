@@ -54,7 +54,11 @@ function trackedSeries(points: PlayerPoint[]) {
  */
 export function StatSpark({ points, k, label, height = 56, href }: { points: PlayerPoint[]; k: SparkKey; label: string; height?: number; href?: string }) {
   const format = FORMAT[k];
-  let data = points.filter((p) => p[k] !== null).map((p) => ({ at: p.at, v: p[k] as number }));
+  // Zuschauer: Messpunkt ohne Stream = 0, sonst verbindet die Kurve zwei Streams mit einer schrägen Linie
+  let data =
+    k === "viewers"
+      ? points.map((p) => ({ at: p.at, v: p.viewers ?? 0 }))
+      : points.filter((p) => p[k] !== null).map((p) => ({ at: p.at, v: p[k] as number }));
   // Noch keine (oder nur eine) API-Spielzeit im Verlauf: die Tracker-Online-Zeit zeigen
   if (k === "playtimeSeconds" && data.length < 2 && points.length >= 2) data = trackedSeries(points);
   if (k === "twitchSubs" && data.length === 1) {
