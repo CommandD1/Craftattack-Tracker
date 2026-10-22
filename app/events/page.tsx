@@ -5,9 +5,9 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { eventState, getOfficialEvents, type EventState, type OfficialEvent } from "@/lib/officialEvents";
 import { loadTracker } from "@/lib/data";
-import { headUrl } from "@/lib/format";
 import { EventFeed } from "@/components/EventFeed";
 import type { TrackerState } from "@/lib/types";
+import { Head } from "@/components/Head";
 
 export const metadata: Metadata = { title: "Events" };
 
@@ -83,7 +83,7 @@ function Card({ e, state, players }: { e: OfficialEvent; state: EventState; play
                 const name = players[id]?.name ?? id;
                 return (
                   <li key={id}>
-                    <img className="head" src={headUrl(players[id]?.uuid, 28, id)} alt={name} title={name} width={28} height={28} loading="lazy" />
+                    <Head id={id} uuid={players[id]?.uuid} name={name} />
                   </li>
                 );
               })}

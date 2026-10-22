@@ -10,6 +10,7 @@ import { EventFeed } from "@/components/EventFeed";
 import { EVENT_ICON, Icon } from "@/components/Icons";
 import { getAllSessions } from "@/lib/store";
 import { getPlayerEventTimeState } from "@/lib/playerEventStatus";
+import { Head } from "@/components/Head";
 
 
 export const metadata: Metadata = { title: "Ereignisse" };
@@ -201,8 +202,8 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
                   Zeigen
                 </button>
                 {playerName && (
-                  <Link className="tag" data-tone="amethyst" href={`/ereignisse${qs({ ...q, spieler: undefined })}`} title="Filter entfernen">
-                    {playerName} ✕
+                  <Link className="tag tag--head" data-tone="white" href={`/ereignisse${qs({ ...q, spieler: undefined })}`} aria-label={`Filter ${playerName} entfernen`}>
+                    <Head id={player!} uuid={state.players[player!]?.uuid} name={playerName} size={20} src={32} decorative /> {playerName} ✕
                   </Link>
                 )}
               </form>

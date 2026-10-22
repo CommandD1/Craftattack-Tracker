@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icons";
 import { COLORS, MAX_METRICS, METRICS, METRIC_KEYS, RANGES, RASTER, toSearch, type GraphQuery, type Metric, type PlayerOption } from "@/lib/graphQuery";
 import { STAT_GROUPS } from "@/lib/playerStats";
+import { Head } from "./Head";
 
 /** Rubriken der Kennzahl-Auswahl: Server zuerst, dann die Spieler-Rubriken */
 const METRIC_GROUPS = [{ key: "server", label: "Server" }, ...STAT_GROUPS] as const;
@@ -444,8 +445,8 @@ export function GraphBuilder({ players, initial }: { players: PlayerOption[]; in
                 </li>
                 {q.spieler.map((id) => (
                   <li key={id}>
-                    <button type="button" className="gb__chip" data-tone="ink" onClick={() => togglePlayer(id)} title="Entfernen">
-                      {nameOf.get(id) ?? id} <span aria-hidden="true">×</span>
+                    <button type="button" className="gb__chip gb__chip--head" data-tone="ink" onClick={() => togglePlayer(id)} aria-label={`${nameOf.get(id) ?? id} entfernen`}>
+                      <Head id={id} name={nameOf.get(id) ?? id} size={20} src={32} decorative /> <span aria-hidden="true">×</span>
                     </button>
                   </li>
                 ))}
@@ -456,7 +457,7 @@ export function GraphBuilder({ players, initial }: { players: PlayerOption[]; in
                   {suggestions.map((p) => (
                     <li key={p.id}>
                       <button type="button" className="gb__chip" data-tone="white" onClick={() => togglePlayer(p.id)} disabled={q.spieler.length >= 12}>
-                        + {p.name}
+                        + <Head id={p.id} name={p.name} size={20} src={32} decorative /> {p.name}
                       </button>
                     </li>
                   ))}

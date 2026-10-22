@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { TwitchChatMessage } from "@/lib/store";
-import { ago, dateTime, headUrl } from "@/lib/format";
+import { ago, dateTime } from "@/lib/format";
+import { Head } from "./Head";
 
 const dayFmt = new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Berlin" });
 const keyFmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" });
@@ -12,12 +13,13 @@ function dayLabel(iso: string, now: number) {
   return dayFmt.format(new Date(iso));
 }
 
-/** Kopf und Name eines Spielers als Link */
+/** Kopf eines Spielers als Link; der Absender behält den Namen daneben, der Kanal nur den Kopf (Name im Tooltip) */
 function Who({ id, name, uuid, role }: { id: string; name: string; uuid: string | undefined; role: "from" | "to" }) {
+  const showName = role === "from";
   return (
     <Link className="chat__who" data-role={role} href={`/spieler/${encodeURIComponent(id)}`}>
-      <img className="chat__head" src={headUrl(uuid, 32, id)} alt="" width={20} height={20} loading="lazy" />
-      <span className="chat__name">{name}</span>
+      <Head id={id} uuid={uuid} name={name} size={20} src={32} className="chat__head" decorative={showName} />
+      {showName && <span className="chat__name">{name}</span>}
     </Link>
   );
 }
@@ -71,7 +73,7 @@ export function ChatFeed({
                       <span className="chat__shared-label">geteilt</span>
                       {m.sharedWith.slice(0, 4).map((id) => (
                         <Link key={id} href={`/spieler/${encodeURIComponent(id)}`} aria-label={`auch bei ${nameOf(id)}`}>
-                          <img className="chat__head chat__head--small" src={headUrl(uuidOf(id), 32, id)} alt="" width={16} height={16} loading="lazy" />
+                          <Head id={id} uuid={uuidOf(id)} name={`auch bei ${nameOf(id)}`} size={16} src={32} className="chat__head chat__head--small" decorative />
                         </Link>
                       ))}
                     </span>
@@ -97,8 +99,8 @@ export function ChatPartners({ partners, label }: { partners: { id: string; name
     <ul className="chat__partners" aria-label={label}>
       {partners.map((p) => (
         <li key={p.id}>
-          <Link className="tag" href={`/spieler/${encodeURIComponent(p.id)}`}>
-            {p.name} <span className="num">{p.count}</span>
+          <Link className="tag chat__partner" href={`/spieler/${encodeURIComponent(p.id)}`} aria-label={`${p.name}: ${p.count}`}>
+            <Head id={p.id} name={p.name} size={20} src={32} className="chat__head" decorative /> <span className="num">{p.count}</span>
           </Link>
         </li>
       ))}

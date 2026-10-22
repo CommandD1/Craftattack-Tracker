@@ -4,13 +4,14 @@ import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { getBiggestEvents, getBoardTotalsOverTime, getHistoryAll, getSeries, getTwitchSubscriptionBoard, getTwitchSubscriptionMinuteRecord } from "@/lib/store";
-import { boardValue, dateTime, duration, headUrl, num } from "@/lib/format";
+import { boardValue, dateTime, duration, num } from "@/lib/format";
 import { Sparkline, type SparkPoint } from "@/components/Sparkline";
 import { GraphBuilder } from "@/components/GraphBuilder";
 import { parseGraphQuery, toSearch } from "@/lib/graphQuery";
 import { dayKey, getStatsExtras } from "@/lib/analytics";
 import { StatsExtras } from "@/components/StatsExtras";
 import { BOARD_TONE, METRIC_TONE } from "@/lib/statTone";
+import { Head } from "@/components/Head";
 
 
 export const metadata: Metadata = { title: "Statistik" };
@@ -94,7 +95,7 @@ function Record({
         <span className="num record__val">{value}</span>
         {who && (
           <Link className="record__who" href={`/spieler/${encodeURIComponent(who.id)}`}>
-            <img className="head" src={headUrl(uuid, 24, who.id)} alt="" width={24} height={24} loading="lazy" />
+            <Head id={who.id} uuid={uuid} name={who.name} size={24} decorative />
             <span>{who.name}</span>
           </Link>
         )}

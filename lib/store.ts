@@ -543,7 +543,7 @@ export async function appendFeedItems(items: { id: string; item: FeedItem }[]) {
 }
 
 /** Todesnachricht und Mörder aus einem Feed-Eintrag (/api/feed oder `events` von /api/player) */
-function deathFeedMeta(item: DeathFeedItem): Record<string, string | null> {
+export function deathFeedMeta(item: DeathFeedItem): Record<string, string | null> {
   return {
     deathMessage: item.message,
     feedAt: item.at,
