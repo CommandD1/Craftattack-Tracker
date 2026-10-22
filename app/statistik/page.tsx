@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
@@ -6,13 +7,12 @@ import { loadTracker } from "@/lib/data";
 import { getBiggestEvents, getBoardTotalsOverTime, getHistoryAll, getSeries, getTwitchSubscriptionBoard, getTwitchSubscriptionMinuteRecord } from "@/lib/store";
 import { boardValue, dateTime, duration, num } from "@/lib/format";
 import { Sparkline, type SparkPoint } from "@/components/Sparkline";
-import { GraphBuilder } from "@/components/GraphBuilder";
-import { parseGraphQuery, toSearch } from "@/lib/graphQuery";
 import { dayKey, getStatsExtras } from "@/lib/analytics";
 import { StatsExtras } from "@/components/StatsExtras";
 import { BOARD_TONE, METRIC_TONE } from "@/lib/statTone";
 import { Head } from "@/components/Head";
 import { HowLink } from "@/components/HowLink";
+import { graphHref } from "@/lib/graphQuery";
 
 
 export const metadata: Metadata = { title: "Statistik" };
@@ -30,6 +30,7 @@ function Chart({
   kind = "num",
   step = false,
   sub,
+  href,
 }: {
   label: string;
   tone: string;
@@ -37,6 +38,8 @@ function Chart({
   kind?: Kind;
   step?: boolean;
   sub?: string;
+  /** Link auf den großen Graphen */
+  href?: string;
 }) {
   const current = points.length ? fmt(kind, points[points.length - 1].v) : "–";
   let body: React.ReactNode;
@@ -61,7 +64,13 @@ function Chart({
     <div className="box chart chart--big" data-tone={tone}>
       <div className="chart__head">
         <span className="eyebrow">
-          {label}
+          {href ? (
+            <Link href={href} className="chart__link">
+              {label} <span aria-hidden="true">↗</span>
+            </Link>
+          ) : (
+            label
+          )}
           {sub && <span className="muted"> · {sub}</span>}
         </span>
         <span className="num chart__val">{current}</span>
@@ -108,6 +117,11 @@ function Record({
 
 async function Stats(props: PageProps<"/statistik">) {
   const sp = await props.searchParams;
+  // Alte Links auf den Graphen (/statistik?metric=…#graph) führen jetzt auf die eigene Graph-Seite
+  if (typeof sp.metric === "string") {
+    const q = new URLSearchParams(Object.entries(sp).filter((e): e is [string, string] => typeof e[1] === "string"));
+    redirect(`/graph?${q}`);
+  }
   const { state, now } = await loadTracker();
   const [extras, hist, totals, bigDiamonds, bigDistance, bigBlocks, bigMobs, bigDamage, bigTotems, bigFood, subscriptionBoard, subscriptionSeries, subscriptionMinuteRecord] = await Promise.all([
     getStatsExtras(),
@@ -146,9 +160,6 @@ async function Stats(props: PageProps<"/statistik">) {
   const afkPoints: SparkPoint[] = extras.days.map((d) => ({ at: `${d.day}T12:00:00+02:00`, v: Math.round(d.afkHours * 3600) }));
 
   const since = h.length ? h[0].at : state.startedAt;
-  const playerOptions = players
-    .map((p) => ({ id: p.id, name: p.name }))
-    .sort((a, b) => a.name.localeCompare(b.name, "de"));
   const who = (p: { id: string; name: string } | null) => (p ? { id: p.id, name: p.name } : null);
   // Tag-Nummer der Staffel: Tag 1 = erster Tag mit Daten
   const firstDay = extras.days[0]?.day ?? dayKey(Date.parse(since));
@@ -178,16 +189,11 @@ async function Stats(props: PageProps<"/statistik">) {
         </div>
       </section>
 
-      <section className="block" data-tone="paper" aria-labelledby="graph-h" style={{ paddingTop: 0 }}>
+      <section className="block block--tight" data-tone="paper" style={{ paddingTop: 0 }}>
         <div className="wrap">
-          <div className="section-head">
-            <h2 className="t-2" id="graph-h">
-              Eigener Graph
-            </h2>
-            <p className="muted">Kennzahl, Spieler, Zeitraum und Raster frei wählen – der Link lässt sich teilen.</p>
-          </div>
-          {/* key: bei neuen Adress-Parametern (z. B. Link vom Profil) die Auswahl neu aufsetzen statt den alten State zu behalten */}
-          <GraphBuilder key={toSearch(parseGraphQuery(sp)).toString()} players={playerOptions} initial={parseGraphQuery(sp)} />
+          <Link className="btn" data-tone="white" href="/graph">
+            Eigenen Graphen bauen →
+          </Link>
         </div>
       </section>
 
@@ -273,13 +279,13 @@ async function Stats(props: PageProps<"/statistik">) {
             <p className="muted num">{num(h.length)} Punkte · {hist.bucketMinutes} Min je Punkt</p>
           </div>
           <div className="grid charts__grid" style={{ "--min": "320px" } as React.CSSProperties}>
-            <Chart label="Spieler online" tone={METRIC_TONE.onlineCount} points={series("onlineCount")} />
-            <Chart label="Streams live" tone={METRIC_TONE.liveCount} points={series("liveCount")} />
-            <Chart label="Zuschauer gesamt" tone={METRIC_TONE.viewers} points={series("viewers")} />
-            <Chart label="Spielzeit gesamt" tone={BOARD_TONE.playtimeSeconds} points={series("playtimeSeconds")} kind="playtimeSeconds" step sub="Top 10 der API" />
-            <Chart label="Spielzeit pro Tag" tone={METRIC_TONE.tracked} points={playPoints} kind="playtimeSeconds" step sub="alle Spieler, laut Tracker" />
-            <Chart label="AFK pro Tag" tone={METRIC_TONE.afkSeconds} points={afkPoints} kind="playtimeSeconds" step sub="Teil der Spielzeit" />
-            <Chart label="Tode gesamt" tone={BOARD_TONE.deaths} points={series("deaths")} step />
+            <Chart label="Spieler online" href={graphHref("onlineCount")} tone={METRIC_TONE.onlineCount} points={series("onlineCount")} />
+            <Chart label="Streams live" href={graphHref("liveCount")} tone={METRIC_TONE.liveCount} points={series("liveCount")} />
+            <Chart label="Zuschauer gesamt" href={graphHref("viewers")} tone={METRIC_TONE.viewers} points={series("viewers")} />
+            <Chart label="Spielzeit gesamt" href={graphHref("playtimeSeconds")} tone={BOARD_TONE.playtimeSeconds} points={series("playtimeSeconds")} kind="playtimeSeconds" step sub="Top 10 der API" />
+            <Chart label="Spielzeit pro Tag" href={graphHref("playtimeSeconds")} tone={METRIC_TONE.tracked} points={playPoints} kind="playtimeSeconds" step sub="alle Spieler, laut Tracker" />
+            <Chart label="AFK pro Tag" href={graphHref("afkSeconds")} tone={METRIC_TONE.afkSeconds} points={afkPoints} kind="playtimeSeconds" step sub="Teil der Spielzeit" />
+            <Chart label="Tode gesamt" href={graphHref("deaths")} tone={BOARD_TONE.deaths} points={series("deaths")} step />
           </div>
         </div>
       </section>
@@ -293,14 +299,14 @@ async function Stats(props: PageProps<"/statistik">) {
             <p className="muted num">{num(t.length)} Punkte · {totals.bucketMinutes} Min je Punkt</p>
           </div>
           <div className="grid charts__grid" style={{ "--min": "320px" } as React.CSSProperties}>
-            <Chart label="Diamanten" tone={BOARD_TONE.diamonds} points={tseries("diamonds")} step />
-            <Chart label="Abgebaute Blöcke" tone={BOARD_TONE.blocksBroken} points={tseries("blocksBroken")} step />
-            <Chart label="Erledigte Mobs" tone={BOARD_TONE.mobsKilled} points={tseries("mobsKilled")} step />
-            <Chart label="Gelaufene Strecke" tone={BOARD_TONE.distance} points={tseries("distance")} kind="distance" step />
-            <Chart label="Schaden" tone={BOARD_TONE.damageDealt} points={tseries("damageDealt")} kind="damageDealt" step sub="Ausgeteilter Schaden in Herzen" />
-            <Chart label="Totems benutzt" tone={BOARD_TONE.totemsUsed} points={tseries("totemsUsed")} step />
-            <Chart label="Essen gegessen" tone={BOARD_TONE.foodEaten} points={tseries("foodEaten")} step />
-            <Chart label="Twitch Subs" tone={METRIC_TONE.twitchSubs} points={subscriptionSeries.series[0]?.points ?? []} step sub="während Spieler online waren" />
+            <Chart label="Diamanten" href={graphHref("diamonds")} tone={BOARD_TONE.diamonds} points={tseries("diamonds")} step />
+            <Chart label="Abgebaute Blöcke" href={graphHref("blocksBroken")} tone={BOARD_TONE.blocksBroken} points={tseries("blocksBroken")} step />
+            <Chart label="Erledigte Mobs" href={graphHref("mobsKilled")} tone={BOARD_TONE.mobsKilled} points={tseries("mobsKilled")} step />
+            <Chart label="Gelaufene Strecke" href={graphHref("distance")} tone={BOARD_TONE.distance} points={tseries("distance")} kind="distance" step />
+            <Chart label="Schaden" href={graphHref("damageDealt")} tone={BOARD_TONE.damageDealt} points={tseries("damageDealt")} kind="damageDealt" step sub="Ausgeteilter Schaden in Herzen" />
+            <Chart label="Totems benutzt" href={graphHref("totemsUsed")} tone={BOARD_TONE.totemsUsed} points={tseries("totemsUsed")} step />
+            <Chart label="Essen gegessen" href={graphHref("foodEaten")} tone={BOARD_TONE.foodEaten} points={tseries("foodEaten")} step />
+            <Chart label="Twitch Subs" href={graphHref("twitchSubs")} tone={METRIC_TONE.twitchSubs} points={subscriptionSeries.series[0]?.points ?? []} step sub="während Spieler online waren" />
           </div>
           <HowLink section="zeitstrahl" />
         </div>

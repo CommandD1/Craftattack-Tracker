@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { getFullBoard, getTwitchSubscriptionBoard } from "@/lib/store";
 import { getAfkBoard, getAfkRanksBefore, getBoardRanksBefore, getExtraRanksBefore, getFollowerRanksBefore, getTopRanksBefore, getTrackedRanksBefore } from "@/lib/analytics";
-import { BOARD_KEYS, type AfkKind, type BoardKey, type PlayerState } from "@/lib/types";
+import { BOARD_KEYS, type AfkKind, type BoardKey } from "@/lib/types";
 import { ago, boardValue, duration, num } from "@/lib/format";
 import { BoardValue } from "@/components/BoardValue";
 import { Icon } from "@/components/Icons";
@@ -13,19 +13,20 @@ import { playtimeOf } from "@/lib/playtime";
 import { Head } from "@/components/Head";
 import { EXTRA_STATS, FORMATTERS, type ExtraStatKey } from "@/lib/playerStats";
 import { HowLink } from "@/components/HowLink";
+import { ItemPicker } from "@/components/ItemPicker";
+import { graphHref, itemMetric, type Metric } from "@/lib/graphQuery";
 import {
   LEADERBOARDS,
   LEADERBOARD_GROUPS,
   LEADERBOARD_KEYS,
-  TOP_CATEGORIES,
   boardHref,
   isLeaderboardKey,
   itemBoardMeta,
+  itemOptions,
   itemHref,
   itemRanking,
   restRanking,
   parseItemParam,
-  topCategoryLabel,
   type LeaderboardKey,
   type LeaderboardMeta,
   type TopCategory,
@@ -51,22 +52,6 @@ const SPANS = {
   "7d": { hours: 168, label: "7 Tagen" },
 } as const;
 type Span = keyof typeof SPANS;
-
-/** Alle Blöcke, Mobs und Tiere aus den Top-10-Listen der Spieler, je Kategorie nach Anzahl Spieler sortiert */
-function itemOptions(players: PlayerState[]) {
-  const out = new Map<TopCategory, { key: string; name: string; players: number }[]>();
-  for (const c of TOP_CATEGORIES) {
-    const items = new Map<string, { key: string; name: string; players: number }>();
-    for (const p of players) {
-      for (const e of p.detail?.tops[c] ?? []) {
-        const it = items.get(e.key) ?? items.set(e.key, { key: e.key, name: e.name, players: 0 }).get(e.key)!;
-        it.players += 1;
-      }
-    }
-    out.set(c, [...items.values()].sort((a, b) => b.players - a.players || a.name.localeCompare(b.name, "de")));
-  }
-  return out;
-}
 
 type Row = {
   id: string;
@@ -110,7 +95,7 @@ async function Boards(props: PageProps<"/bestenlisten">) {
   ]);
   const players = Object.values(state.players);
   const options = itemOptions(players);
-  const itemName = item ? (options.get(item.category)?.find((o) => o.key === item.key)?.name ?? item.key) : "";
+  const itemName = item ? (options[item.category]?.find((o) => o.key === item.key)?.name ?? item.key) : "";
   const b: LeaderboardMeta = key === "top" ? itemBoardMeta(item!.category, itemName) : LEADERBOARDS[key];
 
   let rows: Row[];
@@ -180,6 +165,18 @@ async function Boards(props: PageProps<"/bestenlisten">) {
   }
   const inApi = new Set((isBoardKey(key) ? (state.latest?.boards?.[key] ?? []) : []).map((e) => e.id));
   const IconCmp = Icon[b.icon as keyof typeof Icon] ?? Icon.trophy;
+  // Dieselbe Liste als Verlauf im Graphen (Werte der besten fünf); Vielfalt hat keinen eigenen Verlauf
+  const graphMetric: Metric | null =
+    key === "top"
+      ? itemMetric(item!.category, item!.key)
+      : isExtraKey(key)
+        ? (EXTRA_STATS[key].metric as Metric)
+        : isAfkKey(key)
+          ? key === "afk" ? "afkSeconds" : key === "afkmobs" ? "afkMobsSeconds" : "afkBlocksSeconds"
+          : key === "tracked" || isRestKey(key)
+            ? null
+            : (key as Metric);
+  const graphLink = graphMetric ? graphHref(graphMetric, rows.slice(0, 5).map((r) => r.id)) : null;
   // Zeitraum wechseln, ohne die gewählte Liste (bei Einzel-Items samt Item) zu verlieren
   const spanHref = (s: Span) =>
     key === "top" ? `${itemHref(item!.category, item!.key)}${s !== "24h" ? `&seit=${s}` : ""}` : boardHref(key, s);
@@ -226,29 +223,8 @@ async function Boards(props: PageProps<"/bestenlisten">) {
               );
             })}
             <div className="ev-filters__row">
-              <label className="eyebrow" htmlFor="item">
-                Einzeln
-              </label>
-              <form className="ev-form" action="/bestenlisten" method="get">
-              <input type="hidden" name="liste" value="top" />
-              <select id="item" name="item" defaultValue={item ? `${item.category}|${item.key}` : ""}>
-                <option value="" disabled>
-                  Block, Mob oder Tier wählen …
-                </option>
-                {TOP_CATEGORIES.map((c) => (
-                  <optgroup key={c} label={topCategoryLabel(c)}>
-                    {(options.get(c) ?? []).map((o) => (
-                      <option key={o.key} value={`${c}|${o.key}`}>
-                        {o.name} ({num(o.players)})
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-              <button className="btn btn--small" data-tone="ink" type="submit">
-                Zeigen
-              </button>
-              </form>
+              <p className="eyebrow">Einzeln</p>
+              <ItemPicker options={options} selected={item ? [`${item.category}|${item.key}`] : []} hrefPrefix="/bestenlisten?liste=top&item=" initialCategory={item?.category} />
             </div>
           </div>
           {hasMovement && (
@@ -272,7 +248,15 @@ async function Boards(props: PageProps<"/bestenlisten">) {
                 <h2 className="t-3" id="fb-h">
                   {b.title} <span className="num">({num(rows.length)})</span>
                 </h2>
-                <p className="st-board__sub">{b.sub}</p>
+                <p className="st-board__sub">
+                  {b.sub}
+                  {graphLink && (
+                    <>
+                      {" · "}
+                      <Link href={graphLink}>Im Graph</Link>
+                    </>
+                  )}
+                </p>
               </div>
             </header>
             <ol className="st-board__list st-board__list--full">

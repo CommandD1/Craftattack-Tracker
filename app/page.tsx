@@ -18,6 +18,7 @@ import { BoardValue } from "@/components/BoardValue";
 import { BOARD_TONE, METRIC_TONE } from "@/lib/statTone";
 import { Head } from "@/components/Head";
 import { HowLink } from "@/components/HowLink";
+import { graphHref } from "@/lib/graphQuery";
 
 // Titel, Untertitel und Farben wie auf craftattack.one/stats
 const BOARDS = BOARD_STYLE;
@@ -184,6 +185,9 @@ async function Dashboard() {
               <span className="eyebrow">Verlauf</span>
             </div>
             <TrendChart points={trend} now={now} />
+            <Link className="how-link" href={graphHref(["onlineCount", "liveCount", "viewers"], [], "3d")}>
+              Im Graph öffnen →
+            </Link>
           </div>
           <div className="grid" style={{ "--min": "300px", "--gap": "24px" } as React.CSSProperties}>
             <div style={{ gridColumn: "span 2" }} className="feed-col">

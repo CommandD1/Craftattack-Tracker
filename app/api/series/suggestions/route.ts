@@ -1,6 +1,6 @@
 import { NextResponse, connection } from "next/server";
 import { getAfkSeries } from "@/lib/analytics";
-import { METRICS, type Metric } from "@/lib/graphQuery";
+import { METRICS } from "@/lib/graphQuery";
 import { getSeries, getState, SERIES_METRICS, type SeriesMetric } from "@/lib/store";
 
 const BUCKETS = new Set([1, 5, 15, 30, 60, 180, 360, 720, 1440]);
@@ -10,7 +10,7 @@ export async function GET(req: Request) {
   await connection();
   const sp = new URL(req.url).searchParams;
   const metric = sp.get("metric") as SeriesMetric;
-  if (!SERIES_METRICS.includes(metric) || !METRICS[metric as Metric]?.perPlayer) {
+  if (!SERIES_METRICS.includes(metric) || !(metric in METRICS) || !METRICS[metric as keyof typeof METRICS].perPlayer) {
     return NextResponse.json({ error: "unbekannte Spieler-Kennzahl" }, { status: 400 });
   }
 
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
   const bucketMinutes = raster !== null && BUCKETS.has(raster) ? raster : null;
   const from = n("von");
   const to = n("bis");
-  const mode = sp.get("modus") === "zuwachs" && METRICS[metric as Metric].counter ? "zuwachs" : "wert";
+  const mode = sp.get("modus") === "zuwachs" && METRICS[metric as keyof typeof METRICS].counter ? "zuwachs" : "wert";
   const players = Object.keys((await getState()).players);
   if (!players.length) return NextResponse.json({ scores: {} });
 

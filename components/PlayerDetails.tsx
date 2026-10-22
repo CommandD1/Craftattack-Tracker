@@ -6,6 +6,7 @@ import { EXTRA_STATS, EXTRA_STAT_KEYS, FORMATTERS, STAT_GROUPS, TOP_LABELS } fro
 import { Icon } from "@/components/Icons";
 import { GROUP_TONE } from "@/lib/statTone";
 import { LEADERBOARDS, boardHref, isTopCategory, itemHref, type TopCategory } from "@/lib/leaderboards";
+import { graphHref, itemMetric, type Metric } from "@/lib/graphQuery";
 
 const GROUP_ICON: Record<string, keyof typeof Icon> = {
   abbau: "pickaxe",
@@ -97,7 +98,7 @@ export function PlayerDetails({
   // Vergleichsstand: der letzte vor 24 Stunden, sonst der älteste (mindestens eine Stunde alt)
   const older = topHistory.filter((h) => now - Date.parse(h.at) >= 3600_000);
   const compare = [...older].reverse().find((h) => now - Date.parse(h.at) >= DAY_MS) ?? older[0] ?? null;
-  const graphHref = (metric: string) => `/statistik?metric=${metric}&spieler=${encodeURIComponent(id)}&zeit=alle#graph`;
+  const toGraph = (metric: string) => graphHref(metric as Metric, [id]);
   const groups = STAT_GROUPS.map((g) => ({
     ...g,
     keys: EXTRA_STAT_KEYS.filter((k) => EXTRA_STATS[k].group === g.key && typeof detail.stats[k] === "number"),
@@ -132,7 +133,7 @@ export function PlayerDetails({
                       return (
                         <div key={k} className="pdetail__row">
                           <dt>
-                            <Link href={graphHref(meta.metric)} title={`${meta.label} von ${name} im Graphen öffnen`}>
+                            <Link href={toGraph(meta.metric)} title={`${meta.label} von ${name} im Graphen öffnen`}>
                               {meta.label}
                             </Link>
                           </dt>
@@ -192,7 +193,13 @@ export function PlayerDetails({
                             <span className="ptop__bar" aria-hidden="true">
                               <span style={{ width: `${(entry.count / max) * 100}%` }} />
                             </span>
-                            <MiniTrend values={trend.slice(-48)} />
+                            {isTopCategory(key) ? (
+                              <Link className="ptop__trend" href={toGraph(itemMetric(key, entry.key))} title={`${entry.name} im Graphen öffnen`}>
+                                <MiniTrend values={trend.slice(-48)} />
+                              </Link>
+                            ) : (
+                              <MiniTrend values={trend.slice(-48)} />
+                            )}
                             {compare && (delta === null ? <span className="ptop__delta" data-new="true">neu</span> : delta > 0 ? <span className="ptop__delta num">+{num(delta)}</span> : <span className="ptop__delta" data-zero="true">±0</span>)}
                           </span>
                         </li>

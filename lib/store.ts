@@ -1897,3 +1897,73 @@ export async function getSeries(q: SeriesQuery): Promise<{ series: SeriesLine[];
   }
   return finish([{ id: "alle", name: "Alle Spieler", points }]);
 }
+
+/**
+ * Verlauf eines einzelnen Blocks/Mobs/Tiers aus den Top-Listen (`player_top_history`) für den Graphen.
+ * Ohne gewählte Spieler: die fünf, die es aktuell am häufigsten in den eigenen Top 10 haben.
+ * Fällt das Item aus den Top 10 eines Spielers, fehlt dort der Wert (Lücke statt Null).
+ */
+export async function getItemSeries(q: {
+  category: string;
+  key: string;
+  players: string[];
+  from: number | null;
+  to: number | null;
+  bucketMinutes: number | null;
+  mode: "wert" | "zuwachs";
+}): Promise<{ series: SeriesLine[]; bucketMinutes: number }> {
+  await ensureLoaded();
+  const db = await getDb();
+  const players = g().state?.players ?? {};
+  const ids = q.players.length
+    ? q.players
+    : Object.values(players)
+        .map((p) => ({ id: p.id, count: p.detail?.tops[q.category]?.find((e) => e.key === q.key)?.count ?? 0 }))
+        .filter((p) => p.count > 0)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5)
+        .map((p) => p.id);
+  if (ids.length === 0) return { series: [], bucketMinutes: q.bucketMinutes ?? 60 };
+  const first = (await db.query<{ at: Date | null }>(`SELECT min(at) AS at FROM player_top_history`)).rows[0]?.at ?? null;
+  const from = new Date(q.from ?? first?.getTime() ?? Date.now());
+  const to = new Date(q.to ?? Date.now());
+  const minutes = q.bucketMinutes ?? bucketMinutes(from, 600, 5);
+  const rows = (
+    await db.query<{ player: string; at: Date; tops: TopSnapshot; anchor: boolean }>(
+      `SELECT t.player, t.at, t.tops, t.anchor FROM player_top_history t
+        WHERE t.player = ANY($1::text[]) AND t.at <= $3
+          AND t.at >= COALESCE((SELECT max(at) FROM player_top_history WHERE player = t.player AND anchor AND at <= $2), $2)
+        ORDER BY t.player, t.at`,
+      [ids, from, to],
+    )
+  ).rows;
+  const bucketMs = minutes * 60_000;
+  const byPlayer = new Map<string, { at: string; v: number }[]>();
+  let state: TopSnapshot | null = null;
+  let current = "";
+  for (const r of rows) {
+    if (r.player !== current) {
+      current = r.player;
+      state = null;
+    }
+    if (r.anchor || !state) state = r.tops;
+    else {
+      const merged: TopSnapshot = { ...state };
+      for (const [list, items] of Object.entries(r.tops)) merged[list] = { ...(merged[list] ?? {}), ...items };
+      state = merged;
+    }
+    const t = new Date(r.at).getTime();
+    const v = state[q.category]?.[q.key];
+    if (t < from.getTime() || typeof v !== "number") continue;
+    // Je Bündel der letzte Stand
+    const at = new Date(Math.floor(t / bucketMs) * bucketMs).toISOString();
+    const points = byPlayer.get(r.player) ?? byPlayer.set(r.player, []).get(r.player)!;
+    if (points.length && points[points.length - 1].at === at) points[points.length - 1].v = v;
+    else points.push({ at, v });
+  }
+  const series = ids.map((id) => {
+    const points = byPlayer.get(id) ?? [];
+    return { id, name: players[id]?.name ?? id, points: q.mode === "zuwachs" ? toDelta(points) : points };
+  });
+  return { series, bucketMinutes: minutes };
+}

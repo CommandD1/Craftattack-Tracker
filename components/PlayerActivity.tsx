@@ -9,6 +9,7 @@ import { BoardValue } from "./BoardValue";
 import { BOARD_ICON, Icon } from "./Icons";
 import { EXTRA_HISTORY_KEYS, EXTRA_STATS, STAT_GROUPS } from "@/lib/playerStats";
 import { LEADERBOARDS, boardHref } from "@/lib/leaderboards";
+import { graphHref, rankMetric } from "@/lib/graphQuery";
 
 const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
@@ -149,7 +150,9 @@ export function PlayerActivity({
                   </header>
                   <div className="rankboard__chart">
                     {c.points.length >= 2 ? (
-                      <Sparkline points={c.points} width={320} height={84} kind="rank" invert label={`Platz ${style.title}`} />
+                      <Link href={graphHref(rankMetric(c.k), [id])} title={`Platz in „${style.title}“ im Graphen öffnen`}>
+                        <Sparkline points={c.points} width={320} height={84} kind="rank" invert label={`Platz ${style.title}`} />
+                      </Link>
                     ) : (
                       <p className="rankboard__empty">Noch zu wenig Verlauf.</p>
                     )}

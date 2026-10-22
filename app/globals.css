@@ -1739,16 +1739,7 @@ a.spark-card--link:hover .eyebrow {
   margin-bottom: 20px;
   padding: 18px 20px;
 }
-.gb__row {
-  display: grid;
-  grid-template-columns: 110px minmax(0, 1fr);
-  gap: 8px 16px;
-  align-items: start;
-}
-.gb__row > .eyebrow {
-  padding-top: 10px;
-}
-.gb__row select,
+
 .gb__pick input,
 .gb__custom input {
   font: inherit;
@@ -1765,10 +1756,7 @@ a.spark-card--link:hover .eyebrow {
   grid-column: 2;
   font-size: 0.875rem;
 }
-.gb__players {
-  display: grid;
-  gap: 6px;
-}
+
 .gb__pick {
   display: flex;
   flex-wrap: wrap;
@@ -1917,13 +1905,8 @@ a.spark-card--link:hover .eyebrow {
   font-size: 0.8125rem;
 }
 @media (width <= 640px) {
-  .gb__row {
-    grid-template-columns: 1fr;
-    gap: 4px;
-  }
-  .gb__row > .eyebrow {
-    padding-top: 0;
-  }
+  
+  
   .gb__hint,
   .gb__custom {
     grid-column: 1;
@@ -1936,14 +1919,7 @@ a.spark-card--link:hover .eyebrow {
     display: none;
   }
 }
-.gb__metrics {
-  display: grid;
-  gap: 2px;
-}
-.gb__metrics .gb__hint {
-  grid-column: 1;
-  margin-top: 4px;
-}
+
 .gb-chart__note {
   font-size: 0.8125rem;
   margin-top: 6px;
@@ -2024,47 +2000,7 @@ a.spark-card--link:hover .eyebrow {
 }
 
 /* ---------- Eigener Graph: Auswahl (Kacheln, Chips, Schalterleisten) ---------- */
-.gb__metrics {
-  display: grid;
-  gap: 10px;
-}
-.gb__metric-group {
-  display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
-}
-.gb__metric-group + .gb__metric-group {
-  padding-top: 8px;
-  border-top: 2px dashed color-mix(in srgb, var(--ink) 14%, transparent);
-}
-.gb__metric-search {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 10px;
-  margin-bottom: 4px;
-}
-.gb__metric-search input {
-  font: inherit;
-  font-weight: 600;
-  padding: 6px 10px;
-  background: var(--white);
-  color: var(--ink);
-  border: 0;
-  box-shadow: 0 0 0 3px var(--line);
-  margin: 3px;
-  width: min(320px, 100%);
-}
-.gb__group-label {
-  font-family: var(--font-display);
-  font-size: 0.6875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  opacity: 0.55;
-  padding-top: 12px;
-}
-.gb__tiles,
+
 .gb__chips {
   display: flex;
   flex-wrap: wrap;
@@ -2073,57 +2009,7 @@ a.spark-card--link:hover .eyebrow {
   padding: 4px;
   list-style: none;
 }
-.gb__tile {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  padding: 4px 10px 4px 6px;
-  background: var(--bg, var(--white));
-  color: var(--fg, var(--ink));
-  border: 0;
-  box-shadow: var(--outline);
-  font-family: var(--font-display);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
-}
-.gb__tile[aria-pressed="true"] {
-  box-shadow: var(--outline), var(--drop);
-  transform: translate(-2px, -2px);
-}
-@media (hover: hover) {
-  .gb__tile:not(:disabled):hover {
-    transform: translate(-2px, -2px);
-    box-shadow: var(--outline), var(--drop);
-  }
-}
-.gb__tile:active {
-  transform: translate(0, 0);
-  box-shadow: var(--outline);
-}
-.gb__tile:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-.gb__tile-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  background: var(--white);
-  color: var(--ink);
-  box-shadow: 0 0 0 2px var(--line);
-  flex: none;
-}
-.gb__tile-check {
-  font-size: 0.875rem;
-  margin-left: 2px;
-}
+
 .gb__chip {
   display: inline-flex;
   align-items: center;
@@ -2189,19 +2075,14 @@ a.spark-card--link:hover .eyebrow {
   .gb__form {
     padding: 14px;
   }
-  .gb__metric-group {
-    grid-template-columns: 1fr;
-    gap: 2px;
-  }
-  .gb__group-label {
-    padding-top: 0;
-  }
+  
+  
   .gb__seg button {
     flex: 1 1 auto;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .gb__tile,
+  
   .gb__chip,
   .gb__seg button {
     transition: none;
@@ -3904,4 +3785,168 @@ a.rankboard__now {
   .how__facts dd {
     margin-bottom: 8px;
   }
+}
+
+/* ---------- Graph-Seite: kompakte Auswahl über dem Graphen ---------- */
+.page-head--compact {
+  padding-block: clamp(24px, 4vw, 40px) clamp(20px, 3vw, 28px);
+}
+.page-head--compact .t-1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+}
+.gb__form {
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.gb__selected,
+.gb__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.gb__line > .eyebrow {
+  min-width: 4.5rem;
+}
+.gb__line .gb__chips {
+  padding: 0;
+}
+.gb__chip--metric {
+  display: inline-flex;
+  align-items: center;
+}
+.gb__hint {
+  font-size: 0.8125rem;
+}
+.gb__picker {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  background: var(--paper);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ink) 15%, transparent);
+}
+.gb__picker-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.gb__picker-bar input,
+.itempick input,
+.gb__pick input,
+.gb__select select,
+.gb__custom input {
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  padding: 5px 9px;
+  background: var(--white);
+  color: var(--ink);
+  border: 0;
+  box-shadow: 0 0 0 2px var(--line);
+  max-width: 100%;
+}
+.gb__picker-bar input {
+  flex: 1 1 12rem;
+}
+.gb__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.gb__tabs button {
+  padding: 4px 9px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.gb__tabs button[aria-selected="true"] {
+  background: var(--ink);
+  color: var(--paper);
+}
+.gb__close {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 1rem;
+  cursor: pointer;
+}
+.gb__pick {
+  position: relative;
+  flex: 1 1 10rem;
+}
+.gb__pick input {
+  width: 12rem;
+}
+.gb__suggest {
+  margin-top: 6px;
+}
+.gb__controls .gb__seg,
+.itempick .gb__seg {
+  margin: 0;
+}
+.gb__controls .gb__seg button,
+.itempick .gb__seg button {
+  min-height: 32px;
+  padding: 3px 10px;
+  font-size: 0.8125rem;
+}
+.gb__controls .gb__seg button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.gb__select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.gb__custom {
+  display: inline-flex;
+  gap: 6px;
+}
+
+/* Auswahl einzelner Blöcke, Mobs und Tiere (Graph und Bestenlisten) */
+.itempick {
+  display: grid;
+  gap: 8px;
+}
+.itempick__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.itempick__bar input {
+  flex: 1 1 10rem;
+  max-width: 18rem;
+}
+.itempick__list {
+  max-height: 11rem;
+  overflow-y: auto;
+  padding: 2px 4px 4px;
+}
+.itempick__list .gb__chip {
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+.itempick__more {
+  font-size: 0.8125rem;
+  align-self: center;
+}
+
+/* Verlinkte Kurven und Überschriften */
+.chart__link,
+.ptop__trend {
+  color: inherit;
+  text-decoration: none;
+}
+.ptop__trend {
+  display: contents;
 }
