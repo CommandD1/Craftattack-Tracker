@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { StoredSession } from "@/lib/store";
 import type { RankHistory, Span } from "@/lib/analytics";
 import type { BoardKey, PlayerRank } from "@/lib/types";
@@ -7,6 +8,7 @@ import { Sparkline } from "./Sparkline";
 import { BoardValue } from "./BoardValue";
 import { BOARD_ICON, Icon } from "./Icons";
 import { EXTRA_HISTORY_KEYS, EXTRA_STATS, STAT_GROUPS } from "@/lib/playerStats";
+import { boardHref } from "@/lib/leaderboards";
 
 const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
@@ -136,13 +138,14 @@ export function PlayerActivity({
                       </h3>
                       <p className="st-board__sub">{style.sub}</p>
                     </div>
-                    <p
+                    <Link
                       className="rankboard__now"
-                      title={[c.head?.of ? `Platz ${c.head.rank} von ${c.head.of} erfassten Spielern` : null, c.official ? `Offiziell laut API: Platz ${c.official.rank} von ${c.official.of}` : null].filter(Boolean).join(" · ") || undefined}
+                      href={boardHref(c.k)}
+                      title={[c.head?.of ? `Platz ${c.head.rank} von ${c.head.of} erfassten Spielern` : null, c.official ? `Offiziell laut API: Platz ${c.official.rank} von ${c.official.of}` : null, "Bestenliste öffnen"].filter(Boolean).join(" · ")}
                     >
                       <span className="num">{c.head ? `#${c.head.rank}` : "–"}</span>
                       {c.head?.of ? <span className="rankboard__of num">von {c.head.of}</span> : null}
-                    </p>
+                    </Link>
                   </header>
                   <div className="rankboard__chart">
                     {c.points.length >= 2 ? (

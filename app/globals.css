@@ -3702,3 +3702,29 @@ a.chat__text--vod {
   font-weight: 700;
   vertical-align: middle;
 }
+
+/* Rang im Rang-Verlauf verlinkt auf die Bestenliste */
+a.rankboard__now {
+  color: inherit;
+  text-decoration: none;
+}
+@media (hover: hover) {
+  a.rankboard__now:hover .num:first-child {
+    text-decoration: underline;
+  }
+}
+/* Top-Listen im Profil: Rest außerhalb der Top 10 (Vielfalt) */
+.ptop__row--rest {
+  border-top: 2px dashed color-mix(in srgb, var(--ink) 18%, transparent);
+  padding-top: 4px;
+  margin-top: 4px;
+}
+.ptop__row--rest .ptop__track {
+  font-size: 0.75rem;
+}
+.ptop__name a {
+  color: inherit;
+}
+.ptop__row--rest .ptop__name::before {
+  content: none;
+}
