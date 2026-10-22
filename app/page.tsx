@@ -4,7 +4,7 @@ import { PageSkeleton } from "@/components/Skeletons";
 import { loadTracker } from "@/lib/data";
 import { getHistoryAll, getTwitchSubscriptionBoard } from "@/lib/store";
 import { BOARD_KEYS } from "@/lib/types";
-import { boardValue, headUrl, num, duration, dateTime } from "@/lib/format";
+import { boardValue, num, duration, dateTime } from "@/lib/format";
 import { StatusLine } from "@/components/StatusLine";
 import { EventFeed } from "@/components/EventFeed";
 import { Sparkline } from "@/components/Sparkline";
@@ -16,6 +16,7 @@ import { EVENT_GROUPS, isShownEvent } from "@/lib/events";
 import { BOARD_STYLE } from "@/lib/boards";
 import { BoardValue } from "@/components/BoardValue";
 import { BOARD_TONE, METRIC_TONE } from "@/lib/statTone";
+import { Head } from "@/components/Head";
 
 // Titel, Untertitel und Farben wie auf craftattack.one/stats
 const BOARDS = BOARD_STYLE;
@@ -141,7 +142,7 @@ async function Dashboard() {
                       href={`/spieler/${encodeURIComponent(p.id)}`}
                       title={p.live?.title}
                     >
-                      <img className="head" src={headUrl(p.uuid, 32, p.id)} alt="" width={32} height={32} loading="lazy" />
+                      <Head id={p.id} uuid={p.uuid} name={p.name} size={32} decorative />
                       <span>{p.name}</span>
                       {p.live && (
                         <span className="st-livetag">
@@ -294,7 +295,7 @@ async function Dashboard() {
                           <li key={e.id}>
                             <Link className="st-board__row" href={`/spieler/${encodeURIComponent(e.id)}`}>
                               <span className="st-board__rank num">{i + 1}</span>
-                              <img className="head" src={headUrl(e.uuid, 28, e.id)} alt="" width={28} height={28} loading="lazy" />
+                              <Head id={e.id} uuid={e.uuid} name={e.name} decorative />
                               <span className="st-board__name">{e.name}</span>
                               <span className="st-board__val num" title={boardValue(key, e.value)}>
                                 <BoardValue k={key} v={e.value} />
@@ -343,7 +344,7 @@ async function Dashboard() {
                     <li key={entry.id}>
                       <Link className="st-board__row" href={`/spieler/${encodeURIComponent(entry.id)}`}>
                         <span className="st-board__rank num">{index + 1}</span>
-                        <img className="head" src={headUrl(entry.uuid, 28, entry.id)} alt="" width={28} height={28} loading="lazy" />
+                        <Head id={entry.id} uuid={entry.uuid} name={entry.name} decorative />
                         <span className="st-board__name">{entry.name}</span>
                         <span className="st-board__val num">{num(entry.value)}</span>
                         <span className="st-board__mv" aria-hidden="true" />
@@ -373,7 +374,7 @@ async function Dashboard() {
                     <li key={p.id}>
                       <Link className="st-board__row" href={`/spieler/${encodeURIComponent(p.id)}`}>
                         <span className="st-board__rank num">{i + 1}</span>
-                        <img className="head" src={headUrl(p.uuid, 28, p.id)} alt="" width={28} height={28} loading="lazy" />
+                        <Head id={p.id} uuid={p.uuid} name={p.name} decorative />
                         <span className="st-board__name">{p.name}</span>
                         <span className="st-board__val num">{duration(p.seconds)}</span>
                       </Link>

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { SharedChatSession } from "@/lib/store";
 import type { PlayerState } from "@/lib/types";
-import { ago, dateTime, duration, headUrl } from "@/lib/format";
+import { ago, dateTime, duration } from "@/lib/format";
+import { Head } from "./Head";
 
 /** Geteilte Chats (Stream Together) eines Spielers: laufende zuerst, mit Partnern, Beginn und Dauer. */
 export function SharedChatList({
@@ -29,8 +30,7 @@ export function SharedChatList({
             <span className="shared__who">
               {partners.map((id) => (
                 <Link key={id} className="chat__who" data-role="to" href={`/spieler/${encodeURIComponent(id)}`}>
-                  <img className="chat__head" src={headUrl(players[id]?.uuid, 32, id)} alt="" width={20} height={20} loading="lazy" />
-                  <span className="chat__name">{players[id]?.name ?? id}</span>
+                  <Head id={id} uuid={players[id]?.uuid} name={players[id]?.name} size={20} src={32} className="chat__head" />
                 </Link>
               ))}
               {s.otherCount > 0 && (

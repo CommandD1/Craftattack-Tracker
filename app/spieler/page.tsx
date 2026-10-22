@@ -3,10 +3,11 @@ import { Suspense } from "react";
 import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
-import { duration, headUrl, num, ago } from "@/lib/format";
+import { duration, num, ago } from "@/lib/format";
 import { playtimeOf } from "@/lib/playtime";
 import { getRecentTwitchChatMessages, getTwitchSubscriptionBoard } from "@/lib/store";
 import { ChatFeed } from "@/components/ChatFeed";
+import { Head } from "@/components/Head";
 
 
 export const metadata: Metadata = { title: "Spieler" };
@@ -87,7 +88,7 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
                   <Link className="box player-card" data-tone="white" href={`/spieler/${encodeURIComponent(p.id)}`}>
                     <div className="player-card__top">
                       <span className={p.online && p.afkSince ? "head-afk" : undefined} title={p.online && p.afkSince ? "AFK" : undefined}>
-                        <img className="head" src={headUrl(p.uuid, 48, p.id)} alt="" width={48} height={48} loading="lazy" />
+                        <Head id={p.id} uuid={p.uuid} name={p.name} size={48} decorative />
                       </span>
                       <div>
                         <p className="player-card__name">{p.name}</p>

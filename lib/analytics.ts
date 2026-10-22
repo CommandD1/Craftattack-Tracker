@@ -533,7 +533,14 @@ export interface TimelapseFrame {
   afkBlocks: number[];
   deaths: number | null;
   viewers: number | null;
-  messages: string[];
+  messages: TimelapseMessage[];
+}
+
+/** Meldung im Zeitraffer: Spieler als Kopf, danach der Text ohne Namen; bei Toden durch Spieler der Mörder */
+export interface TimelapseMessage {
+  player: { id: string; name: string; uuid: string } | null;
+  text: string;
+  killer: { id: string; name: string; uuid: string } | null;
 }
 
 export interface Timelapse {
@@ -576,7 +583,15 @@ export async function getTimelapse(day?: string): Promise<Timelapse> {
     const t = Date.parse(e.at);
     return t >= nav.from && t < nav.to && TIMELAPSE_TYPES.has(e.type) && !(e.type === "death" && e.meta?.unknown);
   });
-  const text = (e: TrackerEvent) => `${e.player ? `${e.playerName ?? e.player} ` : ""}${EVENT_META[e.type].text(e)}`;
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const message = (e: TrackerEvent): TimelapseMessage => ({
+    player: e.player ? { id: e.player, name: e.playerName ?? e.player, uuid: e.uuid ?? "" } : null,
+    text: EVENT_META[e.type].text(e),
+    killer:
+      e.type === "death" && str(e.meta?.killerId)
+        ? { id: str(e.meta?.killerId), name: str(e.meta?.killerName) || str(e.meta?.killerId), uuid: str(e.meta?.killerUuid) }
+        : null,
+  });
 
   const end = Math.min(nav.to, now);
   const frames: TimelapseFrame[] = [];
@@ -603,9 +618,9 @@ export async function getTimelapse(day?: string): Promise<Timelapse> {
     }
     const h = histAt.get(t);
     if (h) lastDeaths = Number(h.deaths);
-    const messages: string[] = [];
+    const messages: TimelapseMessage[] = [];
     while (ei < sorted.length && Date.parse(sorted[ei].at) <= t) {
-      if (Date.parse(sorted[ei].at) > t - stepMs) messages.push(text(sorted[ei]));
+      if (Date.parse(sorted[ei].at) > t - stepMs) messages.push(message(sorted[ei]));
       ei++;
     }
     frames.push({ at: t, online, live, afk, afkMobs, afkBlocks, deaths: h ? Number(h.deaths) : lastDeaths, viewers: h ? Number(h.viewers) : null, messages: messages.slice(0, 6) });
@@ -803,7 +818,8 @@ export async function getStatsExtras(): Promise<StatsExtras> {
     // Tode nach Tagesstunde
     const deathEvents = events.filter((e) => e.type === "death");
     const deathsHour = Array(24).fill(0) as number[];
-    for (const e of deathEvents) deathsHour[berlinSlot(Date.parse(e.at)).hour] += e.delta ?? 1;
+    // Tode vor der Erfassung (aus /api/player) nicht in Raten, die durch vom Tracker gemessene Zeit teilen
+    for (const e of deathEvents) if (!e.meta?.beforeTracking) deathsHour[berlinSlot(Date.parse(e.at)).hour] += e.delta ?? 1;
     const deathsByHour = deathsHour.map((d, hour) => {
       const ph = hourOfDay[hour];
       return { hour, deaths: d, playerHours: Math.round(ph), rate: ph >= 3 ? Math.round((d / ph) * 100 * 10) / 10 : null };
@@ -832,7 +848,7 @@ export async function getStatsExtras(): Promise<StatsExtras> {
     const deathRate: StatsExtras["deathRate"] = [];
     for (const [id, list] of byPlayer) {
       const hours = (trackedSec.get(id) ?? 0) / 3600;
-      const deaths = list.reduce((s, e) => s + (e.delta ?? 1), 0);
+      const deaths = list.reduce((s, e) => s + (e.meta?.beforeTracking ? 0 : (e.delta ?? 1)), 0);
       if (hours < 1 || deaths < 2) continue;
       deathRate.push({ id, name: state.players[id]?.name ?? id, uuid: state.players[id]?.uuid ?? "", deaths, hours: Math.round(hours * 10) / 10, perHour: Math.round((deaths / hours) * 100) / 100 });
     }

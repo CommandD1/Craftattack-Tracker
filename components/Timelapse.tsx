@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Timelapse as TimelapseData } from "@/lib/analytics";
-import { headUrl, num } from "@/lib/format";
+import type { Timelapse as TimelapseData, TimelapseMessage } from "@/lib/analytics";
+import { num } from "@/lib/format";
 import { BOARD_TONE, METRIC_TONE } from "@/lib/statTone";
+import { Head } from "./Head";
 
 const tf = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 const SPEEDS = [
@@ -26,7 +27,7 @@ export function Timelapse({ data }: { data: TimelapseData }) {
   const [i, setI] = useState(firstActive);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const [log, setLog] = useState<{ at: number; text: string }[]>([]);
+  const [log, setLog] = useState<{ at: number; m: TimelapseMessage }[]>([]);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -39,7 +40,7 @@ export function Timelapse({ data }: { data: TimelapseData }) {
         }
         const next = cur + 1;
         const f = frames[next];
-        if (f.messages.length) setLog((l) => [...f.messages.map((text) => ({ at: f.at, text })), ...l].slice(0, 8));
+        if (f.messages.length) setLog((l) => [...f.messages.map((m) => ({ at: f.at, m })), ...l].slice(0, 8));
         return next;
       });
     }, SPEEDS[speed].ms);
@@ -154,8 +155,8 @@ export function Timelapse({ data }: { data: TimelapseData }) {
               const state = isLive && isOn ? (isAfk ? `live, auf dem Server, ${afkText}` : "live, auf dem Server") : isLive ? "live, nicht auf dem Server" : isAfk ? `auf dem Server, ${afkText}` : isOn ? "auf dem Server" : "";
               return (
                 <li key={p.id} data-on={isOn ? "true" : undefined} data-afk={isAfk ? (farm ?? "true") : undefined} data-live={isLive ? "true" : undefined}>
-                  <Link href={`/spieler/${encodeURIComponent(p.id)}`} title={`${p.name}${state ? ` · ${state}` : ""}`}>
-                    <img src={headUrl(p.uuid, 40, p.id)} alt={p.name} width={40} height={40} loading="lazy" decoding="async" />
+                  <Link href={`/spieler/${encodeURIComponent(p.id)}`}>
+                    <Head id={p.id} uuid={p.uuid} name={`${p.name}${state ? ` · ${state}` : ""}`} size={40} className="" />
                     {isAfk && (
                       <span className={farm ? "zr__afk zr__afk--farm" : "zr__afk"} aria-hidden="true">
                         {farm === "mobs" ? "MOBS" : farm === "blocks" ? "BLÖCKE" : "AFK"}
@@ -172,15 +173,31 @@ export function Timelapse({ data }: { data: TimelapseData }) {
         {log.length === 0 && !playing && f.messages.length > 0
           ? f.messages.map((m, k) => (
               <li key={k}>
-                <span className="num muted">{tf.format(new Date(f.at))}</span> {m}
+                <span className="num muted">{tf.format(new Date(f.at))}</span> <Message m={m} />
               </li>
             ))
           : log.map((m, k) => (
               <li key={`${m.at}-${k}`}>
-                <span className="num muted">{tf.format(new Date(m.at))}</span> {m.text}
+                <span className="num muted">{tf.format(new Date(m.at))}</span> <Message m={m.m} />
               </li>
             ))}
       </ol>
     </div>
+  );
+}
+
+/** Eine Zeitraffer-Meldung: Kopf statt Name, bei Toden durch Spieler der Mörder als zweiter Kopf */
+function Message({ m }: { m: TimelapseMessage }) {
+  return (
+    <span className="zr__msg">
+      {m.player && <Head id={m.player.id} uuid={m.player.uuid} name={m.player.name} size={20} src={32} />}
+      <span>{m.text}</span>
+      {m.killer && (
+        <>
+          <span aria-hidden="true">⚔</span>
+          <Head id={m.killer.id} uuid={m.killer.uuid} name={`Getötet von ${m.killer.name}`} size={20} src={32} />
+        </>
+      )}
+    </span>
   );
 }

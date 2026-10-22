@@ -1,8 +1,9 @@
 import Link from "next/link";
 import type { StatsExtras as Data } from "@/lib/analytics";
-import { dateTime, duration, headUrl, num } from "@/lib/format";
+import { dateTime, duration, num } from "@/lib/format";
 import { Sparkline } from "./Sparkline";
 import { METRIC_TONE } from "@/lib/statTone";
+import { Head } from "@/components/Head";
 
 const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const dayShort = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", timeZone: "Europe/Berlin" });
@@ -24,7 +25,7 @@ function Person({ id, name, uuid, right }: { id: string; name: string; uuid: str
   return (
     <li className="plist__row">
       <Link className="plist__who" href={`/spieler/${encodeURIComponent(id)}`}>
-        <img className="head" src={headUrl(uuid, 24, id)} alt="" width={24} height={24} loading="lazy" />
+        <Head id={id} uuid={uuid} name={name} size={24} decorative />
         <span>{name}</span>
       </Link>
       <span className="plist__val num">{right}</span>

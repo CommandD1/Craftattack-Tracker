@@ -4,6 +4,7 @@ import "./globals.css";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { AutoRefresh } from "@/components/AutoRefresh";
+import { HeadTip } from "@/components/HeadTip";
 import { ThemeScript } from "@/components/ThemeToggle";
 
 const monocraft = localFont({
@@ -49,6 +50,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <main id="inhalt">{children}</main>
         <SiteFooter />
         <AutoRefresh intervalMs={60_000} />
+        <HeadTip />
       </body>
     </html>
   );

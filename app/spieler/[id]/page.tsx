@@ -7,7 +7,7 @@ import { loadTracker } from "@/lib/data";
 import { isShownEvent, sharedChatPlayers } from "@/lib/events";
 import { thinHistory } from "@/lib/thinHistory";
 import { BOARD_KEYS, type BoardKey, type TrackerEvent } from "@/lib/types";
-import { ago, boardParts, dateTime, duration, headUrl, num, skinUrl } from "@/lib/format";
+import { ago, boardParts, dateTime, duration, num, skinUrl } from "@/lib/format";
 import { EventFeed } from "@/components/EventFeed";
 import { BOARD_ICON, Icon } from "@/components/Icons";
 import { FigValue } from "@/components/FigValue";
@@ -25,6 +25,7 @@ import { playtimeOf, trackedSecondsOf } from "@/lib/playtime";
 import { getPlayerEventTimeState } from "@/lib/playerEventStatus";
 import { ChatSkeleton, DetailsSkeleton, HeadSkeleton, InsightsSkeleton, RanksSkeleton, TilesSkeleton, TimelineSkeleton } from "@/components/PlayerSkeletons";
 import { METRIC_TONE } from "@/lib/statTone";
+import { Head } from "@/components/Head";
 
 
 export async function generateMetadata({ params }: PageProps<"/spieler/[id]">): Promise<Metadata> {
@@ -571,7 +572,7 @@ async function TimelineSection({ params }: { params: Params }) {
                         title={`${nameOf(o.player)}: ${duration(o.seconds)} gemeinsam online in ${num(o.sessions)} Sessions`}
                       >
                         <span className="st-board__rank num">{i + 1}</span>
-                        <img className="head" src={headUrl(state.players[o.player]?.uuid, 28, o.player)} alt="" width={28} height={28} loading="lazy" />
+                        <Head id={o.player} uuid={state.players[o.player]?.uuid} name={nameOf(o.player)} decorative />
                         <span className="st-board__name">
                           {nameOf(o.player)}
                           {o.now && <span className="dot" style={{ marginLeft: 8 }} title="gerade gemeinsam online" />}
@@ -596,7 +597,7 @@ async function TimelineSection({ params }: { params: Params }) {
                 <ul className="sessions">
                   {phases.slice(0, 16).map((s) => {
                     const with_ = s.kind === "server" ? companionsOf(id, s.start, s.end, allSessions, now) : [];
-                    const shown = with_.slice(0, 4);
+                    const shown = with_.slice(0, 8);
                     const extra =
                       s.kind === "stream"
                         ? [s.peak ? `Peak ${num(s.peak)} Zuschauer` : null, s.overlap > 0 ? `davon ${duration(s.overlap)} auf dem Server` : "nicht auf dem Server"].filter(Boolean).join(" · ")
@@ -606,18 +607,18 @@ async function TimelineSection({ params }: { params: Params }) {
                     return (
                       <li key={`${s.kind}${s.start}`} className={`sessions__${s.kind}`}>
                         <span>
-                          <span className="sessions__kind tag" data-tone={s.kind === "stream" ? "twitch" : "grass"}>
+                          <span className="sessions__kind tag" data-tone={s.kind === "stream" ? METRIC_TONE.liveCount : METRIC_TONE.onlineCount}>
                             {s.kind === "stream" ? "Stream" : "Server"}
                           </span>{" "}
                           {dateTime(s.start)}
                           {s.end ? ` – ${dateTime(s.end).split(", ").pop()}` : " – jetzt"}
                           {extra && <span className="muted session-with">{extra}</span>}
                           {with_.length > 0 && (
-                            <span
-                              className="muted session-with"
-                              title={with_.map((w) => `${nameOf(w.player)} (${duration(w.seconds)})`).join(", ")}
-                            >
-                              mit {shown.map((w) => nameOf(w.player)).join(", ")}
+                            <span className="muted session-with session-with--heads">
+                              mit
+                              {shown.map((w) => (
+                                <Head key={w.player} id={w.player} uuid={state.players[w.player]?.uuid} name={`${nameOf(w.player)} · ${duration(w.seconds)}`} size={20} src={32} />
+                              ))}
                               {with_.length > shown.length ? ` +${with_.length - shown.length}` : ""}
                             </span>
                           )}

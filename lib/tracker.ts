@@ -1,7 +1,7 @@
 import "server-only";
 import { EVENT_MIN_DELTA } from "./events";
 import { createHash } from "node:crypto";
-import { appendEvents, appendFeedItems, enrichDeathEvents, getState, recordPlayerPoints, recordTopSnapshots, saveState } from "./store";
+import { appendEvents, appendFeedItems, deathFeedMeta, enrichDeathEvents, getState, recordPlayerPoints, recordTopSnapshots, saveState } from "./store";
 import { fetchFollowerCounts, fetchLiveStreams, TWITCH_ENABLED, type TwitchFollowerChannel, type TwitchStream } from "./twitch";
 import { fetchCraftAttack, getCraftAttackPauseMs, maxCraftAttackTimerDelay } from "./craftattackFetch";
 import { expireChatSessions, syncSharedChatFromApi } from "./sharedChat";
@@ -215,15 +215,15 @@ function markFeedSeen(items: { id: string }[]) {
 }
 
 /**
- * Erfolge seit Tracker-Start als Ereignisse – auch die, die zwischen zwei Polls schon aus den zehn Einträgen
- * von /api/feed gerutscht sind, aber noch in den `events` von /api/player stehen. Tode zählt der Tracker selbst
- * über den Todeszähler; dafür ergänzt `enrichDeathEvents` nur Nachricht und Mörder.
+ * Ereignisse aus Feed-Einträgen (/api/feed und `events` von /api/player), auch aus der Zeit vor dem Tracker-Start.
+ * Jeder Erfolg wird ein Ereignis. Tode zählt der Tracker selbst über den Todeszähler; aus dem Feed entsteht ein
+ * Tod nur, wenn er vor dem ersten bekannten Stand des Spielers liegt (`firstSeen`) – den konnte der Zähler nie
+ * melden. Spätere Tode ergänzt `enrichDeathEvents` nur um Nachricht und Mörder.
  */
-function achievementEvents(state: TrackerState, items: { id: string; item: FeedItem }[]): TrackerEvent[] {
-  const since = Date.parse(state.startedAt);
+function feedEvents(state: TrackerState, items: { id: string; item: FeedItem }[]): TrackerEvent[] {
   const events: TrackerEvent[] = [];
   for (const { id, item } of items) {
-    if (item.type === "achievement" && Date.parse(item.at) >= since) {
+    if (item.type === "achievement") {
       events.push({
         id,
         at: item.at,
@@ -242,7 +242,22 @@ function achievementEvents(state: TrackerState, items: { id: string; item: FeedI
           message: item.message,
         },
       });
+      continue;
     }
+    const firstSeen = state.players[item.victim.id]?.firstSeen;
+    if (!firstSeen || Date.parse(item.at) >= Date.parse(firstSeen)) continue;
+    events.push({
+      id,
+      at: item.at,
+      type: "death",
+      player: item.victim.id,
+      playerName: item.victim.name,
+      uuid: item.victim.uuid,
+      where: "server",
+      delta: 1,
+      // Vor der Erfassung: zählt nicht in Raten, die durch vom Tracker gemessene Online-Zeit teilen
+      meta: { beforeTracking: true, ...deathFeedMeta(item) },
+    });
   }
   return events;
 }
@@ -1138,7 +1153,7 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       // Erfolge und Tode: /api/feed (letzte zehn serverweit) plus `events` jeder frischen Einzelstatistik
       const feedItems = [...feed.feed.slice(0, 10), ...[...ext.players.values()].filter((x) => x.fresh).flatMap((x) => x.feed)];
       const unseen = unseenFeedItems(feedItems);
-      const fromFeed = achievementEvents(state, unseen);
+      const fromFeed = feedEvents(state, unseen);
       await appendFeedItems(unseen);
       const inserted = await appendEvents([...events, ...fromFeed]);
       state.eventCount += fromFeed.filter((e) => inserted.has(e.id)).length;

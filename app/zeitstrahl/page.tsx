@@ -4,11 +4,12 @@ import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { dayKey, getDayTimeline, getTimelapse } from "@/lib/analytics";
-import { duration, headUrl, num, time } from "@/lib/format";
+import { duration, num, time } from "@/lib/format";
 import { DateNav } from "@/components/DateNav";
 import { Timelapse } from "@/components/Timelapse";
 import { GanttLiveSegment } from "@/components/GanttLiveSegment";
 import { findVodAt } from "@/lib/twitch";
+import { Head } from "@/components/Head";
 
 export const metadata: Metadata = { title: "Zeitstrahl" };
 
@@ -151,7 +152,7 @@ async function Timeline(props: PageProps<"/zeitstrahl">) {
                 {rows.map((r, rowIndex) => (
                   <div className="gantt__row" role="row" key={r.id}>
                     <Link className="gantt__name" href={`/spieler/${encodeURIComponent(r.id)}`} role="rowheader">
-                      <img className="head" src={headUrl(r.uuid, 24, r.id)} alt="" width={24} height={24} loading="lazy" />
+                      <Head id={r.id} uuid={r.uuid} name={r.name} size={24} decorative />
                       <span>{r.name}</span>
                     </Link>
                     <div className="gantt__track" role="cell">

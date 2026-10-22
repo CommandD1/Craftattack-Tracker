@@ -5,11 +5,12 @@ import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { getHistoryRange } from "@/lib/analytics";
 import { getActiveSharedChatSessions, getHistoryAll, getTwitchLiveSubscriptionCounts } from "@/lib/store";
-import { ago, headUrl, num } from "@/lib/format";
+import { ago, num } from "@/lib/format";
 import { Sparkline } from "@/components/Sparkline";
 import { EventFeed } from "@/components/EventFeed";
 import { FigValue } from "@/components/FigValue";
 import { METRIC_TONE } from "@/lib/statTone";
+import { Head } from "@/components/Head";
 
 
 export const metadata: Metadata = { title: "Live" };
@@ -159,7 +160,7 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
                     target="_blank"
                     rel="noopener"
                   >
-                    <img className="head" src={headUrl(p.uuid, 56, p.id)} alt="" width={56} height={56} loading="lazy" />
+                    <Head id={p.id} uuid={p.uuid} name={p.name} size={56} decorative />
                     <div style={{ minWidth: 0 }}>
                       <p className="stream__name">
                         {p.name}{" "}

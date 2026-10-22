@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { BOARD_KEYS, type BoardKey, type EventType, type TrackerEvent } from "@/lib/types";
 import { EVENT_META, eventBadge, isShownEvent, sharedChatPlayers } from "@/lib/events";
-import { headUrl, time } from "@/lib/format";
+import { time } from "@/lib/format";
+import { Head } from "./Head";
 import { BOARD_ICON, EVENT_ICON, Icon } from "./Icons";
 
 const dayFmt = new Intl.DateTimeFormat("de-DE", {
@@ -53,6 +54,16 @@ function combineGiftSubscriptions(events: TrackerEvent[]): TrackerEvent[] {
 /** Ereignisse ohne Spieler: das Typ-Icon ersetzt den Kopf */
 const SERVER_TYPES = new Set<EventType>(["server_online", "server_offline", "tracker_start", "record"]);
 
+/** Spieler, der den Tod verursacht hat (aus Feed bzw. /api/player); Mobs und Stürze haben keinen */
+function killerId(e: TrackerEvent): string | null {
+  return e.type === "death" && typeof e.meta?.killerId === "string" && e.meta.killerId ? e.meta.killerId : null;
+}
+
+/** Todesnachricht ohne den Namen des Opfers vorn: "fiel aus zu großer Höhe" */
+function deathCause(message: string, victim: unknown): string {
+  return typeof victim === "string" && message.startsWith(`${victim} `) ? message.slice(victim.length + 1) : message;
+}
+
 /** Kurzer Zusatz rechts neben dem Wert, nur wenn er woanders nicht steht */
 function detail(e: TrackerEvent): string | null {
   switch (e.type) {
@@ -70,9 +81,11 @@ function detail(e: TrackerEvent): string | null {
     case "first_join":
       return "Neu";
     case "death":
-      return typeof e.meta?.killerName === "string"
-        ? `Von ${e.meta.killerName}`
-        : e.meta?.unknown
+      return killerId(e)
+        ? null
+        : typeof e.meta?.deathMessage === "string"
+          ? deathCause(e.meta.deathMessage, e.meta.victimMinecraft)
+          : e.meta?.unknown
           ? "unbekannt"
           : e.meta?.inferred
             ? "zugeordnet"
@@ -131,19 +144,21 @@ function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlayer?: boo
   // Rang / Meilenstein: statt des Listennamens nur das Icon der Liste (Name steht im Tooltip)
   const board = (e.type === "rank" || e.type === "milestone") && BOARD_KEYS.includes(e.meta?.board as BoardKey) ? (e.meta!.board as BoardKey) : null;
   const BoardIcon = board ? Icon[BOARD_ICON[board]] : null;
+  const killer = killerId(e);
+  const killerName = typeof e.meta?.killerName === "string" ? e.meta.killerName : killer;
 
   return (
     <li className="tile" data-tone={meta.tone} data-type={e.type} title={`${time(e.at)} · ${sentence}`}>
       {withHead && (showPlayer || e.type === "raid") ? (
         <Link className="tile__head" href={`/spieler/${encodeURIComponent(e.player!)}`} aria-label={e.playerName ?? e.player}>
-          <img src={headUrl(e.uuid, 32, e.player)} alt="" width={32} height={32} loading="lazy" decoding="async" />
+          <Head id={e.player!} uuid={e.uuid} name={e.playerName} size={32} className="" decorative />
         </Link>
       ) : null}
       {sharedIds.length > 0 && (
         <span className="tile__heads" aria-label={`Geteilter Chat: ${sharedNames.join(", ")}`}>
           {sharedIds.slice(0, 4).map((pid, i) => (
-            <Link key={pid} className="tile__head" href={`/spieler/${encodeURIComponent(pid)}`} title={sharedNames[i] ?? pid}>
-              <img src={headUrl(sharedUuids[i] || undefined, 32, pid)} alt="" width={32} height={32} loading="lazy" decoding="async" />
+            <Link key={pid} className="tile__head" href={`/spieler/${encodeURIComponent(pid)}`} aria-label={sharedNames[i] ?? pid}>
+              <Head id={pid} uuid={sharedUuids[i] || null} name={sharedNames[i]} size={32} className="" decorative />
             </Link>
           ))}
         </span>
@@ -153,15 +168,14 @@ function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlayer?: boo
           className="tile__head tile__head--gift"
           href={`/spieler/${encodeURIComponent(e.meta.giftGiverPlayerId)}`}
           aria-label={`Geschenk von ${String(e.meta.giftGiverName ?? e.meta.giftGiverPlayerId)}`}
-          title={`Geschenk von ${String(e.meta.giftGiverName ?? e.meta.giftGiverPlayerId)}`}
         >
-          <img
-            src={headUrl(typeof e.meta.giftGiverUuid === "string" ? e.meta.giftGiverUuid : undefined, 32, e.meta.giftGiverPlayerId)}
-            alt=""
-            width={32}
-            height={32}
-            loading="lazy"
-            decoding="async"
+          <Head
+            id={e.meta.giftGiverPlayerId}
+            uuid={typeof e.meta.giftGiverUuid === "string" ? e.meta.giftGiverUuid : null}
+            name={`Geschenk von ${String(e.meta.giftGiverName ?? e.meta.giftGiverPlayerId)}`}
+            size={32}
+            className=""
+            decorative
           />
         </Link>
       )}
@@ -177,15 +191,14 @@ function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlayer?: boo
           className="tile__head tile__head--raid-target"
           href={`/spieler/${encodeURIComponent(e.meta.raidTargetPlayerId)}`}
           aria-label={`Raid-Ziel: ${String(e.meta.raidTargetName ?? e.meta.raidTargetPlayerId)}`}
-          title={`Raid-Ziel: ${String(e.meta.raidTargetName ?? e.meta.raidTargetPlayerId)}`}
         >
-          <img
-            src={headUrl(typeof e.meta.raidTargetUuid === "string" ? e.meta.raidTargetUuid : undefined, 32, e.meta.raidTargetPlayerId)}
-            alt=""
-            width={32}
-            height={32}
-            loading="lazy"
-            decoding="async"
+          <Head
+            id={e.meta.raidTargetPlayerId}
+            uuid={typeof e.meta.raidTargetUuid === "string" ? e.meta.raidTargetUuid : null}
+            name={`Raid-Ziel: ${String(e.meta.raidTargetName ?? e.meta.raidTargetPlayerId)}`}
+            size={32}
+            className=""
+            decorative
           />
         </Link>
       )}
@@ -193,6 +206,16 @@ function EventTile({ e, showPlayer = true }: { e: TrackerEvent; showPlayer?: boo
         <IconCmp aria-hidden="true" />
       </Link>
       {badge && <span className="tile__val num">{badge}</span>}
+      {killer && (
+        <>
+          <span className="tile__raid-arrow tile__killed-by" aria-hidden="true">
+            <Icon.sword width={14} height={14} />
+          </span>
+          <Link className="tile__head tile__head--killer" href={`/spieler/${encodeURIComponent(killer)}`} aria-label={`Getötet von ${killerName}`}>
+            <Head id={killer} uuid={typeof e.meta?.killerUuid === "string" ? e.meta.killerUuid : null} name={`Getötet von ${killerName}`} size={32} className="" decorative />
+          </Link>
+        </>
+      )}
       {info && <span className="tile__info">{info}</span>}
       {BoardIcon && (
         <span className="tile__board" title={e.meta?.label ? String(e.meta.label) : undefined}>
