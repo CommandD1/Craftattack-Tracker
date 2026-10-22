@@ -3736,3 +3736,78 @@ a.rankboard__now {
   vertical-align: 1px;
   text-decoration: none;
 }
+
+/* ---------- Tageshighlights im Profil ---------- */
+.hl__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin: 12px 0 20px;
+  padding: 0;
+  list-style: none;
+}
+.hl {
+  display: grid;
+  gap: 12px;
+  max-width: 860px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.hl__item {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--white);
+  color: var(--ink);
+  box-shadow: inset 6px 0 0 var(--bg), var(--outline), var(--drop);
+}
+.hl__item:is([data-tone="white"], [data-tone="paper"]) {
+  box-shadow: var(--outline), var(--drop);
+}
+.hl__time {
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  opacity: 0.7;
+  padding-left: 4px;
+}
+.hl__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: 0 0 0 2px var(--line);
+}
+.hl__text {
+  font-weight: 700;
+  line-height: 1.3;
+}
+.hl__sub {
+  font-size: 0.875rem;
+  margin-top: 2px;
+}
+.hl__other {
+  display: block;
+}
+.hl__vod {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--twitch);
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+@media (width <= 560px) {
+  .hl__item {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .hl__time {
+    grid-column: 1 / -1;
+  }
+}
