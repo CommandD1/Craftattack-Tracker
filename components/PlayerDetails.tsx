@@ -207,12 +207,11 @@ export function PlayerDetails({
           </>
         )}
 
-        <p className="muted" style={{ marginTop: 16, fontSize: ".875rem" }}>
-          Aus der Einzelstatistik der API. Solange {name} online ist, kommen die Werte jede Minute neu, sonst höchstens alle 15 Minuten.
-          Die Top-Listen werden jede Minute gesichert, solange der Spieler online ist; daraus kommen Zuwachs und die Verlaufslinie der letzten 24 Stunden.
-          #-Zahlen sind der Rang unter allen Teilnehmenden, Gold markiert die Top 3. Ein Klick auf eine Kennzahl öffnet ihren Verlauf.
-          {detail.firstJoin && <> Erster Join: {dateTime(detail.firstJoin)}.</>}
-        </p>
+        {detail.firstJoin && (
+          <p className="muted" style={{ marginTop: 16, fontSize: ".875rem" }}>
+            Erster Join: {dateTime(detail.firstJoin)}
+          </p>
+        )}
       </div>
     </section>
   );

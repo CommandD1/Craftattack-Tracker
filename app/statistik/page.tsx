@@ -12,6 +12,7 @@ import { dayKey, getStatsExtras } from "@/lib/analytics";
 import { StatsExtras } from "@/components/StatsExtras";
 import { BOARD_TONE, METRIC_TONE } from "@/lib/statTone";
 import { Head } from "@/components/Head";
+import { HowLink } from "@/components/HowLink";
 
 
 export const metadata: Metadata = { title: "Statistik" };
@@ -160,8 +161,7 @@ async function Stats(props: PageProps<"/statistik">) {
           <p className="eyebrow">Alles, was der Tracker je gemessen hat</p>
           <h1 className="t-1">Statistik</h1>
           <p>
-            Verläufe über die gesamte Laufzeit seit {dateTime(since)} und die Rekorde dazu. Mit der Maus über eine Kurve fahren zeigt Zeitpunkt
-            und Wert.
+            Verläufe über die gesamte Laufzeit seit {dateTime(since)} und die Rekorde dazu.
           </p>
         </div>
       </section>
@@ -184,7 +184,7 @@ async function Stats(props: PageProps<"/statistik">) {
             <h2 className="t-2" id="graph-h">
               Eigener Graph
             </h2>
-            <p className="muted">Kennzahl, Spieler, Zeitraum und Raster frei wählen. Die Adresse im Browser enthält die Auswahl und lässt sich teilen.</p>
+            <p className="muted">Kennzahl, Spieler, Zeitraum und Raster frei wählen – der Link lässt sich teilen.</p>
           </div>
           {/* key: bei neuen Adress-Parametern (z. B. Link vom Profil) die Auswahl neu aufsetzen statt den alten State zu behalten */}
           <GraphBuilder key={toSearch(parseGraphQuery(sp)).toString()} players={playerOptions} initial={parseGraphQuery(sp)} />
@@ -260,10 +260,7 @@ async function Stats(props: PageProps<"/statistik">) {
               </dl>
             </section>
           </div>
-          <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
-            „Am Stück“ heißt: innerhalb eines Abfrage-Intervalls (standardmäßig eine Minute). Online-Zeit, Sessions und Zuschauer misst der Tracker selbst seit
-            seinem Start.
-          </p>
+          <HowLink section="zeitstrahl">Wie Rekorde entstehen</HowLink>
         </div>
       </section>
 
@@ -305,10 +302,7 @@ async function Stats(props: PageProps<"/statistik">) {
             <Chart label="Essen gegessen" tone={BOARD_TONE.foodEaten} points={tseries("foodEaten")} step />
             <Chart label="Twitch Subs" tone={METRIC_TONE.twitchSubs} points={subscriptionSeries.series[0]?.points ?? []} step sub="während Spieler online waren" />
           </div>
-          <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
-            Summe über alle Spieler, die der Tracker kennt. Jeder Spieler zählt mit seinem jeweils letzten bekannten Stand, deshalb kann die Kurve
-            am Anfang springen, wenn neue Spieler dazukommen. Pro Spieler gibt es die Graphen auf der <Link href="/spieler">Spielerseite</Link>.
-          </p>
+          <HowLink section="zeitstrahl" />
         </div>
       </section>
     </>

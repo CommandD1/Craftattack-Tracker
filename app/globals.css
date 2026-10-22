@@ -3211,8 +3211,18 @@ a.spark-card--link:hover .eyebrow {
   padding: 3px 0;
   font-size: 0.875rem;
 }
-.rankmore__row + .rankmore__row {
+.rankmore__rows > li + li > .rankmore__row {
   border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
+}
+/* Jede Zeile verlinkt auf die Bestenliste des Werts */
+a.rankmore__row {
+  color: inherit;
+  text-decoration: none;
+}
+@media (hover: hover) {
+  a.rankmore__row:hover .rankmore__name {
+    text-decoration: underline;
+  }
 }
 .rankmore__name {
   font-weight: 600;
@@ -3809,5 +3819,89 @@ a.rankboard__now {
   }
   .hl__time {
     grid-column: 1 / -1;
+  }
+}
+
+/* ---------- Erklärungen: Link auf /so-funktionierts statt Textblöcken ---------- */
+.how-link {
+  margin-top: 16px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.presence-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+  opacity: 0.85;
+}
+.presence-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.presence-legend i {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  box-shadow: 0 0 0 1.5px var(--line);
+}
+.presence-legend i[data-presence="server"] {
+  background: var(--presence);
+}
+.presence-legend i[data-presence="live"] {
+  background: var(--twitch);
+}
+.presence-legend i[data-presence="both"] {
+  background: linear-gradient(90deg, var(--presence) 50%, var(--twitch) 50%);
+}
+
+/* ---------- So funktioniert's ---------- */
+.how code {
+  font-family: var(--font-display);
+  font-size: 0.8125em;
+  padding: 0 4px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+.how {
+  display: grid;
+  gap: 20px;
+  max-width: 900px;
+}
+.how__section {
+  display: grid;
+  gap: 12px;
+  scroll-margin-top: 90px;
+}
+.how__facts {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+}
+.how__facts dt {
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-top: 3px;
+}
+.how__facts dd {
+  margin: 0;
+}
+.how__note {
+  font-size: 0.875rem;
+  opacity: 0.8;
+}
+@media (width <= 560px) {
+  .how__facts {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .how__facts dd {
+    margin-bottom: 8px;
   }
 }

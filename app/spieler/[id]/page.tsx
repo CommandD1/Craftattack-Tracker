@@ -30,6 +30,7 @@ import { TOP_CATEGORIES, boardHref, itemRanking, restRanking } from "@/lib/leade
 import type { TopPlaces } from "@/components/PlayerDetails";
 import { activeDays, dailyHighlights } from "@/lib/highlights";
 import { DayHighlights } from "@/components/DayHighlights";
+import { HowLink, PresenceLegend } from "@/components/HowLink";
 
 
 export async function generateMetadata({ params }: PageProps<"/spieler/[id]">): Promise<Metadata> {
@@ -407,12 +408,7 @@ async function StatsSection({ params }: { params: Params }) {
             );
           })}
         </dl>
-        <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
-          Alle Werte kommen aus der Einzelstatistik der API (inklusive Rang unter allen Teilnehmenden), die je Spieler
-          höchstens alle 15 Minuten abgefragt wird; für die Top 10 aktualisieren sie sich jede Minute. Schaden steht in Herzen (Rohwert der API geteilt durch 20).
-          Steht „geschätzt“ bei der Spielzeit, ist es der letzte API-Wert plus die seitdem gemessene Online-Zeit; „Tracker“ ist die seit Tracker-Start gemessene Online-Zeit.
-          Follower-Zuwachs zählt nur zwischen aufeinanderfolgenden Messungen, bei denen der Streamer auf dem Server war; globale Twitch-Followerstände werden nicht angezeigt. Ein Zuwachs von mehr als 20 Followern pro Minute auf dem Server erscheint als Ereignis. Twitch-Subs werden nur gezählt, wenn der Streamer während des Sub-Events auf dem Spielserver online war (auch AFK). Die Kurven zeigen den Verlauf seit Tracker-Start ({num(history.length)} Messpunkte). Mit der Maus über die Kurve fahren zeigt Zeitpunkt und Wert. Ein Klick auf Beschriftung oder Wert öffnet den großen Graphen auf der Statistik-Seite.
-        </p>
+        <HowLink section="profil" />
       </div>
     </section>
   );
@@ -535,9 +531,7 @@ async function TimelineSection({ params }: { params: Params }) {
               </Link>
             </div>
             <EventFeed events={recent} showPlayer={false} empty={`Für ${p.name} wurde noch nichts aufgezeichnet.`} getTimeState={getTimeState} />
-            <p className="muted" style={{ marginTop: 10, fontSize: ".875rem" }}>
-              Die Farbe der Uhrzeit zeigt den Status: Grün = auf dem Server, Lila = live, beide Farben = gleichzeitig auf dem Server und live. Klickbare Uhrzeiten öffnen das VOD an diesem Zeitpunkt.
-            </p>
+            <PresenceLegend />
           </div>
           <aside className="stack" style={{ "--stack": "16px" } as React.CSSProperties}>
             <div className="box" data-tone="white">
@@ -626,7 +620,7 @@ async function TimelineSection({ params }: { params: Params }) {
                 )}
               </ol>
               <p className="muted" style={{ marginTop: 10, fontSize: ".875rem" }}>
-                Seit Tracker-Start, aus den Join/Leave-Ereignissen berechnet. Der grüne Punkt heißt: gerade gemeinsam online.
+                Punkt: gerade gemeinsam online.
               </p>
             </section>
             <div className="box" data-tone="white">
@@ -671,9 +665,6 @@ async function TimelineSection({ params }: { params: Params }) {
                   })}
                 </ul>
               )}
-              <p className="muted" style={{ marginTop: 10, fontSize: ".875rem" }}>
-                Server-Sessions aus Join/Leave, Streams aus Stream-an/aus. Steht bei einem Eintrag „davon …“, überschneidet er sich mit der anderen Art.
-              </p>
             </div>
           </aside>
         </div>

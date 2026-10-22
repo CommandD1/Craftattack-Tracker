@@ -78,7 +78,7 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
         <div className="wrap">
           <p className="eyebrow">Twitch</p>
           <h1 className="t-1">Live</h1>
-          <p>Wer gerade streamt, wie viele zuschauen und wer wann an- und ausgemacht hat. Subs zählen nur, wenn der Streamer dabei auf dem Server online ist.</p>
+          <p>Wer gerade streamt, wie viele zuschauen und wer wann an- und ausgemacht hat.</p>
         </div>
       </section>
 

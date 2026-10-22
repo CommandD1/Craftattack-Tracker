@@ -10,6 +10,7 @@ import { Timelapse } from "@/components/Timelapse";
 import { GanttLiveSegment } from "@/components/GanttLiveSegment";
 import { findVodAt } from "@/lib/twitch";
 import { Head } from "@/components/Head";
+import { HowLink } from "@/components/HowLink";
 
 export const metadata: Metadata = { title: "Zeitstrahl" };
 
@@ -72,7 +73,7 @@ async function Timeline(props: PageProps<"/zeitstrahl">) {
           <p className="eyebrow">Ein Tag auf dem Server</p>
           <h1 className="t-1">Zeitstrahl</h1>
           <p>
-            Oben der Tag als Film im Zeitraffer, darunter jede Session als Balken. Hellblau heißt auf dem Server, grau heißt AFK, grün heißt AFK an einer Mob-Farm, gelb AFK beim Blöcke-Abbau, lila heißt live auf Twitch.
+            Wer an diesem Tag wann auf dem Server und live war – im Zeitraffer und als Balken.
             {nav.dataFrom && <> Daten an diesem Tag ab {time(new Date(nav.dataFrom).toISOString())} Uhr.</>}
           </p>
         </div>
@@ -198,11 +199,7 @@ async function Timeline(props: PageProps<"/zeitstrahl">) {
               </div>
             )}
           </div>
-          <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
-            Sessions entstehen aus den Join- und Leave-Ereignissen des Trackers, Streams aus den Stream-an/aus-Ereignissen. AFK heißt: online, aber
-            die gelaufene Strecke steigt mindestens 20 Minuten nicht, nur erkennbar bei Spielern mit Einzelstatistik. Sterben dabei trotzdem mindestens zehn Mobs
-            oder fallen zehn Blöcke pro Minute, ist dieser Teil eine AFK-Farm; sinkt die Rate darunter, ist es wieder normales AFK. Genauigkeit: etwa 30 Sekunden.
-          </p>
+          <HowLink section="afk">Wie Sessions und AFK erkannt werden</HowLink>
         </div>
       </section>
     </>

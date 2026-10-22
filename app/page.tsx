@@ -17,6 +17,7 @@ import { BOARD_STYLE } from "@/lib/boards";
 import { BoardValue } from "@/components/BoardValue";
 import { BOARD_TONE, METRIC_TONE } from "@/lib/statTone";
 import { Head } from "@/components/Head";
+import { HowLink } from "@/components/HowLink";
 
 // Titel, Untertitel und Farben wie auf craftattack.one/stats
 const BOARDS = BOARD_STYLE;
@@ -384,10 +385,7 @@ async function Dashboard() {
               </ol>
             </section>
           </div>
-          <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem" }}>
-            Die sechs oberen Listen kommen so von der API (nur Top 10), ▲▼ zeigt die Bewegung gegenüber dem Stand vor 24 Stunden. „Dauergäste“
-            misst der Tracker selbst seit seinem Start, dafür für alle Spieler.
-          </p>
+          <HowLink section="bestenlisten" />
         </div>
       </section>
     </div>

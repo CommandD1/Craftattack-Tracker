@@ -8,7 +8,7 @@ import { Sparkline } from "./Sparkline";
 import { BoardValue } from "./BoardValue";
 import { BOARD_ICON, Icon } from "./Icons";
 import { EXTRA_HISTORY_KEYS, EXTRA_STATS, STAT_GROUPS } from "@/lib/playerStats";
-import { boardHref } from "@/lib/leaderboards";
+import { LEADERBOARDS, boardHref } from "@/lib/leaderboards";
 
 const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
@@ -195,7 +195,8 @@ export function PlayerActivity({
                       <p className="rankmore__label">{g.label}</p>
                       <ul className="rankmore__rows">
                         {g.charts.map((ch) => (
-                          <li key={ch.k} className="rankmore__row">
+                          <li key={ch.k}>
+                            <Link className="rankmore__row" href={boardHref(ch.k)} title={`Bestenliste „${LEADERBOARDS[ch.k].title}“ öffnen`}>
                             <span className="rankmore__name">{EXTRA_STATS[ch.k].label}</span>
                             <span className="rankmore__spark">
                               {ch.points.length >= 2 ? <Sparkline points={ch.points} width={160} height={28} kind="rank" invert label={`Platz ${EXTRA_STATS[ch.k].label}`} /> : <span className="muted">–</span>}
@@ -204,6 +205,7 @@ export function PlayerActivity({
                               {ch.nowRank === null ? "–" : `#${ch.nowRank}`}
                             </span>
                             <span className="rankmore__best muted num">{ch.best === null ? "" : `bester #${ch.best}`}</span>
+                            </Link>
                           </li>
                         ))}
                       </ul>
