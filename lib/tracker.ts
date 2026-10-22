@@ -634,23 +634,50 @@ function mergeLiveSources(ctx: DiffContext, twitch: Map<string, TwitchStream> | 
   return liveNow;
 }
 
+/** Stream-Ende eines Spielers; `endMs` = Zeitpunkt des Endes */
+function streamEndEvent(ps: PlayerState, endMs: number): Omit<TrackerEvent, "id" | "at"> {
+  const since = ps.liveSince ? Date.parse(ps.liveSince) : endMs;
+  return {
+    type: "stream_end",
+    player: ps.id,
+    playerName: ps.name,
+    uuid: ps.uuid,
+    where: "twitch",
+    meta: {
+      login: ps.live?.login ?? null,
+      streamSeconds: Math.max(0, Math.round((endMs - since) / 1000)),
+      peakViewers: ps.livePeakViewers ?? ps.peakViewers,
+      peakViewersOnServer: ps.peakViewersOnServer ?? 0,
+      startedAt: ps.liveSince,
+    },
+  };
+}
+
 /** Twitch: Stream-Beginn, -Ende, Titelwechsel, Zuschauer-Spitzen und Stream-Zeit je Spieler */
 function diffStreams(ctx: DiffContext, liveNow: Map<string, ApiStats["live"][number]>) {
-  const { state, nowDate, now, first, sinceLast, onlineNow, push } = ctx;
+  const { state, nowDate, now, first, sinceLast, onlineNow, push, pushAt } = ctx;
   for (const l of liveNow.values()) {
     const ps = ensurePlayer(state, { id: l.id, name: l.name, uuid: state.players[l.id]?.uuid ?? "" }, now);
     const prev = ps.live;
     const onServer = onlineNow.has(l.id);
     ps.peakViewers = Math.max(ps.peakViewers, l.viewers);
-    const newStream = !prev || Boolean(l.startedAt && prev.startedAt && l.startedAt !== prev.startedAt);
+    const startedAt = l.startedAt && Date.parse(l.startedAt) < nowDate.getTime() ? new Date(l.startedAt).toISOString() : null;
+    // Neuer Stream, ohne dass der Tracker das Ende gesehen hat (Neustart zwischen zwei Polls oder während der
+    // Tracker aus war): Twitch meldet einen späteren Beginn als `liveSince`. Sonst zählten "aktueller Stream"-
+    // Werte (Subs, Follower) über alle Streams seitdem weiter.
+    const restarted = Boolean(prev && startedAt && (!ps.liveSince || Date.parse(ps.liveSince) < Date.parse(startedAt) - 5 * 60_000));
+    if (restarted) {
+      pushAt(startedAt!, streamEndEvent(ps, Date.parse(startedAt!)));
+    }
+    const newStream = !prev || restarted;
     ps.livePeakViewers = newStream ? l.viewers : Math.max(ps.livePeakViewers ?? 0, l.viewers);
     if (onServer) ps.peakViewersOnServer = Math.max(ps.peakViewersOnServer ?? 0, l.viewers);
     if (prev) {
       if (onServer) ps.streamOnServerSeconds = (ps.streamOnServerSeconds ?? 0) + sinceLast;
       else ps.streamOffServerSeconds = (ps.streamOffServerSeconds ?? 0) + sinceLast;
     }
-    if (!prev) {
-      ps.liveSince = l.startedAt && Date.parse(l.startedAt) < nowDate.getTime() ? new Date(l.startedAt).toISOString() : now;
+    if (newStream) {
+      ps.liveSince = startedAt ?? now;
       if (!first) {
         push({
           type: "stream_start",
@@ -686,22 +713,7 @@ function diffStreams(ctx: DiffContext, liveNow: Map<string, ApiStats["live"][num
   }
   for (const ps of Object.values(state.players)) {
     if (ps.live && !liveNow.has(ps.id)) {
-      const since = ps.liveSince ? Date.parse(ps.liveSince) : nowDate.getTime();
-      const streamSeconds = Math.max(0, Math.round((nowDate.getTime() - since) / 1000));
-      push({
-        type: "stream_end",
-        player: ps.id,
-        playerName: ps.name,
-        uuid: ps.uuid,
-        where: "twitch",
-        meta: {
-          login: ps.live.login,
-          streamSeconds,
-          peakViewers: ps.livePeakViewers ?? ps.peakViewers,
-          peakViewersOnServer: ps.peakViewersOnServer ?? 0,
-          startedAt: ps.liveSince,
-        },
-      });
+      push(streamEndEvent(ps, nowDate.getTime()));
       ps.live = null;
       ps.liveSince = null;
       ps.livePeakViewers = 0;

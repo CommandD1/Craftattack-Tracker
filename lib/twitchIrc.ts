@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { appendLiveEvent, getEvents, getState, incrementLiveSubscriptionEvent, saveTwitchChatMessage } from "./store";
+import { appendLiveEvent, chatEvent, getEvents, getState, incrementLiveSubscriptionEvent, saveTwitchChatMessage } from "./store";
 import { observeSharedChatPair } from "./sharedChat";
 import { KNOWN_LOGINS } from "./tracker";
 import type { PlayerState, TrackerEvent } from "./types";
@@ -446,7 +446,7 @@ async function handleLine(irc: IrcState, socket: WebSocket, line: string) {
 
     const idSource = message.tags["source-id"] ?? message.tags.id ?? `${sourceChannel}:${sender.id}:${at}:${message.trailing}`;
     const id = `twitch-chat-${createHash("sha256").update(idSource).digest("hex").slice(0, 32)}`;
-    await saveTwitchChatMessage({
+    const chat = {
       id,
       at,
       senderId: sender.id,
@@ -455,7 +455,9 @@ async function handleLine(irc: IrcState, socket: WebSocket, line: string) {
       channelName: sourceOwner.name,
       message: message.trailing,
       sharedWith: isCopy && owner.id !== sourceOwner.id && owner.id !== sender.id ? [owner.id] : [],
-    });
+    };
+    // Neue Nachricht zwischen Spielern auch als Ereignis (Kopien aus dem geteilten Chat nicht noch einmal)
+    if (await saveTwitchChatMessage(chat)) await appendLiveEvent(chatEvent(chat, currentState.players));
     return;
   }
   if (message.command !== "USERNOTICE") return;

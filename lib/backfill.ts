@@ -1,6 +1,6 @@
 import "server-only";
 import { getDb } from "./db";
-import { assignEventPlayer, deleteBackfilledEvents, deleteEvents, ensureLoaded, loadAllSessions, getState, insertPastEvents, type StoredSession } from "./store";
+import { assignEventPlayer, backfillChatEvents, deleteBackfilledEvents, deleteEvents, ensureLoaded, loadAllSessions, getState, insertPastEvents, type StoredSession } from "./store";
 import { loadAfkSpans } from "./analytics";
 import { AFK_MS, UNKNOWN_DEATH_GRACE_MS } from "./tracker";
 import { trackedSecondsOf } from "./playtime";
@@ -34,6 +34,8 @@ export async function runBackfills(): Promise<void> {
   if (n > 0) console.log(`[tracker] ${n} AFK-Farm-Ereignisse rückwirkend nachgetragen`);
   const d = await assignUnknownDeaths();
   if (d > 0) console.log(`[tracker] ${d} unbekannte Tode per Ausschluss nachträglich zugeordnet`);
+  const c = await backfillChatEvents();
+  if (c > 0) console.log(`[tracker] ${c} Chat-Nachrichten als Ereignisse nachgetragen`);
 }
 
 /** Entfernt veraltete AFK-Ereignisse einmal pro Version der Erkennungslogik. */

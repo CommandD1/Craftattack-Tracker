@@ -4,7 +4,7 @@ import { Suspense, cache } from "react";
 import type { Metadata } from "next";
 import { BOARD_TONE } from "@/lib/statTone";
 import { loadTracker } from "@/lib/data";
-import { isShownEvent, sharedChatPlayers } from "@/lib/events";
+import { chatVodLinks, isShownEvent, sharedChatPlayers } from "@/lib/events";
 import { thinHistory } from "@/lib/thinHistory";
 import { BOARD_KEYS, type BoardKey, type TrackerEvent } from "@/lib/types";
 import { ago, boardParts, dateTime, duration, num, skinUrl } from "@/lib/format";
@@ -249,7 +249,7 @@ async function StatsSection({ params }: { params: Params }) {
   if (!p) return null;
   const [history, subscriptions, subscriptionBoard, followerBoard] = await Promise.all([
     getPlayerHistory(id),
-    getTwitchSubscriptionProfile(id, p.live ? p.liveSince ?? p.live.startedAt ?? null : null),
+    getTwitchSubscriptionProfile(id, p.live ? p.live.startedAt ?? p.liveSince ?? null : null),
     getTwitchSubscriptionBoard(),
     getFullBoard("followers"),
   ]);
@@ -281,11 +281,11 @@ async function StatsSection({ params }: { params: Params }) {
                   <dt className="pstat">
                     <Link className="pstat__label pstat__link" href={graphHref(k)} title={`Follower von ${p.name} im Graphen der Statistik öffnen`}>
                       <Icon.users width={18} height={18} aria-hidden="true" />
-                      <span></span>
+                      <span>Follower</span>
                       <span className="pstat__go" aria-hidden="true">↗</span>
                     </Link>
                     {followerRankIndex >= 0 && (
-                      <span className="pstat__mFollower-Zuwachs auf dem Servereta">
+                      <span className="pstat__meta">
                         <span className="tag" data-tone="ink" title={`Platz ${followerRankIndex + 1} von ${followerBoard.length} in der Bestenliste für Follower-Zuwachs auf dem Server`}>
                           Platz {followerRankIndex + 1}
                           <span className="muted"> / {followerBoard.length}</span>
@@ -641,9 +641,10 @@ async function TimelineSection({ params }: { params: Params }) {
 }
 
 async function ChatSection({ params }: { params: Params }) {
-  const { id, state, now, p } = await ctxFor(params);
+  const { id, state, events, now, p } = await ctxFor(params);
   if (!p) return null;
   const [chat, sharedSessions] = await Promise.all([getPlayerTwitchChat(id, 20), getPlayerSharedChatSessions(id)]);
+  const chatVods = chatVodLinks(events);
   return (
     <>
     {(chat.sentTotal > 0 || chat.receivedTotal > 0 || sharedSessions.length > 0) && (
@@ -681,6 +682,7 @@ async function ChatSection({ params }: { params: Params }) {
                     nameOf={(pid) => state.players[pid]?.name ?? pid}
                     now={now}
                     empty={`${p.name} hat noch in keinem Spieler-Chat geschrieben.`}
+                    vodOf={(mid) => chatVods.get(mid)}
                     label={`Nachrichten von ${p.name}`}
                   />
                 </div>
@@ -699,6 +701,7 @@ async function ChatSection({ params }: { params: Params }) {
                     nameOf={(pid) => state.players[pid]?.name ?? pid}
                     now={now}
                     empty={`Im Chat von ${p.name} hat noch kein Spieler geschrieben.`}
+                    vodOf={(mid) => chatVods.get(mid)}
                     label={`Nachrichten im Chat von ${p.name}`}
                   />
                 </div>

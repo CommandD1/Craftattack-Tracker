@@ -156,6 +156,7 @@ export type EventType =
   | "subscription_gift"
   | "follower_burst"
   | "raid"
+  | "chat"
   | "shared_chat_start"
   | "shared_chat_end"
   | "server_online"
