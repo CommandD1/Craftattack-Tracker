@@ -1968,9 +1968,6 @@ a.spark-card--link:hover .eyebrow {
 .gb__chart {
   transition: opacity 0.25s ease;
 }
-.gb__chart[data-loading] {
-  opacity: 0.55;
-}
 .gb__legend-btn {
   transition: opacity 0.25s ease;
 }
@@ -3095,14 +3092,17 @@ a.spark-card--link:hover .eyebrow {
 .rankmore__rows > li + li > .rankmore__row {
   border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
 }
-/* Jede Zeile verlinkt auf die Bestenliste des Werts */
-a.rankmore__row {
+/* Name und Platz führen zur Bestenliste, die Kurve in den Graphen */
+.rankmore__row a {
   color: inherit;
   text-decoration: none;
 }
 @media (hover: hover) {
-  a.rankmore__row:hover .rankmore__name {
+  a.rankmore__name:hover {
     text-decoration: underline;
+  }
+  a.rankmore__spark:hover {
+    opacity: 0.75;
   }
 }
 .rankmore__name {
@@ -3949,4 +3949,24 @@ a.rankboard__now {
 }
 .ptop__trend {
   display: contents;
+}
+
+/* Graph-Links auf der Statistik: ganze Kurve klickbar, Karten mit „Graph ↗“ */
+.chart__body-link {
+  display: block;
+  color: inherit;
+}
+@media (hover: hover) {
+  .chart__body-link:hover {
+    opacity: 0.8;
+  }
+}
+.stat-card__graph {
+  margin-left: 0.6em;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.gb__loading {
+  font-size: 0.8125rem;
 }

@@ -199,16 +199,18 @@ export function PlayerActivity({
                       <ul className="rankmore__rows">
                         {g.charts.map((ch) => (
                           <li key={ch.k}>
-                            <Link className="rankmore__row" href={boardHref(ch.k)} title={`Bestenliste „${LEADERBOARDS[ch.k].title}“ öffnen`}>
-                            <span className="rankmore__name">{EXTRA_STATS[ch.k].label}</span>
-                            <span className="rankmore__spark">
-                              {ch.points.length >= 2 ? <Sparkline points={ch.points} width={160} height={28} kind="rank" invert label={`Platz ${EXTRA_STATS[ch.k].label}`} /> : <span className="muted">–</span>}
-                            </span>
-                            <span className="rankmore__now num" data-top={ch.nowRank !== null && ch.nowRank <= 3 ? "true" : undefined}>
-                              {ch.nowRank === null ? "–" : `#${ch.nowRank}`}
-                            </span>
-                            <span className="rankmore__best muted num">{ch.best === null ? "" : `bester #${ch.best}`}</span>
-                            </Link>
+                            <div className="rankmore__row">
+                              <Link className="rankmore__name" href={boardHref(ch.k)} title={`Bestenliste „${LEADERBOARDS[ch.k].title}“ öffnen`}>
+                                {EXTRA_STATS[ch.k].label}
+                              </Link>
+                              <Link className="rankmore__spark" href={graphHref(rankMetric(ch.k), [id])} title={`Platz in „${LEADERBOARDS[ch.k].title}“ im Graphen öffnen`}>
+                                {ch.points.length >= 2 ? <Sparkline points={ch.points} width={160} height={28} kind="rank" invert label={`Platz ${EXTRA_STATS[ch.k].label}`} /> : <span className="muted">–</span>}
+                              </Link>
+                              <Link className="rankmore__now num" href={boardHref(ch.k)} tabIndex={-1} data-top={ch.nowRank !== null && ch.nowRank <= 3 ? "true" : undefined}>
+                                {ch.nowRank === null ? "–" : `#${ch.nowRank}`}
+                              </Link>
+                              <span className="rankmore__best muted num">{ch.best === null ? "" : `bester #${ch.best}`}</span>
+                            </div>
                           </li>
                         ))}
                       </ul>
