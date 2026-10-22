@@ -5,6 +5,7 @@ import { ago, dateTime, num } from "@/lib/format";
 import { EXTRA_STATS, EXTRA_STAT_KEYS, FORMATTERS, STAT_GROUPS, TOP_LABELS } from "@/lib/playerStats";
 import { Icon } from "@/components/Icons";
 import { GROUP_TONE } from "@/lib/statTone";
+import { LEADERBOARDS, boardHref, isTopCategory, itemHref, type TopCategory } from "@/lib/leaderboards";
 
 const GROUP_ICON: Record<string, keyof typeof Icon> = {
   abbau: "pickaxe",
@@ -14,6 +15,24 @@ const GROUP_ICON: Record<string, keyof typeof Icon> = {
   tiere: "heart",
   afk: "clock",
 };
+
+/** Alles außerhalb der eigenen Top 10 einer Kategorie, verlinkt auf die Vielfalt-Bestenliste */
+function RestRow({ category, list, total }: { category: TopCategory; list: { count: number }[]; total: number | undefined }) {
+  if (typeof total !== "number") return null;
+  const rest = Math.max(0, total - list.reduce((s, e) => s + e.count, 0));
+  if (rest <= 0) return null;
+  return (
+    <li className="ptop__row ptop__row--rest">
+      <span className="ptop__name">
+        <Link href={boardHref(`rest-${category}`)} title={`Bestenliste „${LEADERBOARDS[`rest-${category}`].title}“`}>
+          Sonstiges
+        </Link>
+      </span>
+      <span className="ptop__count num">{num(rest)}</span>
+      <span className="ptop__track muted">{Math.round((rest / total) * 100)} % von {num(total)}</span>
+    </li>
+  );
+}
 
 /** Winzige Verlaufslinie (serverseitig, ohne JavaScript) */
 function MiniTrend({ values }: { values: number[] }) {
@@ -37,9 +56,12 @@ export function PlayerDetails({
   name,
   now,
   topHistory = [],
+  totals = {},
 }: {
   id: string;
   detail: PlayerDetail | null;
+  /** Gesamtwerte der Top-Kategorien, die nicht in `detail.stats` stehen (Abgebaut, Mobs) */
+  totals?: Partial<Record<string, number>>;
   name: string;
   now: number;
   /** Gespeicherte Stände der Top-Listen, älteste zuerst */
@@ -91,9 +113,9 @@ export function PlayerDetails({
                           <dd className="num">{FORMATTERS[meta.format](detail.stats[k])}</dd>
                           <dd className="pdetail__rank">
                             {rank && (
-                              <span className="tag" data-tone={rank.rank <= 3 ? "gold" : "ink"} title={`Platz ${rank.rank} von ${rank.of}`}>
+                              <Link className="tag" data-tone={rank.rank <= 3 ? "gold" : "ink"} href={boardHref(k)} title={`Platz ${rank.rank} von ${rank.of} – Bestenliste „${LEADERBOARDS[k].title}“ öffnen`}>
                                 #{rank.rank}
-                              </span>
+                              </Link>
                             )}
                           </dd>
                         </div>
@@ -127,7 +149,15 @@ export function PlayerDetails({
                         const trend = [...topHistory.map((h) => h.tops[key]?.[entry.key]).filter((v): v is number => typeof v === "number"), entry.count];
                         return (
                         <li key={entry.key} className="ptop__row">
-                          <span className="ptop__name">{entry.name}</span>
+                          <span className="ptop__name">
+                            {isTopCategory(key) ? (
+                              <Link href={itemHref(key, entry.key)} title={`Bestenliste für ${entry.name}`}>
+                                {entry.name}
+                              </Link>
+                            ) : (
+                              entry.name
+                            )}
+                          </span>
                           <span className="ptop__count num">{num(entry.count)}</span>
                           <span className="ptop__track">
                             <span className="ptop__bar" aria-hidden="true">
@@ -139,6 +169,7 @@ export function PlayerDetails({
                         </li>
                         );
                       })}
+                      {isTopCategory(key) && <RestRow category={key} list={list} total={totals[key] ?? detail.stats[key]} />}
                     </ol>
                   </div>
                 );

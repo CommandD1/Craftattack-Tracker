@@ -2,43 +2,41 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
-import { BOARD_TONE, METRIC_TONE } from "@/lib/statTone";
 import { loadTracker } from "@/lib/data";
 import { getFullBoard, getTwitchSubscriptionBoard } from "@/lib/store";
 import { getAfkBoard, getAfkRanksBefore, getBoardRanksBefore, getFollowerRanksBefore, getTrackedRanksBefore } from "@/lib/analytics";
-import { BOARD_KEYS, type AfkKind, type BoardKey } from "@/lib/types";
+import { BOARD_KEYS, type AfkKind, type BoardKey, type PlayerState } from "@/lib/types";
 import { ago, boardValue, duration, num } from "@/lib/format";
-import { BOARD_STYLE } from "@/lib/boards";
 import { BoardValue } from "@/components/BoardValue";
-import { BOARD_ICON, Icon } from "@/components/Icons";
+import { Icon } from "@/components/Icons";
 import { playtimeOf } from "@/lib/playtime";
 import { Head } from "@/components/Head";
-
+import { EXTRA_STATS, FORMATTERS, type ExtraStatKey } from "@/lib/playerStats";
+import {
+  LEADERBOARDS,
+  LEADERBOARD_GROUPS,
+  LEADERBOARD_KEYS,
+  TOP_CATEGORIES,
+  boardHref,
+  isLeaderboardKey,
+  itemBoardMeta,
+  parseItemParam,
+  topCategoryLabel,
+  type LeaderboardKey,
+  type LeaderboardMeta,
+  type TopCategory,
+} from "@/lib/leaderboards";
 
 export const metadata: Metadata = { title: "Bestenlisten" };
 
-const BOARDS: Record<BoardKey | "followers" | "twitchSubs" | "tracked" | "afk" | "afkmobs" | "afkblocks", { title: string; sub: string; tone: string }> = {
-  playtimeSeconds: { title: BOARD_STYLE.playtimeSeconds.title, sub: "Spielzeit laut API, sonst vom Tracker gemessene Online-Zeit", tone: BOARD_TONE.playtimeSeconds },
-  diamonds: { title: BOARD_STYLE.diamonds.title, sub: "Diamanten", tone: BOARD_TONE.diamonds },
-  deaths: { title: BOARD_STYLE.deaths.title, sub: "Tode", tone: BOARD_TONE.deaths },
-  blocksBroken: { title: BOARD_STYLE.blocksBroken.title, sub: "Abgebaute Blöcke", tone: BOARD_TONE.blocksBroken },
-  mobsKilled: { title: BOARD_STYLE.mobsKilled.title, sub: "Erledigte Mobs", tone: BOARD_TONE.mobsKilled },
-  distance: { title: BOARD_STYLE.distance.title, sub: "Gelaufene Strecke", tone: BOARD_TONE.distance },
-  damageDealt: { title: BOARD_STYLE.damageDealt.title, sub: "Ausgeteilter Schaden in Herzen", tone: BOARD_TONE.damageDealt },
-  totemsUsed: { title: BOARD_STYLE.totemsUsed.title, sub: "Benutzte Totems", tone: BOARD_TONE.totemsUsed },
-  foodEaten: { title: BOARD_STYLE.foodEaten.title, sub: "Gegessene Nahrung", tone: BOARD_TONE.foodEaten },
-  followers: { title: "Follower-Zuwachs auf dem Server", sub: "Neue Twitch-Follower während der Streamer auf dem Server waren", tone: METRIC_TONE.followers },
-  twitchSubs: { title: "Sub-Stars", sub: "Twitch-Abos auf dem Server seit Beginn der IRC-Erfassung", tone: METRIC_TONE.twitchSubs },
-  tracked: { title: "Dauergäste", sub: "Online-Zeit laut Tracker, alle Spieler", tone: METRIC_TONE.tracked },
-  afk: { title: "Standbilder", sub: "AFK-Zeit laut Tracker: online, aber ≥ 20 Min keine Bewegung", tone: METRIC_TONE.afkSeconds },
-  afkmobs: { title: "Mob-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Mobs pro Minute gestorben sind (AFK-Mobfarm)", tone: METRIC_TONE.afkMobsSeconds },
-  afkblocks: { title: "Block-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke pro Minute abgebaut wurden (AFK-Blockfarm)", tone: METRIC_TONE.afkBlocksSeconds },
-};
-const KEYS = [...BOARD_KEYS, "followers", "twitchSubs", "tracked", "afk", "afkmobs", "afkblocks"] as const;
+type Key = Exclude<LeaderboardKey, "top">;
 const AFK_KEYS = ["afk", "afkmobs", "afkblocks"] as const;
 const isAfkKey = (k: string): k is (typeof AFK_KEYS)[number] => (AFK_KEYS as readonly string[]).includes(k);
 const afkKindOf = (k: string): AfkKind | undefined => (k === "afkmobs" ? "mobs" : k === "afkblocks" ? "blocks" : undefined);
-type Key = (typeof KEYS)[number];
+const isBoardKey = (k: string): k is BoardKey => (BOARD_KEYS as readonly string[]).includes(k);
+const isExtraKey = (k: string): k is ExtraStatKey => k in EXTRA_STATS;
+const isRestKey = (k: string): k is `rest-${TopCategory}` => k.startsWith("rest-");
+
 /** Vergleichszeitraum für die ▲/▼-Anzeige */
 const SPANS = {
   "1h": { hours: 1, label: "1 Stunde" },
@@ -49,20 +47,49 @@ const SPANS = {
 } as const;
 type Span = keyof typeof SPANS;
 
-function listHref(key: Key, span: Span) {
-  const q = new URLSearchParams();
-  if (key !== "playtimeSeconds") q.set("liste", key);
-  if (span !== "24h") q.set("seit", span);
-  const qs = q.toString();
-  return qs ? `/bestenlisten?${qs}` : "/bestenlisten";
+/** Gesamtwert einer Top-10-Kategorie: Hauptlisten aus `stats`, die übrigen aus der Einzelstatistik */
+function categoryTotal(p: PlayerState, c: TopCategory): number | undefined {
+  return isBoardKey(c) ? p.stats[c] : p.detail?.stats[c];
 }
+
+/** Alle Blöcke, Mobs und Tiere aus den Top-10-Listen der Spieler, je Kategorie nach Anzahl Spieler sortiert */
+function itemOptions(players: PlayerState[]) {
+  const out = new Map<TopCategory, { key: string; name: string; players: number }[]>();
+  for (const c of TOP_CATEGORIES) {
+    const items = new Map<string, { key: string; name: string; players: number }>();
+    for (const p of players) {
+      for (const e of p.detail?.tops[c] ?? []) {
+        const it = items.get(e.key) ?? items.set(e.key, { key: e.key, name: e.name, players: 0 }).get(e.key)!;
+        it.players += 1;
+      }
+    }
+    out.set(c, [...items.values()].sort((a, b) => b.players - a.players || a.name.localeCompare(b.name, "de")));
+  }
+  return out;
+}
+
+type Row = {
+  id: string;
+  name: string;
+  uuid: string;
+  value: number;
+  at: string | null;
+  online: boolean;
+  afkNow?: boolean;
+  playtimeSource?: ReturnType<typeof playtimeOf>["source"];
+  /** Zusatz rechts neben dem Namen */
+  note?: string;
+};
 
 async function Boards(props: PageProps<"/bestenlisten">) {
   const sp = await props.searchParams;
   const raw = typeof sp.liste === "string" ? sp.liste : "playtimeSeconds";
-  const key: Key = (KEYS as readonly string[]).includes(raw) ? (raw as Key) : "playtimeSeconds";
+  const item = raw === "top" ? parseItemParam(typeof sp.item === "string" ? sp.item : undefined) : null;
+  const key: Key | "top" = item ? "top" : isLeaderboardKey(raw) ? raw : "playtimeSeconds";
   const span: Span = typeof sp.seit === "string" && sp.seit in SPANS ? (sp.seit as Span) : "24h";
   const hours = SPANS[span].hours;
+  // ▲▼ gibt es nur, wo der Tracker einen früheren Stand kennt
+  const hasMovement = key === "tracked" || key === "followers" || isAfkKey(key) || isBoardKey(key);
   const [{ state, now }, ranksBefore]: [{ state: Awaited<ReturnType<typeof loadTracker>>["state"]; now: number }, Record<string, number>] = await Promise.all([
     loadTracker(),
     key === "tracked"
@@ -71,33 +98,31 @@ async function Boards(props: PageProps<"/bestenlisten">) {
         ? getAfkRanksBefore(hours, afkKindOf(key))
         : key === "followers"
           ? getFollowerRanksBefore(hours)
-        : key === "twitchSubs"
-          ? Promise.resolve({})
-          : getBoardRanksBefore(hours).then((r) => r[key] ?? {}),
+          : isBoardKey(key)
+            ? getBoardRanksBefore(hours).then((r) => r[key] ?? {})
+            : Promise.resolve({}),
   ]);
-  const b = BOARDS[key];
+  const players = Object.values(state.players);
+  const options = itemOptions(players);
+  const itemName = item ? (options.get(item.category)?.find((o) => o.key === item.key)?.name ?? item.key) : "";
+  const b: LeaderboardMeta = key === "top" ? itemBoardMeta(item!.category, itemName) : LEADERBOARDS[key];
 
-  let rows: { id: string; name: string; uuid: string; value: number; at: string | null; online: boolean; afkNow?: boolean; playtimeSource?: ReturnType<typeof playtimeOf>["source"] }[];
+  let rows: Row[];
+  let fmt: (v: number) => string = num;
   if (key === "playtimeSeconds") {
-    rows = Object.values(state.players)
+    rows = players
       .map((p) => {
         const playtime = playtimeOf(p, now);
-        return {
-          id: p.id,
-          name: p.name,
-          uuid: p.uuid,
-          value: playtime.seconds,
-          at: null,
-          online: p.online,
-          playtimeSource: playtime.source,
-        };
+        return { id: p.id, name: p.name, uuid: p.uuid, value: playtime.seconds, at: null, online: p.online, playtimeSource: playtime.source };
       })
       .filter((p) => p.value > 0)
       .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, "de"));
+    fmt = (v) => boardValue("playtimeSeconds", v);
   } else if (isAfkKey(key)) {
     rows = (await getAfkBoard(afkKindOf(key))).map((r) => ({ ...r, at: null }));
+    fmt = duration;
   } else if (key === "tracked") {
-    rows = Object.values(state.players)
+    rows = players
       .map((p) => ({
         id: p.id,
         name: p.name,
@@ -108,14 +133,57 @@ async function Boards(props: PageProps<"/bestenlisten">) {
       }))
       .filter((p) => p.value > 0)
       .sort((a, b) => b.value - a.value);
+    fmt = duration;
   } else if (key === "twitchSubs") {
     rows = await getTwitchSubscriptionBoard();
-  } else {
+  } else if (key === "followers") {
+    rows = await getFullBoard("followers");
+  } else if (isBoardKey(key)) {
     rows = await getFullBoard(key);
+    fmt = (v) => boardValue(key, v);
+  } else if (isExtraKey(key)) {
+    // Zusatzwerte: letzter Stand aus /api/player für jeden Spieler, den der Tracker je abgefragt hat
+    rows = players
+      .flatMap((p) => {
+        const v = p.detail?.stats[key];
+        return typeof v === "number" && v > 0 ? [{ id: p.id, name: p.name, uuid: p.uuid, value: v, at: p.detail!.fetchedAt, online: p.online }] : [];
+      })
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, "de"));
+    fmt = FORMATTERS[EXTRA_STATS[key].format];
+  } else if (isRestKey(key)) {
+    // Vielfalt: Gesamtwert minus Summe der eigenen Top 10
+    const c = key.slice("rest-".length) as TopCategory;
+    rows = players
+      .flatMap((p) => {
+        const total = categoryTotal(p, c);
+        const tops = p.detail?.tops[c];
+        if (typeof total !== "number" || total <= 0 || !tops?.length) return [];
+        const rest = Math.max(0, total - tops.reduce((s, e) => s + e.count, 0));
+        return rest > 0
+          ? [{ id: p.id, name: p.name, uuid: p.uuid, value: rest, at: p.detail!.fetchedAt, online: p.online, note: `${Math.round((rest / total) * 100)} % von ${num(total)}` }]
+          : [];
+      })
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, "de"));
+  } else {
+    // Einzelnes Item: nur Spieler, bei denen es in den eigenen Top 10 steht
+    rows = players
+      .flatMap((p) => {
+        const e = p.detail?.tops[item!.category]?.find((t) => t.key === item!.key);
+        return e ? [{ id: p.id, name: p.name, uuid: p.uuid, value: e.count, at: p.detail!.fetchedAt, online: p.online }] : [];
+      })
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, "de"));
   }
-  const inApi = new Set((key === "tracked" || key === "followers" || key === "twitchSubs" || isAfkKey(key) ? [] : state.latest?.boards?.[key] ?? []).map((e) => e.id));
-  const fmt = (v: number) => (key === "tracked" || isAfkKey(key) ? duration(v) : key === "followers" ? num(v) : boardValue(key, v));
-  const IconCmp = key === "followers" || key === "tracked" ? Icon.users : key === "twitchSubs" ? Icon.gift : key === "afkmobs" ? Icon.sword : key === "afkblocks" ? Icon.pickaxe : key === "afk" ? Icon.clock : Icon[BOARD_ICON[key]];
+  const inApi = new Set((isBoardKey(key) ? (state.latest?.boards?.[key] ?? []) : []).map((e) => e.id));
+  const IconCmp = Icon[b.icon as keyof typeof Icon] ?? Icon.trophy;
+  const meta = (e: Row) => {
+    if (e.note) return e.note;
+    if (isAfkKey(key)) return e.afkNow ? (key === "afk" ? "gerade AFK" : "farmt gerade") : "";
+    if (key === "tracked") return e.online ? "läuft" : "";
+    if (key === "playtimeSeconds") return inApi.has(e.id) ? "" : e.playtimeSource === "estimate" ? "geschätzt" : e.playtimeSource === "tracker" ? "Tracker" : "API-Wert";
+    if (isBoardKey(key) && inApi.has(e.id)) return "";
+    // Älter als eine Stunde: Stand dazuschreiben
+    return e.at && now - Date.parse(e.at) > 3600_000 ? `Stand ${ago(e.at, now)}` : "";
+  };
 
   return (
     <>
@@ -125,33 +193,70 @@ async function Boards(props: PageProps<"/bestenlisten">) {
           <h1 className="t-1">Bestenlisten</h1>
           <p>
             Die API zeigt pro Spielstatistik nur zehn Namen. Der Tracker merkt sich aber jeden, der dort je aufgetaucht ist,
-            mit seinem letzten bekannten Wert. Twitch-Follower werden minütlich für alle erfassten Kanäle gelesen.
-            Twitch-Abos werden ab Beginn der IRC-Erfassung gezählt, aber nur wenn der Streamer beim Eingang auf dem Server online war (AFK zählt als online).
+            mit seinem letzten bekannten Wert – auch für alle weiteren Werte aus den Spielerprofilen und einzelne Blöcke und Mobs.
           </p>
         </div>
       </section>
 
       <section className="block block--tight" data-tone="paper">
         <div className="wrap">
-          <ul className="filters" aria-label="Liste wählen">
-            {KEYS.map((k) => (
-              <li key={k}>
-                <Link className="tag" data-tone="white" aria-current={k === key ? "true" : undefined} href={listHref(k, span)}>
-                  <span className="swatch" data-tone={BOARDS[k].tone} aria-hidden="true" />
-                  {BOARDS[k].title}
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <ul className="filters" aria-label="Vergleichszeitraum" style={{ marginTop: 8 }}>
-            {(Object.keys(SPANS) as Span[]).map((sKey) => (
-              <li key={sKey}>
-                <Link className="tag" data-tone={sKey === span ? undefined : "white"} aria-current={sKey === span ? "true" : undefined} href={listHref(key, sKey)}>
-                  ▲▼ vs. {SPANS[sKey].label}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <div className="ev-filters">
+            {LEADERBOARD_GROUPS.map((g) => {
+              const keys = LEADERBOARD_KEYS.filter((k) => LEADERBOARDS[k].group === g.key);
+              if (keys.length === 0) return null;
+              return (
+                <div key={g.key} className="ev-filters__row">
+                  <p className="eyebrow">{g.label}</p>
+                  <ul className="filters" aria-label={`Listen: ${g.label}`}>
+                    {keys.map((k) => (
+                      <li key={k}>
+                        <Link className="tag" data-tone="white" aria-current={k === key ? "true" : undefined} href={boardHref(k, span)} title={LEADERBOARDS[k].sub}>
+                          <span className="swatch" data-tone={LEADERBOARDS[k].tone} aria-hidden="true" />
+                          {LEADERBOARDS[k].title}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+            <div className="ev-filters__row">
+              <label className="eyebrow" htmlFor="item">
+                Einzeln
+              </label>
+              <form className="ev-form" action="/bestenlisten" method="get">
+              <input type="hidden" name="liste" value="top" />
+              <select id="item" name="item" defaultValue={item ? `${item.category}|${item.key}` : ""}>
+                <option value="" disabled>
+                  Block, Mob oder Tier wählen …
+                </option>
+                {TOP_CATEGORIES.map((c) => (
+                  <optgroup key={c} label={topCategoryLabel(c)}>
+                    {(options.get(c) ?? []).map((o) => (
+                      <option key={o.key} value={`${c}|${o.key}`}>
+                        {o.name} ({num(o.players)})
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <button className="btn btn--small" data-tone="ink" type="submit">
+                Zeigen
+              </button>
+              </form>
+            </div>
+          </div>
+          {hasMovement && (
+            <ul className="filters" aria-label="Vergleichszeitraum" style={{ marginTop: 8 }}>
+              {(Object.keys(SPANS) as Span[]).map((sKey) => (
+                <li key={sKey}>
+                  <Link className="tag" data-tone={sKey === span ? undefined : "white"} aria-current={sKey === span ? "true" : undefined} href={boardHref(key as Key, sKey)}>
+                    ▲▼ vs. {SPANS[sKey].label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
 
           <section className="box st-board" data-tone={b.tone} style={{ maxWidth: 760 }} aria-labelledby="fb-h">
             <header className="st-board__head">
@@ -176,44 +281,42 @@ async function Boards(props: PageProps<"/bestenlisten">) {
                   const diff = before === undefined ? null : before - (i + 1);
                   const title = `Vor ${SPANS[span].label} Platz ${before}`;
                   return (
-                  <li key={e.id}>
-                    <Link className="st-board__row st-board__row--full" href={`/spieler/${encodeURIComponent(e.id)}`}>
-                      <span className="st-board__rank num">{i + 1}</span>
-                      <Head id={e.id} uuid={e.uuid} name={e.name} decorative />
-                      <span className="st-board__name">
-                        {e.name}
-                        {e.online && <span className="dot" style={{ display: "inline-block", marginLeft: 8, verticalAlign: "middle" }} title="online" />}
-                      </span>
-                      <span className="st-board__meta">
-                        {isAfkKey(key) ? (e.afkNow ? (key === "afk" ? "gerade AFK" : "farmt gerade") : "") : key === "tracked" ? (e.online ? "läuft" : "") : key === "playtimeSeconds" ? (inApi.has(e.id) ? "" : e.playtimeSource === "estimate" ? "geschätzt" : e.playtimeSource === "tracker" ? "Tracker" : "API-Wert") : inApi.has(e.id) ? "" : e.at ? `Stand ${ago(e.at, now)}` : ""}
-                      </span>
-                      <span className="st-board__val num">{key === "damageDealt" ? <BoardValue k={key} v={e.value} /> : fmt(e.value)}</span>
-                      {diff === null ? (
-                        <span className="st-board__mv st-board__mv--new" title={`Vor ${SPANS[span].label} noch nicht erfasst`}>
-                          neu
+                    <li key={e.id}>
+                      <Link className="st-board__row st-board__row--full" href={`/spieler/${encodeURIComponent(e.id)}`}>
+                        <span className="st-board__rank num">{i + 1}</span>
+                        <Head id={e.id} uuid={e.uuid} name={e.name} decorative />
+                        <span className="st-board__name">
+                          {e.name}
+                          {e.online && <span className="dot" style={{ display: "inline-block", marginLeft: 8, verticalAlign: "middle" }} title="online" />}
                         </span>
-                      ) : diff > 0 ? (
-                        <span className="st-board__mv st-board__mv--up num" title={title}>
-                          ▲{diff}
-                        </span>
-                      ) : diff < 0 ? (
-                        <span className="st-board__mv st-board__mv--down num" title={title}>
-                          ▼{-diff}
-                        </span>
-                      ) : (
-                        <span className="st-board__mv" aria-hidden="true" />
-                      )}
-                    </Link>
-                  </li>
+                        <span className="st-board__meta">{meta(e)}</span>
+                        <span className="st-board__val num">{key === "damageDealt" ? <BoardValue k={key} v={e.value} /> : fmt(e.value)}</span>
+                        {!hasMovement ? (
+                          <span className="st-board__mv" aria-hidden="true" />
+                        ) : diff === null ? (
+                          <span className="st-board__mv st-board__mv--new" title={`Vor ${SPANS[span].label} noch nicht erfasst`}>
+                            neu
+                          </span>
+                        ) : diff > 0 ? (
+                          <span className="st-board__mv st-board__mv--up num" title={title}>
+                            ▲{diff}
+                          </span>
+                        ) : diff < 0 ? (
+                          <span className="st-board__mv st-board__mv--down num" title={title}>
+                            ▼{-diff}
+                          </span>
+                        ) : (
+                          <span className="st-board__mv" aria-hidden="true" />
+                        )}
+                      </Link>
+                    </li>
                   );
                 })
               )}
             </ol>
           </section>
           <p className="muted" style={{ marginTop: 16, fontSize: ".9375rem", maxWidth: 760 }}>
-            „Aktuell“ heißt: steht gerade in der Top 10 der API. Bei allen anderen API-Listen ist der Wert der letzte, den der
-            Tracker gesehen hat, der echte Wert kann inzwischen höher sein. Bei den Dauerzockern ist die Spielzeit außerhalb der API-Top-10 geschätzt oder die vom Tracker gemessene Online-Zeit. „Dauergäste“, „Standbilder“ und die AFK-Farmer misst der Tracker selbst, für alle. ▲▼ zeigt die
-            Bewegung gegenüber dem Stand vor {SPANS[span].label}, „neu“ heißt: damals noch nicht in der Liste.
+            Bei den API-Listen ist der Wert der letzte, den der Tracker gesehen hat; der echte Wert kann inzwischen höher sein. Bei den Dauerzockern ist die Spielzeit außerhalb der API-Top-10 geschätzt oder die vom Tracker gemessene Online-Zeit. „Dauergäste“, „Standbilder“ und die AFK-Farmer misst der Tracker selbst, für alle. Weitere Werte, einzelne Blöcke und Mobs stammen aus den Spielerprofilen der API (nur Spieler, die der Tracker schon abgefragt hat; bei Blöcken und Mobs nur die eigenen Top 10). „Vielfalt“ ist der Gesamtwert ohne die eigenen Top 10. ▲▼ zeigt die Bewegung gegenüber dem Stand vor {SPANS[span].label}, „neu“ heißt: damals noch nicht in der Liste.
           </p>
         </div>
       </section>

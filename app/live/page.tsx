@@ -197,7 +197,7 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
                           <strong className="num">
                             {p.followersLiveAtSample === p.liveSince ? num(p.followersOnLiveStream ?? 0) : "–"}
                           </strong>
-                          <small>Follower-Zuwachs auf dem Server</small>
+                          <small>Follower in diesem Stream</small>
                         </span>
                         <span className="stream__stat" data-tone={METRIC_TONE.twitchSubs}>
                           <strong className="num">{num(streamSubs.get(p.id) ?? 0)}</strong>

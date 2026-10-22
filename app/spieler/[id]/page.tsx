@@ -26,6 +26,7 @@ import { getPlayerEventTimeState } from "@/lib/playerEventStatus";
 import { ChatSkeleton, DetailsSkeleton, HeadSkeleton, InsightsSkeleton, RanksSkeleton, TilesSkeleton, TimelineSkeleton } from "@/components/PlayerSkeletons";
 import { METRIC_TONE } from "@/lib/statTone";
 import { Head } from "@/components/Head";
+import { boardHref } from "@/lib/leaderboards";
 
 
 export async function generateMetadata({ params }: PageProps<"/spieler/[id]">): Promise<Metadata> {
@@ -286,17 +287,17 @@ async function StatsSection({ params }: { params: Params }) {
                     </Link>
                     {followerRankIndex >= 0 && (
                       <span className="pstat__meta">
-                        <span className="tag" data-tone="ink" title={`Platz ${followerRankIndex + 1} von ${followerBoard.length} in der Bestenliste für Follower-Zuwachs auf dem Server`}>
+                        <Link className="tag" data-tone="ink" href={boardHref("followers")} title={`Platz ${followerRankIndex + 1} von ${followerBoard.length} in der Bestenliste „Fanmagnet“ (Follower-Zuwachs auf dem Server)`}>
                           Platz {followerRankIndex + 1}
                           <span className="muted"> / {followerBoard.length}</span>
-                        </span>
+                        </Link>
                       </span>
                     )}
                   </dt>
                   <Link className="pstat__val" href={graphHref(k)} tabIndex={-1} aria-hidden="true">
                     <FigValue>{p.followersAt ? num(p.followersOnServer) : "–"}</FigValue>
                   </Link>
-                  <StatSpark points={sparkHistory} k="followersOnServer" label="Follower-Zuwachs auf dem Server" href={graphHref(k)} />
+                  <StatSpark points={sparkHistory} k="followersOnServer" label="Follower" href={graphHref(k)} />
                 </div>
               );
             }
@@ -311,14 +312,15 @@ async function StatsSection({ params }: { params: Params }) {
                     </Link>
                     {subscriptionRankIndex >= 0 && (
                       <span className="pstat__meta">
-                        <span
+                        <Link
                           className="tag"
                           data-tone="ink"
+                          href={boardHref("twitchSubs")}
                           title={`Platz ${subscriptionRankIndex + 1} von ${subscriptionBoard.length} in der Twitch-Subs-Bestenliste`}
                         >
                           Platz {subscriptionRankIndex + 1}
                           <span className="muted"> / {subscriptionBoard.length}</span>
-                        </span>
+                        </Link>
                       </span>
                     )}
                   </dt>
@@ -378,10 +380,10 @@ async function StatsSection({ params }: { params: Params }) {
                   {(ranks[k] || fromTracker) && (
                     <span className="pstat__meta">
                       {ranks[k] && (
-                        <span className="tag" data-tone="ink" title={ranks[k].of ? `Platz ${ranks[k].rank} von ${ranks[k].of}` : `Platz ${ranks[k].rank} in der Top 10`}>
+                        <Link className="tag" data-tone="ink" href={boardHref(k)} title={ranks[k].of ? `Platz ${ranks[k].rank} von ${ranks[k].of} – Bestenliste öffnen` : `Platz ${ranks[k].rank} in der Top 10 – Bestenliste öffnen`}>
                           Platz {ranks[k].rank}
                           {ranks[k].of ? <span className="muted"> / {ranks[k].of}</span> : null}
-                        </span>
+                        </Link>
                       )}
                       {fromTracker && (
                         <span className="tag" data-tone="ink" title={trackerTitle}>
@@ -444,7 +446,7 @@ async function DetailsSection({ params }: { params: Params }) {
   const { id, now, p } = await ctxFor(params);
   if (!p) return null;
   const topHistory = await getPlayerTopHistory(id);
-  return <PlayerDetails id={id} detail={p.detail} name={p.name} now={now} topHistory={topHistory} />;
+  return <PlayerDetails id={id} detail={p.detail} name={p.name} now={now} topHistory={topHistory} totals={{ blocksBroken: p.stats.blocksBroken, mobsKilled: p.stats.mobsKilled }} />;
 }
 
 async function TimelineSection({ params }: { params: Params }) {
