@@ -65,7 +65,7 @@ const BASE_METRICS: Record<BaseMetric, MetricMeta> = {
   totemsUsed: { label: "Totems", perPlayer: true, counter: true, format: num, tone: METRIC_TONE.totemsUsed, icon: "totem", group: "kampf", unit: "totems" },
   distance: { label: "Strecke", perPlayer: true, counter: true, format: (v) => boardValue("distance", v), tone: METRIC_TONE.distance, icon: "boots", group: "bewegung", unit: "strecke" },
   foodEaten: { label: "Essen", perPlayer: true, counter: true, format: num, tone: METRIC_TONE.foodEaten, icon: "food", group: "items", unit: "items" },
-  afkSeconds: { label: "AFK-Zeit", perPlayer: true, counter: true, format: hours, hint: "AFK = online, aber ≥ 20 Min keine Bewegung; aus dem Spielerverlauf berechnet", tone: METRIC_TONE.afkSeconds, icon: "clock", group: "afk", unit: "zeit" },
+  afkSeconds: { label: "AFK-Zeit", perPlayer: true, counter: true, format: hours, hint: "AFK laut Server (ab 5 Min ohne Bewegung), als Phasen seit Tracker-Start; ohne Server-Zähler geschätzt", tone: METRIC_TONE.afkSeconds, icon: "clock", group: "afk", unit: "zeit" },
   afkMobsSeconds: { label: "AFK: Mobs farmen", perPlayer: true, counter: true, format: hours, hint: "AFK-Zeit, in der trotzdem ≥ 10 Mobs pro Minute gestorben sind (Mob-Farm)", tone: METRIC_TONE.afkMobsSeconds, icon: "sword", group: "afk", unit: "zeit" },
   afkBlocksSeconds: { label: "AFK: Blöcke farmen", perPlayer: true, counter: true, format: hours, hint: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke pro Minute abgebaut wurden (Block-Farm)", tone: METRIC_TONE.afkBlocksSeconds, icon: "pickaxe", group: "afk", unit: "zeit" },
 };

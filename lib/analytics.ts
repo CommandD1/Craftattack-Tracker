@@ -163,12 +163,25 @@ async function dayNav(day: string | undefined, now: number): Promise<DayNav> {
 
 /* ============================================================ AFK-Phasen */
 
-type AfkRow = { player: string; at: Date; online: boolean; distance: number | string | null; mobs: number | string | null; blocks: number | string | null };
-const AFK_COLS = "player, at, online, distance, mobs_killed AS mobs, blocks_broken AS blocks";
+type AfkRow = {
+  player: string;
+  at: Date;
+  online: boolean;
+  distance: number | string | null;
+  mobs: number | string | null;
+  blocks: number | string | null;
+  /** AFK-Zähler der Quelle (Sekunden), nur in Punkten mit Zusatzwerten */
+  src: number | null;
+};
+const AFK_COLS = `player, at, online, distance, mobs_killed AS mobs, blocks_broken AS blocks, ${extraStatSql("afkSeconds")} AS src`;
 
 
-/** Liegen zwei Verlaufspunkte weiter auseinander, hat der Tracker nichts aufgezeichnet (sonst alle 5 Min ein Punkt) */
-const AFK_GAP_MS = 15 * 60_000;
+/**
+ * Liegen zwei Verlaufspunkte weiter auseinander, hat der Tracker nichts aufgezeichnet: Online-Spieler bekommen
+ * spätestens alle 5 Min einen Punkt (plus Poll-Jitter). Knapp darüber, weil AFK schon nach 5 Min beginnt und eine
+ * Lücke sonst als Stillstand zählen würde.
+ */
+const AFK_GAP_MS = 8 * 60_000;
 
 /** Sekunden aller Phasen, optional nur einer Art („none“ = AFK ohne Farm) */
 export function spanSeconds(spans: Span[], kind?: AfkKind | "none"): number {
@@ -206,13 +219,197 @@ function counterAt(list: { t: number; mobs: number | null; blocks: number | null
   };
 }
 
+type CounterPoint = { t: number; mobs: number | null; blocks: number | null };
+
 /**
- * Kern der AFK-Erkennung über nach Spieler und Zeit sortierte Verlaufspunkte (siehe `getAfkSpans`).
- * Jede Phase wird ab ihrem Beginn in einzelne Minuten zerlegt: Steigen Mobs bzw. Blöcke in einer Minute um
+ * Eine AFK-Phase [a, b] ab ihrem Beginn in einzelne Minuten zerlegen: Steigen Mobs bzw. Blöcke in einer Minute um
  * mindestens AFK_FARM_MIN, ist diese Minute AFK-Farm („mobs“ bzw. „blocks“), sonst normales AFK. Nichts wird über
  * die ganze Phase aufsummiert. Aufeinanderfolgende Minuten gleicher Art werden zu einer Spanne zusammengefasst.
+ * `list` sind die Zählerstände während der Phase (der erste am oder vor `a`).
+ */
+function farmSpans(a: number, b: number, list: CounterPoint[], byLeave: boolean): Span[] {
+  const mobsAt = counterAt(list, "mobs");
+  const blocksAt = counterAt(list, "blocks");
+  type Seg = { a: number; b: number; kind: AfkKind | undefined; m: number; bl: number; first: number; firstMs: number };
+  const segs: Seg[] = [];
+  let m0 = mobsAt(a);
+  let b0 = blocksAt(a);
+  for (let x = a; x < b; x += AFK_FARM_WINDOW_MS) {
+    const y = Math.min(b, x + AFK_FARM_WINDOW_MS);
+    const ms = y - x;
+    const m1 = mobsAt(y);
+    const b1 = blocksAt(y);
+    const m = Math.max(0, m1 - m0);
+    const bl = Math.max(0, b1 - b0);
+    m0 = m1;
+    b0 = b1;
+    const last = segs[segs.length - 1];
+    // Angebrochene Schlussminute (z. B. das Stück bis „jetzt“) sagt über die Rate kaum etwas: Art vom Vorgänger
+    const kind = ms < AFK_FARM_WINDOW_MS && last ? last.kind : (farmKindOf(m, bl, ms) ?? undefined);
+    if (last && last.kind === kind) {
+      last.b = y;
+      last.m += m;
+      last.bl += bl;
+    } else {
+      segs.push({ a: x, b: y, kind, m, bl, first: kind === "mobs" ? m : bl, firstMs: ms });
+    }
+  }
+  if (segs.length === 0) return [[a, b]];
+  return segs.map((s, i): Span => {
+    if (!s.kind) return [s.a, s.b];
+    const lastSeg = i === segs.length - 1;
+    return [
+      s.a,
+      s.b,
+      s.kind,
+      {
+        at: s.a,
+        atValue: s.first,
+        windowSeconds: Math.round(s.firstMs / 1000),
+        value: s.kind === "mobs" ? s.m : s.bl,
+        mobs: s.m,
+        blocks: s.bl,
+        afkSince: a,
+        byLeave: byLeave && lastSeg,
+        stillAfk: !lastSeg,
+      },
+    ];
+  });
+}
+
+/** Spannen [a, b] sortieren und überlappende bzw. aneinanderstoßende zusammenfassen */
+function mergeRanges(list: [number, number][]): [number, number][] {
+  const out: [number, number][] = [];
+  for (const [a, b] of [...list].sort((x, y) => x[0] - y[0])) {
+    const last = out[out.length - 1];
+    if (last && a <= last[1]) last[1] = Math.max(last[1], b);
+    else out.push([a, b]);
+  }
+  return out;
+}
+
+/** Teile einer Phase außerhalb der (sortierten, zusammengefassten) Bereiche `cut`; Art und Farm-Angaben bleiben */
+function subtractRanges(span: Span, cut: [number, number][]): Span[] {
+  const [a, b, ...rest] = span;
+  const out: Span[] = [];
+  let x = a;
+  for (const [c, d] of cut) {
+    if (d <= x) continue;
+    if (c >= b) break;
+    if (c > x) out.push([x, c, ...rest] as Span);
+    x = Math.max(x, d);
+  }
+  if (x < b) out.push([x, b, ...rest] as Span);
+  return out;
+}
+
+/** Steigt der AFK-Zähler der Quelle in einem Intervall um so viel weniger als dessen Länge, gilt es trotzdem als ganz AFK (Zähler in 30-s-Schritten) */
+const SOURCE_AFK_SLACK_MS = 45_000;
+/** Der Server rechnet beim AFK-Beginn die 5 Min Stillstand rückwirkend dazu: so weit darf ein Zuwachs vor das Intervall reichen */
+const SOURCE_AFK_RETRO_MS = 10 * 60_000;
+
+/**
+ * AFK laut Quelle: Der Server zählt `afkSeconds` (/api/player) hoch, solange ein Spieler AFK ist, und hält dafür die
+ * Spielzeit an. AFK beginnt nach 5 Min ohne Bewegung; diese 5 Min bucht er rückwirkend von der Spielzeit auf AFK um
+ * (der Zähler springt um ~300 s). Zwischen zwei Verlaufspunkten mit Zählerstand ist der Zuwachs also die AFK-Zeit bis
+ * zum späteren Punkt; ein voller Zuwachs reicht dabei so weit zurück, wie er groß ist. Ein Teil-Zuwachs liegt am Rand
+ * zum benachbarten AFK-Intervall (Phase endet) bzw. am Intervallende (Phase beginnt). `covered` sind die Zeiträume, für die die Quelle eine Aussage macht – dort gilt nur sie.
+ */
+function sourceAfkFromRows(rows: AfkRow[], now: number, state: TrackerState): Map<string, { spans: Span[]; covered: [number, number][] }> {
+  const out = new Map<string, { spans: Span[]; covered: [number, number][] }>();
+  let i = 0;
+  while (i < rows.length) {
+    const id = rows[i].player;
+    const covered: [number, number][] = [];
+    const afk: { a: number; b: number; byLeave: boolean }[] = [];
+    const pts: CounterPoint[] = [];
+    // Letzter Punkt mit Zählerstand seit ununterbrochener Online-Zeit
+    let prev = null as { t: number; v: number } | null;
+    let lastAt = 0;
+    const step = (t: number, v: number) => {
+      if (prev && t > prev.t) {
+        const dt = t - prev.t;
+        const gain = Math.min(dt + SOURCE_AFK_RETRO_MS, Math.max(0, (v - prev.v) * 1000));
+        covered.push([prev.t, t]);
+        if (gain > 0) {
+          const run = afk[afk.length - 1];
+          const touches = run && run.b >= prev.t;
+          // Ganzes Intervall, sonst am Rand zur laufenden Phase (sie endet hier) bzw. am Ende (Phase beginnt)
+          const [a, b] = gain >= dt - SOURCE_AFK_SLACK_MS ? [Math.min(prev.t, t - gain), t] : touches ? [prev.t, prev.t + gain] : [t - gain, t];
+          if (run && a <= run.b) run.b = Math.max(run.b, b);
+          else afk.push({ a, b, byLeave: false });
+        }
+      }
+      prev = { t, v };
+    };
+    for (; i < rows.length && rows[i].player === id; i++) {
+      const r = rows[i];
+      const t = new Date(r.at).getTime();
+      if (t - lastAt > AFK_GAP_MS) prev = null;
+      lastAt = t;
+      if (!r.online) {
+        const run = afk[afk.length - 1];
+        if (prev && run && run.b >= prev.t) run.byLeave = true;
+        prev = null;
+        continue;
+      }
+      pts.push({ t, mobs: r.mobs === null ? null : Number(r.mobs), blocks: r.blocks === null ? null : Number(r.blocks) });
+      if (r.src !== null) step(t, Number(r.src));
+    }
+    // Laufende Sitzung: jüngster Zählerstand aus dem Zustand (jede Minute frisch), läuft die Phase noch, bis jetzt
+    const p = state.players[id];
+    const live = p?.online ? p.detail?.stats.afkSeconds : undefined;
+    const fetched = p?.detail ? Date.parse(p.detail.fetchedAt) : NaN;
+    if (typeof live === "number" && fetched - lastAt <= AFK_GAP_MS) {
+      step(fetched, live);
+      const run = afk[afk.length - 1];
+      if (run && run.b >= fetched - SOURCE_AFK_SLACK_MS && now - fetched <= 3 * POLL_INTERVAL_MS) {
+        run.b = now;
+        covered.push([fetched, now]);
+      }
+    }
+    if (covered.length === 0) continue;
+    const spans: Span[] = [];
+    for (const run of afk) {
+      const before = pts.filter((q) => q.t <= run.a).at(-1);
+      const list = [...(before ? [before] : []), ...pts.filter((q) => q.t > run.a && q.t < run.b)];
+      const end = pts.find((q) => q.t >= run.b);
+      list.push({ t: run.b, mobs: end?.mobs ?? null, blocks: end?.blocks ?? null });
+      spans.push(...farmSpans(run.a, run.b, list, run.byLeave));
+    }
+    out.set(id, { spans, covered: mergeRanges(covered) });
+  }
+  return out;
+}
+
+/**
+ * AFK-Phasen aus nach Spieler und Zeit sortierten Verlaufspunkten (siehe `getAfkSpans`). Vorrang hat die Quelle
+ * (`sourceAfkFromRows`); nur wo sie keine Aussage macht (vor ihrer Aufzeichnung, Datenlücken, Abfrage fehlgeschlagen),
+ * gilt die eigene Erkennung (`ownAfkFromRows`).
  */
 function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, state: TrackerState): Map<string, Span[]> {
+  const own = ownAfkFromRows(rows, from, to, now, state);
+  const source = sourceAfkFromRows(rows, now, state);
+  const out = new Map<string, Span[]>();
+  for (const id of new Set([...own.keys(), ...source.keys()])) {
+    const src = source.get(id);
+    const list: Span[] = [];
+    for (const s of src?.spans ?? []) {
+      const a = Math.max(from, s[0]);
+      const b = Math.min(to, s[1]);
+      if (b > a) list.push([a, b, ...s.slice(2)] as Span);
+    }
+    for (const s of own.get(id) ?? []) list.push(...(src ? subtractRanges(s, src.covered) : [s]));
+    if (list.length) out.set(id, list.sort((x, y) => x[0] - y[0]));
+  }
+  return out;
+}
+
+/**
+ * Eigene AFK-Erkennung (Ersatz, wenn die Quelle keinen AFK-Zähler liefert): online, aber seit AFK_MS keine Bewegung,
+ * rückwirkend ab der letzten Bewegung – so zählt auch der Server (gegen dessen Zähler abgeglichen: 5 Min, nur Strecke).
+ */
+function ownAfkFromRows(rows: AfkRow[], from: number, to: number, now: number, state: TrackerState): Map<string, Span[]> {
   const out = new Map<string, Span[]>();
   const add = (id: string, a: number, b: number, kind: AfkKind | undefined, farm?: AfkFarmInfo) => {
     const x = Math.max(from, a);
@@ -230,54 +427,12 @@ function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, stat
   let lastMobs: number | null = null;
   let lastBlocks: number | null = null;
   // Zählerstände der laufenden Stillstandsphase (ab der letzten Bewegung), Grundlage der Farm-Abschnitte
-  let pts: { t: number; mobs: number | null; blocks: number | null }[] = [];
+  let pts: CounterPoint[] = [];
   const close = (id: string, t: number, byLeave = false, mobs = lastMobs, blocks = lastBlocks) => {
     if (!(wasOnline && lastDist !== null && t - lastMove >= AFK_MS)) return;
     const list = pts.filter((p) => p.t < t);
     list.push({ t, mobs, blocks });
-    // Jede Minute ab Beginn der Phase einzeln bewerten und gleiche Arten zusammenfassen
-    const mobsAt = counterAt(list, "mobs");
-    const blocksAt = counterAt(list, "blocks");
-    type Seg = { a: number; b: number; kind: AfkKind | undefined; m: number; bl: number; first: number; firstMs: number };
-    const segs: Seg[] = [];
-    let m0 = mobsAt(lastMove);
-    let b0 = blocksAt(lastMove);
-    for (let x = lastMove; x < t; x += AFK_FARM_WINDOW_MS) {
-      const y = Math.min(t, x + AFK_FARM_WINDOW_MS);
-      const ms = y - x;
-      const m1 = mobsAt(y);
-      const b1 = blocksAt(y);
-      const m = Math.max(0, m1 - m0);
-      const bl = Math.max(0, b1 - b0);
-      m0 = m1;
-      b0 = b1;
-      const last = segs[segs.length - 1];
-      // Angebrochene Schlussminute (z. B. das Stück bis „jetzt“) sagt über die Rate kaum etwas: Art vom Vorgänger
-      const kind = ms < AFK_FARM_WINDOW_MS && last ? last.kind : (farmKindOf(m, bl, ms) ?? undefined);
-      if (last && last.kind === kind) {
-        last.b = y;
-        last.m += m;
-        last.bl += bl;
-      } else {
-        segs.push({ a: x, b: y, kind, m, bl, first: kind === "mobs" ? m : bl, firstMs: ms });
-      }
-    }
-    if (segs.length === 0) return add(id, lastMove, t, undefined);
-    segs.forEach((s, i) => {
-      if (!s.kind) return add(id, s.a, s.b, undefined);
-      const lastSeg = i === segs.length - 1;
-      add(id, s.a, s.b, s.kind, {
-        at: s.a,
-        atValue: s.first,
-        windowSeconds: Math.round(s.firstMs / 1000),
-        value: s.kind === "mobs" ? s.m : s.bl,
-        mobs: s.m,
-        blocks: s.bl,
-        afkSince: lastMove,
-        byLeave: byLeave && lastSeg,
-        stillAfk: !lastSeg,
-      });
-    });
+    for (const s of farmSpans(lastMove, t, list, byLeave)) add(id, ...s);
   };
   const finish = (id: string) => {
     const p = state.players[id];

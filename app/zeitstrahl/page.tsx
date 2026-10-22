@@ -21,7 +21,7 @@ const HOURS = [0, 3, 6, 9, 12, 15, 18, 21];
 const SORTS = [
   { key: "spielzeit", label: "Spielzeit", hint: "Online-Zeit an diesem Tag, inklusive AFK" },
   { key: "aktiv", label: "Aktiv auf dem Server", hint: "Online-Zeit ohne AFK" },
-  { key: "afk", label: "AFK-Zeit", hint: "Online, aber mindestens 20 Minuten keine Bewegung" },
+  { key: "afk", label: "AFK-Zeit", hint: "Laut Server: online, aber mindestens 5 Minuten keine Bewegung" },
   { key: "afkmobs", label: "AFK Mobs farmen", hint: "AFK-Zeit, in der trotzdem ≥ 10 Mobs pro Minute gestorben sind" },
   { key: "afkblocks", label: "AFK Blöcke farmen", hint: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke pro Minute abgebaut wurden" },
   { key: "live", label: "Live auf Twitch", hint: "Stream-Dauer an diesem Tag" },
@@ -118,7 +118,7 @@ async function Timeline(props: PageProps<"/zeitstrahl">) {
                 <i style={{ background: "var(--presence)" }} /> auf dem Server
               </li>
               <li>
-                <i className="legend__afk" /> AFK (keine Bewegung ≥ 20 Min)
+                <i className="legend__afk" /> AFK (laut Server, ≥ 5 Min keine Bewegung)
               </li>
               <li>
                 <i className="legend__afk legend__afk--mobs" /> AFK, farmt Mobs (≥ 10 Mobs/Min)

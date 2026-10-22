@@ -109,9 +109,11 @@ export default function HowItWorks() {
               AFK und Farmen
             </h2>
             <p>
-              AFK heißt: online, aber die gelaufene Strecke steigt mindestens 20 Minuten nicht. Sterben dabei trotzdem mindestens zehn Mobs oder fallen zehn Blöcke pro
-              Minute, ist dieser Teil eine AFK-Farm; sinkt die Rate darunter, ist es wieder normales AFK. Erkennbar nur bei Spielern mit Spielerprofil, genau auf etwa
-              eine Minute. „AFK laut Server“ ist dagegen der Wert, den der Server selbst zählt.
+              AFK-Zeiten kommen vom Server: Er zählt einen Spieler nach 5 Minuten ohne Bewegung als AFK, rechnet diese 5 Minuten rückwirkend dazu und hält
+              solange die Spielzeit an. Der Tracker liest diesen Zähler jede Minute und leitet daraus die AFK-Phasen ab. Nur wo er fehlt (Abfrage
+              fehlgeschlagen, ältere Daten), schätzt der Tracker selbst: online, aber die gelaufene Strecke steigt 5 Minuten nicht – gegen den Server-Zähler
+              abgeglichen trifft das rund 97 % der AFK-Zeit. Sterben während AFK trotzdem mindestens zehn Mobs oder fallen zehn Blöcke pro Minute, ist dieser
+              Teil eine AFK-Farm; sinkt die Rate darunter, ist es wieder normales AFK.
             </p>
           </section>
 

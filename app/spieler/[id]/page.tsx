@@ -215,7 +215,7 @@ async function HeadSection({ params }: { params: Params }) {
                 </span>
               )}
               {p.online && p.afkSince && (
-                <span className="tag" data-tone="idle" title={p.afkFarm ? `Die Strecke steigt nicht, aber ${p.afkFarm === "mobs" ? "Mobs sterben" : "Blöcke fallen"} – eine AFK-Farm` : "Die gelaufene Strecke steigt seit mindestens 20 Minuten nicht"}>
+                <span className="tag" data-tone="idle" title={p.afkFarm ? `Die Strecke steigt nicht, aber ${p.afkFarm === "mobs" ? "Mobs sterben" : "Blöcke fallen"} – eine AFK-Farm` : "Der Server zählt den Spieler als AFK (ab 5 Minuten ohne Bewegung)"}>
                   AFK seit {ago(p.afkSince).replace("vor ", "")}
                   {p.afkFarm ? ` · ${p.afkFarm === "mobs" ? "farmt Mobs" : "baut Blöcke ab"}` : ""}
                 </span>
@@ -550,7 +550,7 @@ async function TimelineSection({ params }: { params: Params }) {
                 <dd className="num">{num(deaths)}</dd>
                 <dt>Längste Session</dt>
                 <dd className="num">{p.longestSession > 0 ? duration(p.longestSession) : "–"}</dd>
-                <dt title="Online, aber ohne Streckenzuwachs für mindestens 20 Minuten. Zählt zur Online-Zeit dazu.">AFK-Zeit</dt>
+                <dt title="Laut Server: online, aber mindestens 5 Minuten keine Bewegung. Zählt zur Online-Zeit dazu.">AFK-Zeit</dt>
                 <dd className="num">
                   {afkSeconds > 0 ? duration(afkSeconds) : "–"}
                   {afkSeconds > 0 && onlineSeconds > 0 && <small className="muted"> {Math.round((afkSeconds / onlineSeconds) * 100)} %</small>}
