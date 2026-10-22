@@ -1350,3 +1350,31 @@ export async function getRankHistory(): Promise<RankHistory> {
     return { buckets, bucketMinutes: minutes, players, of, extra };
   });
 }
+
+/**
+ * Platz je Spieler über die Zeit für den Graphen (aus dem Rang-Verlauf, Bündel wie im Profil).
+ * Ohne gewählte Spieler: die fünf, die zuletzt am besten platziert waren.
+ */
+export async function getRankSeries(q: { key: BoardKey | ExtraStatKey; players: string[]; from: number | null; to: number | null }): Promise<{
+  series: { id: string; name: string; points: { at: string; v: number }[] }[];
+  bucketMinutes: number;
+}> {
+  const [h, state] = await Promise.all([getRankHistory(), getState()]);
+  const isBoard = (BOARD_KEYS as readonly string[]).includes(q.key);
+  const seriesOf = (pid: string): (number | null)[] | undefined =>
+    isBoard ? h.players[pid]?.[q.key as BoardKey] : h.extra[pid]?.[q.key as ExtraStatKey];
+  const lastOf = (pid: string) => [...(seriesOf(pid) ?? [])].reverse().find((v): v is number => v !== null) ?? Infinity;
+  const all = [...new Set([...Object.keys(h.players), ...Object.keys(h.extra)])];
+  const ids = q.players.length ? q.players : all.filter((pid) => lastOf(pid) < Infinity).sort((a, b) => lastOf(a) - lastOf(b)).slice(0, 5);
+  const from = q.from ?? 0;
+  const to = q.to ?? Date.now();
+  const series = ids.map((id) => {
+    const values = seriesOf(id) ?? [];
+    const points = h.buckets.flatMap((t, i) => {
+      const v = values[i];
+      return v !== null && v !== undefined && t >= from && t <= to ? [{ at: new Date(t).toISOString(), v }] : [];
+    });
+    return { id, name: state.players[id]?.name ?? id, points };
+  });
+  return { series, bucketMinutes: h.bucketMinutes };
+}

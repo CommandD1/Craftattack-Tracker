@@ -127,7 +127,7 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
             className="box spark-card spark-card--link"
             data-tone="white"
             style={{ marginTop: 24 }}
-            href={`/statistik?metric=viewers&zeit=${GRAPH_ZEIT[range.key] ?? "6h"}#graph`}
+            href={`/graph?metric=viewers&zeit=${GRAPH_ZEIT[range.key] ?? "6h"}`}
             title="Zuschauer-Graph in der Statistik öffnen"
           >
             <div className="spark-card__head">

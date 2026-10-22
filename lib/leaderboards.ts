@@ -215,3 +215,22 @@ export function itemRanking(players: PlayerState[], c: TopCategory, itemKey: str
     })
     .sort((a, b) => b.count - a.count || a.player.name.localeCompare(b.player.name, "de"));
 }
+
+/** Einzelne Blöcke, Mobs und Tiere aus den Top-Listen der Spieler, je Kategorie (für Auswahl in Graph und Bestenlisten) */
+export type ItemOptions = Partial<Record<TopCategory, { key: string; name: string; players: number }[]>>;
+
+/** Alle Items aus den Top-10-Listen der Spieler, je Kategorie nach Anzahl Spieler sortiert */
+export function itemOptions(players: PlayerState[]): ItemOptions {
+  const out: ItemOptions = {};
+  for (const c of TOP_CATEGORIES) {
+    const items = new Map<string, { key: string; name: string; players: number }>();
+    for (const p of players) {
+      for (const e of p.detail?.tops[c] ?? []) {
+        const it = items.get(e.key) ?? items.set(e.key, { key: e.key, name: e.name, players: 0 }).get(e.key)!;
+        it.players += 1;
+      }
+    }
+    out[c] = [...items.values()].sort((a, b) => b.players - a.players || a.name.localeCompare(b.name, "de"));
+  }
+  return out;
+}

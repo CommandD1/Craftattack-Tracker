@@ -31,6 +31,7 @@ import type { TopPlaces } from "@/components/PlayerDetails";
 import { activeDays, dailyHighlights } from "@/lib/highlights";
 import { DayHighlights } from "@/components/DayHighlights";
 import { HowLink, PresenceLegend } from "@/components/HowLink";
+import { graphHref, type Metric } from "@/lib/graphQuery";
 
 
 export async function generateMetadata({ params }: PageProps<"/spieler/[id]">): Promise<Metadata> {
@@ -180,7 +181,7 @@ const getMine = cache(async (raw: string) => {
 });
 
 /** Link auf den Graphen der Statistik-Seite für diese Kennzahl und diesen Spieler */
-const graphHrefFor = (id: string) => (metric: string) => `/statistik?metric=${metric}&spieler=${encodeURIComponent(id)}&zeit=alle#graph`;
+const graphHrefFor = (id: string) => (metric: string) => graphHref(metric as Metric, [id]);
 
 /* ---------- Abschnitte ---------- */
 

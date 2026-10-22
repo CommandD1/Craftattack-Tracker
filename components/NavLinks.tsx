@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/spieler", label: "Spieler" },
   { href: "/bestenlisten", label: "Bestenlisten" },
   { href: "/statistik", label: "Statistik" },
+  { href: "/graph", label: "Graph" },
   { href: "/zeitstrahl", label: "Zeitstrahl" },
   { href: "/live", label: "Live" },
   { href: "/events", label: "Events" },
