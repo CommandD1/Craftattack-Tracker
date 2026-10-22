@@ -60,8 +60,11 @@ const COUNTER_EVENTS: Partial<Record<BoardKey, EventType>> = {
   foodEaten: "foodEaten",
 };
 
-/** Ab wann ein Spieler ohne Streckenzuwachs als AFK gilt */
-export const AFK_MS = Number(process.env.CA_AFK_MINUTES ?? 20) * 60_000;
+/**
+ * Ab wann ein Spieler ohne Streckenzuwachs als AFK gilt (nur Ersatz, wenn die Quelle keinen AFK-Zähler liefert).
+ * 5 Min wie der Server: gegen dessen Zähler abgeglichen trifft die Strecke allein ~97 % der AFK-Zeit.
+ */
+export const AFK_MS = Number(process.env.CA_AFK_MINUTES ?? 5) * 60_000;
 /** Ab so vielen Mobs bzw. Blöcken pro Minute (während AFK) gilt ein Abschnitt als AFK-Farm */
 const AFK_FARM_MIN = Number(process.env.CA_AFK_FARM_MIN ?? 10);
 /** Mindestlänge eines Prüffensters für die Farm-Rate */
@@ -878,72 +881,114 @@ function diffBoards(ctx: DiffContext, ext: Map<string, ExtPlayer>) {
   }
 }
 
-/** AFK: online, aber die Strecke steigt seit AFK_MS nicht mehr. Nur möglich, wenn es Streckendaten gibt. */
+/** Letzter AFK-Zählerstand der Quelle je Spieler (ms, Sekunden), Grundlage für `sourceAfkVerdict` */
+const sourceAfkPrev = new Map<string, { at: number; v: number }>();
+/** Zuwachs knapp unter der Intervalllänge zählt als ganz AFK (Zähler der Quelle in 30-s-Schritten) */
+const SOURCE_AFK_SLACK_MS = 45_000;
+
+type AfkVerdict = { afk: true; since: number } | { afk: false; endAt: number };
+
+/**
+ * AFK laut Quelle: Der Server zählt `afkSeconds` hoch, solange ein Spieler AFK ist. Steigt der Zähler seit der
+ * vorigen Abfrage, ist der Spieler AFK, und zwar seit (jetzt − Zuwachs); stockt er, endete die Phase nach dem Zuwachs.
+ * `undefined` = die Quelle kennt den Zähler nicht (eigene Erkennung), `null` = in dieser Abfrage keine Aussage.
+ */
+function sourceAfkVerdict(ps: PlayerState, t: number): AfkVerdict | null | undefined {
+  const v = ps.detail?.stats.afkSeconds;
+  if (typeof v !== "number") return undefined;
+  if (!freshDetail.has(ps.id)) return null;
+  const prev = sourceAfkPrev.get(ps.id);
+  sourceAfkPrev.set(ps.id, { at: t, v });
+  if (!prev || t - prev.at > 15 * 60_000 || t <= prev.at) return null;
+  const dt = t - prev.at;
+  // Beim AFK-Beginn bucht der Server die 5 Min Stillstand rückwirkend um: der Zuwachs darf größer als dt sein
+  const gain = Math.min(dt + 10 * 60_000, Math.max(0, (v - prev.v) * 1000));
+  if (gain === 0) return { afk: false, endAt: prev.at };
+  if (!ps.afkSince) return { afk: true, since: t - gain };
+  return gain >= dt - SOURCE_AFK_SLACK_MS ? { afk: true, since: Date.parse(ps.afkSince) } : { afk: false, endAt: prev.at + gain };
+}
+
+/** Eigene Erkennung (ohne AFK-Zähler der Quelle): online, aber seit AFK_MS keine Aktivität. */
+function ownAfkVerdict(ps: PlayerState, now: string, t: number): AfkVerdict | null {
+  if (ps.stats.distance === undefined) return null;
+  // Keine frische Strecke in dieser Abfrage (ext fehlgeschlagen/unbekannt): nichts bewerten. Läuft keine
+  // AFK-Phase, startet die Bewegungsuhr neu, damit die Datenlücke nicht als Stillstand zählt.
+  if (!freshStats.get(ps.id)?.has("distance")) {
+    if (!ps.afkSince) ps.lastMoveAt = now;
+    return null;
+  }
+  // War schon online, bevor es die Bewegungsuhr gab (oder kam mit unbekannter Strecke): jetzt starten
+  if (!ps.lastMoveAt) {
+    ps.lastMoveAt = now;
+    return null;
+  }
+  // AFK beginnt rückwirkend mit der letzten Bewegung
+  return t - Date.parse(ps.lastMoveAt) >= AFK_MS ? { afk: true, since: Date.parse(ps.lastMoveAt) } : { afk: false, endAt: t };
+}
+
+/** AFK: bevorzugt der AFK-Zähler der Quelle, sonst die eigene Erkennung über Stillstand. */
 function diffAfk(ctx: DiffContext) {
   const { state, nowDate, now, first, sinceLast, push, pushAt } = ctx;
-  if (first) return;
   for (const ps of Object.values(state.players)) {
-    if (!ps.online || ps.stats.distance === undefined) continue;
-    // Keine frische Strecke in dieser Abfrage (ext fehlgeschlagen/unbekannt): nichts bewerten. Läuft keine
-    // AFK-Phase, startet die Bewegungsuhr neu, damit die Datenlücke nicht als Stillstand zählt.
-    if (!freshStats.get(ps.id)?.has("distance")) {
-      if (!ps.afkSince) ps.lastMoveAt = now;
+    if (!ps.online) {
+      sourceAfkPrev.delete(ps.id);
       continue;
     }
-    // War schon online, bevor es die Bewegungsuhr gab (oder kam mit unbekannter Strecke): jetzt starten
-    if (!ps.lastMoveAt) {
-      ps.lastMoveAt = now;
-      continue;
-    }
-    const idle = nowDate.getTime() - Date.parse(ps.lastMoveAt);
+    const t = nowDate.getTime();
+    const src = sourceAfkVerdict(ps, t);
+    if (first) continue;
+    const verdict = src === undefined ? ownAfkVerdict(ps, now, t) : src;
+    if (!verdict) continue;
     if (ps.afkSince) {
-      ps.afkSeconds = (ps.afkSeconds ?? 0) + sinceLast;
-      const farm = afkFarmDelta(ps);
-      if (idle < AFK_MS) {
-        // Bewegung: AFK-Phase ist vorbei
-        const afk = Math.max(0, Math.round((nowDate.getTime() - Date.parse(ps.afkSince)) / 1000));
-        const farmEnd = farmEndEvent(ps, nowDate.getTime(), false);
-        if (farmEnd) push(farmEnd);
-        push({ type: "afk_end", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { afkSeconds: afk, since: ps.afkSince, farm: ps.afkFarm, ...farm } });
+      if (!verdict.afk) {
+        // Aktiv: AFK-Phase ist vorbei
+        const endAt = Math.max(Date.parse(ps.afkSince), Math.min(t, verdict.endAt));
+        ps.afkSeconds = (ps.afkSeconds ?? 0) + Math.max(0, sinceLast - (t - endAt) / 1000);
+        const afk = Math.max(0, Math.round((endAt - Date.parse(ps.afkSince)) / 1000));
+        const end = new Date(endAt).toISOString();
+        const farmEnd = farmEndEvent(ps, endAt, false);
+        if (farmEnd) pushAt(end, farmEnd);
+        pushAt(end, { type: "afk_end", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { afkSeconds: afk, since: ps.afkSince, farm: ps.afkFarm, ...afkFarmDelta(ps) } });
         endAfk(ps);
-      } else {
-        // Steht still: Farm-Rate fensterweise prüfen. Nur Abschnitte mit ≥ AFK_FARM_MIN pro Minute sind Farm,
-        // der Rest der Phase ist normales AFK (ohne neues AFK-Start-Ereignis).
-        const check = ps.afkCheck ?? (ps.afkCheck = checkWindow(ps, now));
-        const windowMs = nowDate.getTime() - Date.parse(check.at);
-        const fresh = freshStats.get(ps.id);
-        // Ohne frische Zähler würde die Rate zu niedrig ausfallen: Fenster einfach weiterlaufen lassen
-        if (windowMs >= AFK_FARM_WINDOW_MS && fresh?.has("mobsKilled") && fresh.has("blocksBroken")) {
-          const m = gainedSince(ps.stats.mobsKilled, check.mobs);
-          const b = gainedSince(ps.stats.blocksBroken, check.blocks);
-          const kind = farmKindOf(m, b, windowMs);
-          if (kind !== ps.afkFarm) {
-            // Die alte Farm endete mit Beginn dieses Fensters (dort fiel die Rate unter die Schwelle)
-            const farmEnd = farmEndEvent(ps, Date.parse(check.at), false, true);
-            if (farmEnd) push(farmEnd);
-            ps.afkFarm = kind;
-            check.farmSince = kind ? check.at : null;
-            check.farmAt = kind ? (kind === "mobs" ? check.mobs : check.blocks) : null;
-            if (kind) {
-              const value = kind === "mobs" ? m : b;
-              push({
-                type: kind === "mobs" ? "afk_mobs_start" : "afk_blocks_start",
-                player: ps.id,
-                playerName: ps.name,
-                uuid: ps.uuid,
-                where: "server",
-                value,
-                meta: { kind, since: check.at, afkSince: ps.afkSince, windowSeconds: Math.round(windowMs / 1000), [kind]: value },
-              });
-            }
-          }
-          ps.afkCheck = checkWindow(ps, now);
-        }
+        continue;
       }
-    } else if (idle >= AFK_MS) {
-      // AFK beginnt rückwirkend mit der letzten Bewegung
-      ps.afkSince = ps.lastMoveAt;
-      ps.afkSeconds = (ps.afkSeconds ?? 0) + idle / 1000;
+      ps.afkSeconds = (ps.afkSeconds ?? 0) + sinceLast;
+      // Weiter AFK: Farm-Rate fensterweise prüfen. Nur Abschnitte mit ≥ AFK_FARM_MIN pro Minute sind Farm,
+      // der Rest der Phase ist normales AFK (ohne neues AFK-Start-Ereignis).
+      const check = ps.afkCheck ?? (ps.afkCheck = checkWindow(ps, now));
+      const windowMs = t - Date.parse(check.at);
+      const fresh = freshStats.get(ps.id);
+      // Ohne frische Zähler würde die Rate zu niedrig ausfallen: Fenster einfach weiterlaufen lassen
+      if (windowMs >= AFK_FARM_WINDOW_MS && fresh?.has("mobsKilled") && fresh.has("blocksBroken")) {
+        const m = gainedSince(ps.stats.mobsKilled, check.mobs);
+        const b = gainedSince(ps.stats.blocksBroken, check.blocks);
+        const kind = farmKindOf(m, b, windowMs);
+        if (kind !== ps.afkFarm) {
+          // Die alte Farm endete mit Beginn dieses Fensters (dort fiel die Rate unter die Schwelle)
+          const farmEnd = farmEndEvent(ps, Date.parse(check.at), false, true);
+          if (farmEnd) push(farmEnd);
+          ps.afkFarm = kind;
+          check.farmSince = kind ? check.at : null;
+          check.farmAt = kind ? (kind === "mobs" ? check.mobs : check.blocks) : null;
+          if (kind) {
+            const value = kind === "mobs" ? m : b;
+            push({
+              type: kind === "mobs" ? "afk_mobs_start" : "afk_blocks_start",
+              player: ps.id,
+              playerName: ps.name,
+              uuid: ps.uuid,
+              where: "server",
+              value,
+              meta: { kind, since: check.at, afkSince: ps.afkSince, windowSeconds: Math.round(windowMs / 1000), [kind]: value },
+            });
+          }
+        }
+        ps.afkCheck = checkWindow(ps, now);
+      }
+    } else if (verdict.afk) {
+      // AFK beginnt rückwirkend (Quelle: um den Zählerzuwachs, eigene Erkennung: mit der letzten Bewegung)
+      ps.afkSince = new Date(Math.min(t, verdict.since)).toISOString();
+      ps.afkSeconds = (ps.afkSeconds ?? 0) + (t - Date.parse(ps.afkSince)) / 1000;
       ps.afkFarm = null;
       ps.afkMobsAt = ps.stats.mobsKilled ?? null;
       ps.afkBlocksAt = ps.stats.blocksBroken ?? null;

@@ -112,7 +112,7 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
           <dd className="num">{num(d.loyalty.groups.d3 + d.loyalty.groups.d7 + d.loyalty.groups.gone)}</dd>
         </div>
         <div className="box st-fig" data-tone={METRIC_TONE.afkSeconds}>
-          <dt title="Online, aber ohne Streckenzuwachs für mindestens 20 Minuten">AFK-Stunden</dt>
+          <dt title="Laut Server: online, aber mindestens 5 Minuten keine Bewegung">AFK-Stunden</dt>
           <dd className="num">
             {num(d.afk.totalHours)}
             {d.totals.playerHours > 0 && <small className="muted"> {Math.round((d.afk.totalHours / d.totals.playerHours) * 100)} %</small>}
@@ -200,7 +200,7 @@ export function StatsExtras({ d, tag }: { d: Data; tag: (day: string) => number 
           </ol>
         </Card>
 
-        <Card title="AFK-Zeit" href={graphHref("afkSeconds", d.afk.perPlayer.slice(0, 5).map((p) => p.id))} sub="Online, aber mindestens 20 Minuten keine Bewegung – mit Anteil an der Online-Zeit">
+        <Card title="AFK-Zeit" href={graphHref("afkSeconds", d.afk.perPlayer.slice(0, 5).map((p) => p.id))} sub="Laut Server: online, aber mindestens 5 Minuten keine Bewegung – mit Anteil an der Online-Zeit">
           <ol className="plist">
             {d.afk.perPlayer.map((r) => (
               <Person key={r.id} id={r.id} name={r.name} uuid={r.uuid} right={`${duration(r.seconds)} · ${Math.round(r.share * 100)} %`} />

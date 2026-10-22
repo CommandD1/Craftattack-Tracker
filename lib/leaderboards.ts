@@ -120,7 +120,7 @@ export const LEADERBOARDS: Record<Exclude<LeaderboardKey, ItemKey>, LeaderboardM
   tracked: { title: "Dauergäste", sub: "Online-Zeit laut Tracker, alle Spieler", tone: METRIC_TONE.tracked, icon: "users", group: "zeit" },
   followers: { title: "Fanmagnet", sub: "Neue Twitch-Follower, während der Streamer auf dem Server war", tone: METRIC_TONE.followers, icon: "users", group: "twitch" },
   twitchSubs: { title: "Sub-Stars", sub: "Twitch-Abos auf dem Server seit Beginn der IRC-Erfassung", tone: METRIC_TONE.twitchSubs, icon: "gift", group: "twitch" },
-  afk: { title: "Standbilder", sub: "AFK-Zeit laut Tracker: online, aber ≥ 20 Min keine Bewegung", tone: METRIC_TONE.afkSeconds, icon: "clock", group: "afk" },
+  afk: { title: "Standbilder", sub: "AFK-Zeit seit Tracker-Start laut Server: ab 5 Min ohne Bewegung", tone: METRIC_TONE.afkSeconds, icon: "clock", group: "afk" },
   afkmobs: { title: "Mob-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Mobs pro Minute gestorben sind (AFK-Mobfarm)", tone: METRIC_TONE.afkMobsSeconds, icon: "sword", group: "afk" },
   afkblocks: { title: "Block-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke pro Minute abgebaut wurden (AFK-Blockfarm)", tone: METRIC_TONE.afkBlocksSeconds, icon: "pickaxe", group: "afk" },
   ...(Object.fromEntries(
