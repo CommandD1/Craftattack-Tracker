@@ -445,8 +445,9 @@ function deathCandidates(state: TrackerState, stats: ApiStats, ext: Map<string, 
 }
 
 /**
- * Feste Zuordnung Spieler-ID → Twitch-Login für Spieler, deren Login von der ID abweicht und die der
- * Tracker nicht von selbst lernt (weil sie selten streamen). Quelle: Teilnehmerseite craftattack.one.
+ * Feste Zuordnung Spieler-ID → Twitch-Login für Spieler, die die API ohne Twitch-Login liefert oder deren Login
+ * der Tracker nicht von selbst lernt (weil sie selten streamen). Quelle: Teilnehmerseite craftattack.one, für die
+ * letzten drei Twitch selbst (Kanalname, Streamtitel, gleiche Handles auf TikTok/Minecraft).
  */
 export const KNOWN_LOGINS: Record<string, string> = {
   iicrimax: "icrimax",
@@ -472,6 +473,10 @@ export const KNOWN_LOGINS: Record<string, string> = {
   noway4u: "noway4u_sir",
   henkenbergen: "henke",
   rgbpixel: "rgbpixl",
+  // Ohne Twitch in der API: benx streamte Craft Attack 13 dort; toobadyoutube = sein TikTok- und Minecraft-Name
+  benx: "benx",
+  toobad: "toobadyoutube",
+  einfachgustaf: "einfachgustaf",
 };
 
 const newPlayers = new Set<string>();
