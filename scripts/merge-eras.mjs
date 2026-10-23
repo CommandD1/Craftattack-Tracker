@@ -112,8 +112,10 @@ try {
   /* 1) Zeiträume je Epoche */
   for (const [i, era] of eras.entries()) {
     const r = await era.query(`SELECT min(at) AS first, max(at) AS last, count(*)::int AS n FROM events`);
-    const m = (await era.query(`SELECT started_at, last_poll FROM tracker_meta WHERE id = 1`)).rows[0] ?? {};
-    era.range = { first: r.rows[0].first, last: r.rows[0].last, events: r.rows[0].n, startedAt: m.started_at, lastPoll: m.last_poll };
+    const m = (await era.query(`SELECT started_at, last_poll, last_ok FROM tracker_meta WHERE id = 1`)).rows[0] ?? {};
+    // Ende einer Epoche = letzte erfolgreiche Abfrage. Ein Tracker kann danach weiter (erfolglos) abfragen,
+    // z. B. nach einer Sperre (HTTP 403); sein Stand im Speicher bleibt dann beim letzten Erfolg stehen.
+    era.range = { first: r.rows[0].first, last: r.rows[0].last, events: r.rows[0].n, startedAt: m.started_at, lastPoll: m.last_ok ?? m.last_poll };
     report.push(`Epoche ${i + 1} (${era.name}): Ereignisse ${r.rows[0].n}, ${r.rows[0].first?.toISOString?.() ?? r.rows[0].first} bis ${r.rows[0].last?.toISOString?.() ?? r.rows[0].last}`);
   }
   for (let i = 1; i < eras.length; i++) {
