@@ -277,7 +277,11 @@ async function loadFromDb() {
 export async function ensureLoaded() {
   const store = g();
   if (!store.loaded) {
-    store.loaded = loadFromDb();
+    // Schlägt das erste Laden fehl (DB nicht erreichbar), beim nächsten Aufruf neu versuchen statt den Fehler zu behalten
+    store.loaded = loadFromDb().catch((err: unknown) => {
+      store.loaded = null;
+      throw err;
+    });
     refreshedAt.full = refreshedAt.light = Date.now();
   }
   await store.loaded;

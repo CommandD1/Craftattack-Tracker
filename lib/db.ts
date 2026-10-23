@@ -22,7 +22,14 @@ async function connect(): Promise<Db> {
     connectionString: url,
     ssl: { rejectUnauthorized: false },
     max: 5,
+    // Nicht ewig auf eine nicht erreichbare DB warten; Verbindungen über das Internet wach halten
+    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 30_000,
+    keepAlive: true,
   });
+  // Bricht eine ungenutzte Verbindung ab (z. B. Neustart der DB), meldet pg das als "error" am Pool.
+  // Ohne Handler beendet Node.js deshalb den ganzen Prozess. Der Pool baut bei der nächsten Abfrage neu auf.
+  pool.on("error", (err) => console.warn("[tracker] DB-Verbindung abgebrochen:", err.message));
   const db: Db = {
     kind: "postgres",
     query: async (sql, params) => {
@@ -37,7 +44,14 @@ async function connect(): Promise<Db> {
 
 export function getDb(): Promise<Db> {
   const gl = globalThis as Globals;
-  if (!gl.__acDb) gl.__acDb = connect();
+  if (!gl.__acDb) {
+    // Fehlgeschlagenen Verbindungsaufbau nicht merken: sonst bliebe jede weitere Anfrage kaputt, bis der
+    // Prozess neu startet, auch wenn die DB längst wieder läuft. Der nächste Aufruf versucht es erneut.
+    gl.__acDb = connect().catch((err: unknown) => {
+      gl.__acDb = undefined;
+      throw err;
+    });
+  }
   return gl.__acDb;
 }
 
