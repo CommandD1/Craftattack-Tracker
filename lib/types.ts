@@ -102,6 +102,8 @@ export interface ApiStats {
   boards: Record<BoardKey, BoardEntry[]>;
   online: ApiPlayer[];
   live: (LiveInfo & { id: string; name: string })[];
+  /** IDs aller Spieler, die schon einmal auf dem Server waren */
+  played?: string[];
 }
 
 export interface Player {
