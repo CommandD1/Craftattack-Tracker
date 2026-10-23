@@ -1325,7 +1325,8 @@ export async function recordPlayerPoints(players: PlayerState[], at: string, fre
     const last = lastPoint.get(p.id);
     // Weder auf dem Server noch live: nichts kann sich ändern. Nur der Wechsel (z. B. der Leave) wird gespeichert,
     // keine Auffrischung alle 5 Minuten; nach einem Neustart gar nichts, der letzte Stand liegt schon in der DB.
-    if (!p.online && !p.live && (!last || last.sig === sig)) continue;
+    // Ausnahme: frisch abgefragte Offline-Spieler (einmalig nachgeholt) bekommen ihren ersten Punkt.
+    if (!p.online && !p.live && (last ? last.sig === sig : !freshDetail?.has(p.id))) continue;
     if (last && last.sig === sig && t - last.at < PLAYER_POINT_MAX_GAP_MS) continue;
     rows.push([
         p.id,

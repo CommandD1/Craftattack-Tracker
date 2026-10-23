@@ -105,6 +105,8 @@ interface ApiLine {
 interface Line extends ApiLine {
   metric: Metric;
   meta: MetricMeta;
+  /** Zeigt Zuwachs je Bündel statt Stand */
+  delta?: boolean;
   color: string;
   format: (v: number) => string;
 }
@@ -165,6 +167,33 @@ function splitAtGaps<T extends { at: string }>(points: T[]): T[][] {
   return parts;
 }
 
+/**
+ * Zähler ändern sich nur, während ein Spieler auf dem Server ist; offline gibt es keine Messpunkte, der Wert steht
+ * aber weiter auf dem Stand des letzten Logins. Statt einer Lücke läuft die Linie deshalb waagerecht weiter
+ * („hold“) bzw. im Zuwachs-Modus auf 0 („zero“), bis der nächste Messpunkt kommt.
+ */
+function bridgeGaps<T extends { at: string; v: number }>(points: T[], mode: "hold" | "zero"): { at: string; v: number }[] {
+  const parts = splitAtGaps(points);
+  if (parts.length < 2) return points;
+  const steps = points.slice(1).map((p, i) => Date.parse(p.at) - Date.parse(points[i].at)).sort((a, b) => a - b);
+  const step = Math.max(60_000, steps[Math.floor(steps.length / 2)] ?? 60_000);
+  const out: { at: string; v: number }[] = [...parts[0]];
+  for (const part of parts.slice(1)) {
+    const prev = out[out.length - 1];
+    const next = part[0];
+    const a = Date.parse(prev.at);
+    const b = Date.parse(next.at);
+    if (mode === "zero") {
+      out.push({ at: new Date(Math.min(a + step, b - 1)).toISOString(), v: 0 });
+      out.push({ at: new Date(Math.max(b - step, a + 1)).toISOString(), v: 0 });
+    } else {
+      out.push({ at: new Date(Math.max(b - step, a + 1)).toISOString(), v: prev.v });
+    }
+    out.push(...part);
+  }
+  return out;
+}
+
 /** „Schöne“ Achsenschritte */
 function niceStep(max: number, ticks: number) {
   const raw = max / ticks;
@@ -218,9 +247,8 @@ function MultiChart({ lines, hidden, dataKey, percent }: { lines: Line[]; hidden
   const paths = lines
     .filter((l) => l.points.length > 0)
     .map((l) => {
-      const d = splitAtGaps(l.points)
-        .map((part) => smoothPath(part.map((p) => [x(Date.parse(p.at)), y(l, p.v)] as const)))
-        .join(" ");
+      const parts = l.meta.counter ? [bridgeGaps(l.points, l.delta ? "zero" : "hold")] : splitAtGaps(l.points);
+      const d = parts.map((part) => smoothPath(part.map((p) => [x(Date.parse(p.at)), y(l, p.v)] as const))).join(" ");
       return { id: l.id, d, color: l.color, off: hidden.has(l.id) };
     });
 
@@ -448,14 +476,22 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
       const series = entries.flatMap((e) => e.lines);
       bucketMinutes = Math.max(bucketMinutes, ...entries.map((e) => e.bucketMinutes));
       const delta = vq.modus === "zuwachs" && m.counter;
+      // Zähler stehen offline auf dem letzten Stand: Linie bis zur Abfrage fortführen (eigener Zeitraum hat ein festes Ende)
+      const loadedAt = Math.min(...entries.map((e) => e.at));
+      const holdUntil = (points: ApiLine["points"]) => {
+        const last = points[points.length - 1];
+        if (!m.counter || vq.zeit === "eigen" || !last || loadedAt - Date.parse(last.at) < 60_000) return points;
+        return [...points, { at: new Date(loadedAt).toISOString(), v: last.v }];
+      };
       for (const s of series) {
         lines.push({
           ...s,
-          points: delta ? toDelta(s.points) : s.points,
+          points: delta ? toDelta(holdUntil(s.points)) : holdUntil(s.points),
           id: `${metric}:${s.id}`,
           name: vq.metrics.length === 1 ? s.name : series.length > 1 || vq.spieler.length || m.needsPlayers ? `${m.label} · ${s.name}` : m.label,
           metric,
           meta: m,
+          delta,
           color: metric === "twitchSubs" && series.length === 1 ? "var(--twitch)" : COLORS[lines.length % COLORS.length],
           format: m.format,
         });

@@ -47,6 +47,19 @@ const EXT_REQUEST_INTERVAL_MS = envNumber("CA_PLAYER_REQUEST_INTERVAL_MS", 500, 
 const EXT_MAX_PER_POLL = envNumber("CA_PLAYER_MAX_PER_POLL", 80, 1);
 /** Cache je Spieler-ID */
 const extCache = new Map<string, { player: ExtPlayer | null; at: number; failed: boolean }>();
+/**
+ * Spieler, die schon gespielt haben (`played`), aber seit Tracker-Start nie online waren: einmalig abfragen, damit
+ * sie Profil, Verlauf und Plätze in den Bestenlisten bekommen. Je Poll nur wenige, damit der Poll kurz bleibt.
+ */
+const CATCH_UP_PER_POLL = envNumber("CA_CATCH_UP_PER_POLL", 10, 0);
+/** Schon nachgeholt (oder der API unbekannt) – in diesem Prozess nicht erneut versuchen */
+const caughtUp = new Set<string>();
+
+function catchUpIds(state: TrackerState, stats: ApiStats, online: Set<string>): string[] {
+  return (stats.played ?? [])
+    .filter((id) => typeof id === "string" && !online.has(id) && !caughtUp.has(id) && !state.players[id]?.detail)
+    .slice(0, CATCH_UP_PER_POLL);
+}
 
 /** Board-Keys, deren Anstieg als Ereignis protokolliert wird */
 const COUNTER_EVENTS: Partial<Record<BoardKey, EventType>> = {
@@ -269,6 +282,8 @@ function feedEvents(state: TrackerState, items: { id: string; item: FeedItem }[]
 interface ExtPlayer {
   id: string;
   name: string;
+  /** Minecraft-UUID aus den Ereignissen des Spielers (die Antwort selbst enthält keine); "" = unbekannt */
+  uuid: string;
   online: boolean;
   /** Twitch-Login laut API; null, wenn dort keiner hinterlegt ist */
   twitch: string | null;
@@ -303,9 +318,12 @@ function toExtPlayer(data: ApiPlayerDetail, fetchedAt: string): ExtPlayer | null
     if (BOARD_KEY_SET.has(key)) ranks[key as BoardKey] = clean;
     else extraRanks[key] = clean;
   }
+  const feed = playerFeedItems(data.events, data.participant.id);
+  const own = feed.map((item) => (item.type === "death" ? item.victim : item.player)).find((p) => typeof p?.uuid === "string" && p.uuid);
   return {
     id: data.participant.id,
     name: data.participant.name,
+    uuid: own?.uuid ?? "",
     online: data.player.online,
     twitch: data.participant.twitch ?? null,
     stats,
@@ -318,7 +336,7 @@ function toExtPlayer(data: ApiPlayerDetail, fetchedAt: string): ExtPlayer | null
       ranks: extraRanks,
       tops: data.player.tops ?? {},
     },
-    feed: playerFeedItems(data.events, data.participant.id),
+    feed,
     fresh: true,
   };
 }
@@ -748,8 +766,10 @@ function applyPlayerDetails(ctx: DiffContext, ext: Map<string, ExtPlayer>, extLo
   const { state, now } = ctx;
   freshDetail = new Set([...ext.values()].filter((x) => x.fresh).map((x) => x.id));
   for (const [id, x] of ext) {
-    const ps = ensurePlayer(state, { id, name: x.name, uuid: state.players[id]?.uuid ?? "" }, now);
+    const ps = ensurePlayer(state, { id, name: x.name, uuid: state.players[id]?.uuid || x.uuid }, now);
     ps.ranks = { ...x.ranks };
+    // Offline (z. B. einmalig nachgeholt): zuletzt gesehen laut API statt „jetzt“
+    if (!ps.online && x.detail.lastSeen) ps.lastSeen = x.detail.lastSeen;
     ps.detail = x.detail;
     // Die API kennt den Twitch-Login, wenn der Spieler einen hinterlegt hat
     const login = extLoginOf.get(id);
@@ -813,7 +833,7 @@ function diffBoards(ctx: DiffContext, ext: Map<string, ExtPlayer>) {
       if (key === "playtimeSeconds" && !x.fresh) continue;
       const value = x.stats[key];
       if (typeof value !== "number") continue;
-      extEntries.push({ id, name: x.name, uuid: state.players[id]?.uuid ?? "", value, fromExt: true });
+      extEntries.push({ id, name: x.name, uuid: state.players[id]?.uuid || x.uuid, value, fromExt: true });
     }
     for (const entry of [...list, ...extEntries] as (BoardEntry & { fromExt?: true })[]) {
       const ps = ensurePlayer(state, entry, now);
@@ -1158,8 +1178,9 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       // vor dem Leave ab). Offline ändern sich die Werte nicht.
       const onlineIds = new Set([...stats.online, ...(state.latest?.online ?? [])].map((p) => p.id));
       // Live-Status direkt bei Twitch für alle bekannten Logins; schlägt das fehl, zählt die Haupt-API
+      const catchUp = catchUpIds(state, stats, onlineIds);
       const [ext, twitch, followers] = await Promise.all([
-        fetchExtAll(onlineIds),
+        fetchExtAll([...onlineIds, ...catchUp]),
         TWITCH_ENABLED
           ? fetchLiveStreams(logins.values()).catch((err: unknown) => {
               console.warn("[tracker] Twitch-Live-Abfrage fehlgeschlagen:", err instanceof Error ? err.message : err);
@@ -1176,6 +1197,8 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
         ),
       ]);
       if (ext.failed > 0) console.warn(`[tracker] ${ext.failed} Spieler-Anfragen (/api/player) fehlgeschlagen`);
+      for (const id of catchUp) if (ext.players.has(id) || ext.missing.has(id)) caughtUp.add(id);
+      if (catchUp.length) console.log(`[tracker] ${catchUp.filter((id) => ext.players.has(id)).length} Offline-Spieler einmalig nachgeholt`);
       const first = state.latest === null;
       const events = diffSnapshot(state, stats, feed, now, ext.players, twitch, ext.loginOf, ext.missing, followers);
       snapshotApplied = true;
