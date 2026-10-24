@@ -1,4 +1,5 @@
 import "server-only";
+import { runsTracker } from "./mode";
 
 /**
  * Datenbank-Anbindung.
@@ -22,6 +23,10 @@ async function connect(): Promise<Db> {
     connectionString: url,
     ssl: { rejectUnauthorized: false },
     max: 5,
+    // Hängende Abfragen abbrechen, statt Poller oder Chat-Verarbeitung für immer zu blockieren. Die Website bekommt
+    // weniger Zeit, damit teure Seitenabfragen die gemeinsame Datenbank nicht für den Tracker auslasten.
+    statement_timeout: runsTracker() ? 120_000 : 45_000,
+    query_timeout: runsTracker() ? 130_000 : 50_000,
     // Nicht ewig auf eine nicht erreichbare DB warten; Verbindungen über das Internet wach halten
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 30_000,

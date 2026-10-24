@@ -1156,6 +1156,12 @@ function diffSnapshot(
 
 let polling = false;
 let lastPollStartedAt = 0;
+/**
+ * Ereignisse, deren Speichern fehlschlug (z. B. Datenbank kurz nicht erreichbar). Der Spielerstand im Speicher ist
+ * da schon weiter, der nächste Abgleich fände sie also nicht noch einmal: Sie gehen beim nächsten Poll mit.
+ */
+let unsavedEvents: TrackerEvent[] = [];
+const MAX_UNSAVED_EVENTS = 50_000;
 export async function pollOnce(): Promise<{ ok: boolean; events: number; error?: string }> {
   if (polling) return { ok: false, events: 0, error: "busy" };
   if (Date.now() - lastPollStartedAt < MIN_POLL_INTERVAL_MS) {
@@ -1240,7 +1246,11 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       const unseen = unseenFeedItems(feedItems);
       const fromFeed = feedEvents(state, unseen);
       await appendFeedItems(unseen);
-      const inserted = await appendEvents([...events, ...fromFeed]);
+      unsavedEvents = [...unsavedEvents, ...events, ...fromFeed].slice(-MAX_UNSAVED_EVENTS);
+      const retried = unsavedEvents.length - events.length - fromFeed.length;
+      const inserted = await appendEvents(unsavedEvents);
+      if (retried > 0) console.log(`[tracker] ${retried} zuvor nicht gespeicherte Ereignisse nachgetragen`);
+      unsavedEvents = [];
       state.eventCount += fromFeed.filter((e) => inserted.has(e.id)).length;
       markFeedSeen(unseen);
       await enrichDeathEvents(feedItems.filter((item): item is Extract<FeedItem, { type: "death" }> => item.type === "death"));
@@ -1257,6 +1267,8 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
     polling = false;
   }
 }
+
+const POLL_STUCK_MS = 10 * 60_000;
 
 type Globals = typeof globalThis & { __acPollTimer?: ReturnType<typeof setTimeout>; __acPollStarted?: boolean };
 
@@ -1278,5 +1290,13 @@ export function startPolling() {
     gl.__acPollTimer = setTimeout(() => void tick(), maxCraftAttackTimerDelay(delay));
   };
   void tick();
+  // Wächter: Hängt ein Poll trotz Zeitlimits, beendet sich der Prozess und Render startet ihn neu. Der Stand liegt in
+  // der Datenbank, verloren geht nur der hängende Poll.
+  setInterval(() => {
+    if (polling && Date.now() - lastPollStartedAt > POLL_STUCK_MS) {
+      console.error(`[tracker] Poll hängt seit ${Math.round((Date.now() - lastPollStartedAt) / 60_000)} Min, Neustart`);
+      process.exit(1);
+    }
+  }, 60_000).unref();
   console.log(`[tracker] polling ${STATS_URL} alle ${MIN_POLL_INTERVAL_MS / 1000}–${MAX_POLL_INTERVAL_MS / 1000}s (Jitter)`);
 }
