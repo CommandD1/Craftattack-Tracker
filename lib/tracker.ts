@@ -80,8 +80,11 @@ const COUNTER_EVENTS: Partial<Record<BoardKey, EventType>> = {
 export const AFK_MS = Number(process.env.CA_AFK_MINUTES ?? 5) * 60_000;
 /** Ab so vielen Mobs bzw. Blöcken pro Minute (während AFK) gilt ein Abschnitt als AFK-Farm */
 const AFK_FARM_MIN = Number(process.env.CA_AFK_FARM_MIN ?? 10);
-/** Mindestlänge eines Prüffensters für die Farm-Rate */
-export const AFK_FARM_WINDOW_MS = 60_000;
+/**
+ * Mindestlänge eines Prüffensters für die Farm-Rate. 3 Min: Eine Farm muss die Rate so lange halten; einzelne
+ * Minuten mit vielen Blöcken oder Mobs (z. B. kurz Mobs am AFK-Platz) ergaben sonst Farm-Ereignisse von 1–2 Min.
+ */
+export const AFK_FARM_WINDOW_MS = 3 * 60_000;
 
 /** Farm-Art eines Zeitabschnitts: mindestens AFK_FARM_MIN Mobs bzw. Blöcke pro Minute (Mobs haben Vorrang) */
 export function farmKindOf(mobs: number, blocks: number, ms: number): AfkKind | null {
@@ -951,18 +954,48 @@ function ownAfkVerdict(ps: PlayerState, now: string, t: number): AfkVerdict | nu
   return t - Date.parse(ps.lastMoveAt) >= AFK_MS ? { afk: true, since: Date.parse(ps.lastMoveAt) } : { afk: false, endAt: t };
 }
 
-/** AFK: bevorzugt der AFK-Zähler der Quelle, sonst die eigene Erkennung über Stillstand. */
+/** Zählerstände seit der letzten Bewegung je Spieler (`at` = lastMoveAt, `t0` = Zeitpunkt der Zählerstände) */
+const moveCounters = new Map<string, { at: string; t0: number; mobs: number | null; blocks: number | null }>();
+
+/**
+ * Stillstehend farmen: Der Server zählt Blöcke abbauen als Aktivität (gegen seinen Zähler geprüft: bei ≥ 10 Blöcken
+ * pro Minute 0 % AFK), eine AFK-Blockfarm ist für ihn also nie AFK. Steht ein Spieler seit AFK_MS still und farmt
+ * seitdem mit mindestens AFK_FARM_MIN pro Minute, gilt das trotzdem als AFK-Farm. Eine laufende Phase hält das,
+ * solange die Farm läuft. Nach einem Neustart zählt die Rate ab den ersten bekannten Zählerständen.
+ */
+function stationaryFarmVerdict(ps: PlayerState, t: number): AfkVerdict | null {
+  if (!ps.lastMoveAt || !freshStats.get(ps.id)?.has("distance")) return null;
+  const mark = moveCounters.get(ps.id);
+  if (!mark || mark.at !== ps.lastMoveAt) {
+    moveCounters.set(ps.id, { at: ps.lastMoveAt, t0: t, mobs: ps.stats.mobsKilled ?? null, blocks: ps.stats.blocksBroken ?? null });
+    return { afk: false, endAt: t };
+  }
+  const since = Date.parse(ps.lastMoveAt);
+  if (t - since < AFK_MS || t - mark.t0 < AFK_FARM_WINDOW_MS) return { afk: false, endAt: t };
+  if (ps.afkSince) return ps.afkFarm ? { afk: true, since: Date.parse(ps.afkSince) } : { afk: false, endAt: t };
+  const kind = farmKindOf(gainedSince(ps.stats.mobsKilled, mark.mobs), gainedSince(ps.stats.blocksBroken, mark.blocks), t - mark.t0);
+  return kind ? { afk: true, since } : { afk: false, endAt: t };
+}
+
+/**
+ * AFK: bevorzugt der AFK-Zähler der Quelle, sonst die eigene Erkennung über Stillstand. Stillstehend farmen
+ * (`stationaryFarmVerdict`) zählt zusätzlich, auch wenn die Quelle den Spieler für aktiv hält.
+ */
 function diffAfk(ctx: DiffContext) {
   const { state, nowDate, now, first, sinceLast, push, pushAt } = ctx;
   for (const ps of Object.values(state.players)) {
     if (!ps.online) {
       sourceAfkPrev.delete(ps.id);
+      moveCounters.delete(ps.id);
       continue;
     }
     const t = nowDate.getTime();
     const src = sourceAfkVerdict(ps, t);
+    const farm = stationaryFarmVerdict(ps, t);
     if (first) continue;
-    const verdict = src === undefined ? ownAfkVerdict(ps, now, t) : src;
+    const base = src === undefined ? ownAfkVerdict(ps, now, t) : src;
+    // Ohne Aussage der Quelle in dieser Abfrage beendet „farmt nicht“ allein keine Phase
+    const verdict = base?.afk ? base : farm?.afk ? farm : base;
     if (!verdict) continue;
     if (ps.afkSince) {
       if (!verdict.afk) {
@@ -1020,6 +1053,30 @@ function diffAfk(ctx: DiffContext) {
       ps.afkCheck = null; // erst leeren, damit kein alter Farm-Beginn übernommen wird
       ps.afkCheck = checkWindow(ps, now);
       pushAt(ps.afkSince, { type: "afk_start", player: ps.id, playerName: ps.name, uuid: ps.uuid, where: "server", meta: { since: ps.afkSince } });
+      // Beginn durch stillstehendes Farmen: Farm gilt sofort (sonst endete die Phase vor dem ersten Prüffenster)
+      const mark = moveCounters.get(ps.id);
+      if (verdict === farm && mark) {
+        const m = gainedSince(ps.stats.mobsKilled, mark.mobs);
+        const b = gainedSince(ps.stats.blocksBroken, mark.blocks);
+        const kind = farmKindOf(m, b, t - mark.t0);
+        if (kind) {
+          ps.afkFarm = kind;
+          ps.afkMobsAt = mark.mobs;
+          ps.afkBlocksAt = mark.blocks;
+          ps.afkCheck.farmSince = ps.afkSince;
+          ps.afkCheck.farmAt = kind === "mobs" ? mark.mobs : mark.blocks;
+          const value = kind === "mobs" ? m : b;
+          pushAt(ps.afkSince, {
+            type: kind === "mobs" ? "afk_mobs_start" : "afk_blocks_start",
+            player: ps.id,
+            playerName: ps.name,
+            uuid: ps.uuid,
+            where: "server",
+            value,
+            meta: { kind, since: ps.afkSince, afkSince: ps.afkSince, windowSeconds: Math.round((t - mark.t0) / 1000), [kind]: value },
+          });
+        }
+      }
     }
   }
 }
