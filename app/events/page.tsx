@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { eventState, getOfficialEvents, type EventState, type OfficialEvent } from "@/lib/officialEvents";
 import { loadTracker } from "@/lib/data";
+import { ago } from "@/lib/format";
 import { EventFeed } from "@/components/EventFeed";
 import type { TrackerState } from "@/lib/types";
 import { Head } from "@/components/Head";
@@ -115,7 +116,7 @@ function CardList({ events, now, players }: { events: OfficialEvent[]; now: stri
 
 async function Events() {
   await connection();
-  const [{ events, error }, { state: tracker, events: tracked }] = await Promise.all([getOfficialEvents(), loadTracker()]);
+  const [{ events, error, fetchedAt }, { state: tracker, events: tracked }] = await Promise.all([getOfficialEvents(), loadTracker()]);
   const now = berlinNow();
   const players = tracker.players;
   const current = events.filter((e) => e.season.includes("14"));
@@ -138,6 +139,7 @@ async function Events() {
               offiziellen Events-Seite
             </a>{" "}
             und werden stündlich abgeglichen.
+            {fetchedAt && <span className="muted"> Stand: {ago(fetchedAt)}.</span>}
           </p>
         </div>
       </section>

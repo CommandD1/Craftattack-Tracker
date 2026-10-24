@@ -193,6 +193,16 @@ async function migrate(db: Db) {
       ended_at     timestamptz
     )`);
   await db.query(`CREATE INDEX IF NOT EXISTS shared_chat_sessions_started_idx ON shared_chat_sessions (started_at DESC)`);
+  // Offizielle Termine von craftattack.one/events/: holt der Tracker stündlich, die Website liest nur von hier
+  // (eine Zeile; bei einem Fehler bleibt der letzte gute Stand, nur `error` wird gesetzt).
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS official_events (
+      id         smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      events     jsonb NOT NULL DEFAULT '[]'::jsonb,
+      fetched_at timestamptz,
+      error      text,
+      error_at   timestamptz
+    )`);
   // Chat je Spieler im Profil (Tabelle ist auf 10.000 Nachrichten begrenzt, die Indizes bleiben klein)
   await db.query(`CREATE INDEX IF NOT EXISTS twitch_chat_messages_sender_idx ON twitch_chat_messages (sender_id, at DESC)`);
   await db.query(`CREATE INDEX IF NOT EXISTS twitch_chat_messages_channel_idx ON twitch_chat_messages (channel_id, at DESC)`);
