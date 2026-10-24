@@ -11,8 +11,6 @@ const MAX_EVENTS_IN_MEMORY = 20000;
 const MAX_HISTORY_POINTS = 2880; // 24 h bei 30 s
 const MAX_BULK_INSERT_ROWS = 500;
 const MIN_VISIBLE_SUBSCRIPTION_COUNT = 10;
-const MAX_TWITCH_CHAT_MESSAGES = 10000;
-let twitchChatWritesSincePrune = 0;
 
 type Globals = typeof globalThis & {
   __acTracker?: {
@@ -742,18 +740,6 @@ export async function saveTwitchChatMessage(message: TwitchChatMessage): Promise
       );
     }
     return false;
-  }
-
-  twitchChatWritesSincePrune += 1;
-  if (twitchChatWritesSincePrune >= 100) {
-    await db.query(
-      `DELETE FROM twitch_chat_messages
-        WHERE id IN (
-          SELECT id FROM twitch_chat_messages ORDER BY at DESC, id DESC OFFSET $1
-        )`,
-      [MAX_TWITCH_CHAT_MESSAGES],
-    );
-    twitchChatWritesSincePrune = 0;
   }
   return true;
 }

@@ -103,6 +103,9 @@ interface IrcState {
   seenOrder: string[];
   /** Twitch-Raum-ID → Kanal-Login (aus ROOMSTATE/PRIVMSG), um geteilte Nachrichten ihrem Ursprung zuzuordnen */
   roomIds: Map<string, string>;
+  /** Chat-Nachrichten und Notices, deren Speichern fehlschlug (z. B. Datenbank kurz weg), mit Zahl der Versuche */
+  retry: { socket: WebSocket; line: string; tries: number }[];
+  retryTimer: ReturnType<typeof setTimeout> | null;
 }
 
 type Globals = typeof globalThis & { __acTwitchIrc?: IrcState };
@@ -123,6 +126,8 @@ function state(): IrcState {
       seenIds: new Set(),
       seenOrder: [],
       roomIds: new Map(),
+      retry: [],
+      retryTimer: null,
     };
   }
   gl.__acTwitchIrc.roomIds ??= new Map();
@@ -265,11 +270,7 @@ function connect(irc: IrcState) {
       if (typeof event.data !== "string") return;
       for (const line of event.data.split(/\r\n/)) {
         if (!line) continue;
-        irc.processing = irc.processing
-          .then(() => handleLine(irc, socket, line))
-          .catch((error: unknown) => {
-            console.error("[twitch-irc] IRC-Nachricht konnte nicht verarbeitet werden:", error);
-          });
+        processLine(irc, socket, line, 0);
       }
     });
     socket.addEventListener("close", () => {
@@ -287,6 +288,29 @@ function connect(irc: IrcState) {
   } catch (error) {
     console.error("[twitch-irc] Verbindung konnte nicht gestartet werden:", error instanceof Error ? error.message : error);
   }
+}
+
+const RETRY_MS = 30_000;
+/** Etwa eine Stunde lang erneut versuchen, so lange darf die Datenbank weg sein */
+const MAX_RETRIES = 120;
+const MAX_RETRY_LINES = 20_000;
+
+function processLine(irc: IrcState, socket: WebSocket, line: string, tries: number) {
+  irc.processing = irc.processing
+    .then(() => handleLine(irc, socket, line))
+    .catch((error: unknown) => {
+      // Nur Nachrichten und Notices nachholen; deren Zeitpunkt steht im Tag `tmi-sent-ts`, die IDs sind fest.
+      const retryable = / (PRIVMSG|USERNOTICE) /.test(line) && tries < MAX_RETRIES && irc.retry.length < MAX_RETRY_LINES;
+      if (tries === 0) console.error(`[twitch-irc] IRC-Nachricht konnte nicht verarbeitet werden${retryable ? ", neuer Versuch folgt" : ""}:`, error instanceof Error ? error.message : error);
+      if (!retryable) return;
+      irc.retry.push({ socket, line, tries: tries + 1 });
+      irc.retryTimer ??= setTimeout(() => {
+        irc.retryTimer = null;
+        const lines = irc.retry.splice(0);
+        if (lines.length) console.log(`[twitch-irc] ${lines.length} IRC-Nachrichten erneut verarbeiten`);
+        for (const r of lines) processLine(irc, r.socket, r.line, r.tries);
+      }, RETRY_MS);
+    });
 }
 
 function subscriptionEventFromNotice(message: TwitchIrcMessage, owner?: ChannelOwner): TrackerEvent | null {
