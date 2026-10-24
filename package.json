@@ -10,6 +10,7 @@
     "start": "node --max-old-space-size=280 --max-semi-space-size=16 ./node_modules/next/dist/bin/next start",
     "start:web": "TRACKER_MODE=web npm start",
     "start:tracker": "TRACKER_MODE=tracker npm start",
+    "start:cached": "TRACKER_MODE=web node scripts/cached-server.mjs",
     "lint": "eslint"
   },
   "dependencies": {

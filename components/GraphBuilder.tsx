@@ -43,7 +43,8 @@ function rangeParams(q: Pick<GraphQuery, "zeit" | "von" | "bis" | "raster">, now
     if (Number.isFinite(a)) p.set("von", String(a));
     if (Number.isFinite(b)) p.set("bis", String(b));
   } else if (r?.ms) {
-    p.set("von", String(now - r.ms));
+    // Auf die Minute gerundet: Gleiche Auswahl ergibt dieselbe URL, der Server-Cache kann sie für alle Besucher teilen
+    p.set("von", String(Math.floor((now - r.ms) / 60_000) * 60_000));
   }
   if (q.raster !== "auto") p.set("raster", q.raster);
 }
