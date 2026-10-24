@@ -15,6 +15,18 @@
  * addiert, Spitzenwerte als Maximum, aktuelle Felder aus der neuesten Epoche.
  */
 import pg from "pg";
+import { readFileSync } from "node:fs";
+
+/**
+ * Reihenfolge der Zusatzwerte in player_history.extra_stats, direkt aus lib/playerStats.ts gelesen,
+ * damit sie immer zum Code passt. Gebraucht, um die alte jsonb-Spalte `extra` (20./21.10.) umzuwandeln.
+ */
+const EXTRA_HISTORY_KEYS = (() => {
+  const src = readFileSync(new URL("../lib/playerStats.ts", import.meta.url), "utf8");
+  const block = src.match(/EXTRA_HISTORY_KEYS[^=]*=\s*\[([\s\S]*?)\]/);
+  if (!block) throw new Error("EXTRA_HISTORY_KEYS in lib/playerStats.ts nicht gefunden");
+  return [...block[1].matchAll(/"([A-Za-z]+)"/g)].map((m) => m[1]);
+})();
 
 const args = process.argv.slice(2);
 const opt = (name) => args.flatMap((a, i) => (a === `--${name}` ? [args[i + 1]] : []));
@@ -138,15 +150,32 @@ try {
     if (dstCols.size === 0) continue;
     let read = 0;
     let written = 0;
+    let converted = 0;
     for (const era of eras) {
       const srcCols = await columns(era.query, table);
       if (srcCols.size === 0) continue;
       const cols = [...dstCols.keys()].filter((c) => srcCols.has(c));
-      for await (const rows of readPaged(era, table, cols, key)) {
+      // Alte jsonb-Spalte `extra` (kurzzeitig am 20./21.10.) in das heutige integer[] `extra_stats` umwandeln
+      const convertExtra = table === "player_history" && srcCols.has("extra") && dstCols.has("extra_stats") && !dstCols.has("extra");
+      const readCols = convertExtra ? [...cols, "extra"] : cols;
+      const writeCols = convertExtra && !cols.includes("extra_stats") ? [...cols, "extra_stats"] : cols;
+      for await (const rows of readPaged(era, table, readCols, key)) {
         read += rows.length;
-        written += (await insertRows(table, cols, dstCols, rows, "ON CONFLICT DO NOTHING", "RETURNING 1")).length;
+        if (convertExtra) {
+          for (const r of rows) {
+            if (r.extra && !r.extra_stats) {
+              const values = EXTRA_HISTORY_KEYS.map((k) => (typeof r.extra[k] === "number" ? Math.round(r.extra[k]) : null));
+              if (values.some((v) => v !== null)) {
+                r.extra_stats = values;
+                converted += 1;
+              }
+            }
+          }
+        }
+        written += (await insertRows(table, writeCols, dstCols, rows, "ON CONFLICT DO NOTHING", "RETURNING 1")).length;
       }
     }
+    if (converted) report.push(`${table}: ${converted} Zeilen von der alten Spalte extra (jsonb) nach extra_stats umgewandelt`);
     report.push(`${table}: ${read} gelesen, ${written} übernommen, ${read - written} doppelt`);
   }
 
@@ -184,10 +213,9 @@ try {
       const online = (await eras[i].query(`SELECT id, name, uuid, session_start FROM players WHERE online`)).rows;
       for (const p of online) {
         const secs = p.session_start ? Math.max(0, Math.round((new Date(end) - new Date(p.session_start)) / 1000)) : 0;
-        await insertRows("events", ["id", "at", "type", "player", "player_name", "uuid", "where", "meta"], evCols, [
-          { id: `merge-leave-${i + 1}-${p.id}`, at: end, type: "leave", player: p.id, player_name: p.name, uuid: p.uuid, where: "server", meta: { sessionSeconds: secs, synthetic: true, reason: "Ende der Tracker-Epoche" } },
-        ]);
-        synthetic += 1;
+        synthetic += (await insertRows("events", ["id", "at", "type", "player", "player_name", "uuid", "where", "meta"], evCols, [
+          { id: `merge-leave-${new Date(end).getTime().toString(36)}-${p.id}`, at: end, type: "leave", player: p.id, player_name: p.name, uuid: p.uuid, where: "server", meta: { sessionSeconds: secs, synthetic: true, reason: "Ende der Tracker-Epoche" } },
+        ], "ON CONFLICT DO NOTHING", "RETURNING 1")).length;
       }
     }
     const start = eras[i + 1].range.startedAt ?? eras[i + 1].range.first;
@@ -199,14 +227,51 @@ try {
         )
       ).rows.filter((r) => r.type === "leave");
       for (const r of firsts) {
-        await insertRows("events", ["id", "at", "type", "player", "player_name", "uuid", "where", "meta"], evCols, [
-          { id: `merge-join-${i + 2}-${r.player}`, at: start, type: "join", player: r.player, player_name: r.player_name, uuid: r.uuid, where: "server", meta: { synthetic: true, reason: "Beginn der Tracker-Epoche" } },
-        ]);
-        synthetic += 1;
+        synthetic += (await insertRows("events", ["id", "at", "type", "player", "player_name", "uuid", "where", "meta"], evCols, [
+          { id: `merge-join-${new Date(start).getTime().toString(36)}-${r.player}`, at: start, type: "join", player: r.player, player_name: r.player_name, uuid: r.uuid, where: "server", meta: { synthetic: true, reason: "Beginn der Tracker-Epoche" } },
+        ], "ON CONFLICT DO NOTHING", "RETURNING 1")).length;
       }
     }
   }
-  report.push(`events: ${synthetic} Leave/Join an Epochengrenzen ergänzt`);
+  report.push(`events: ${synthetic} Leave/Join an Epochengrenzen ergänzt (tatsächlich geschrieben)`);
+
+  // Tode aus dem Feed bzw. den `events` von /api/player (ID „feed-…“) gegen die Zähler-Tode abgleichen.
+  // Ein späterer Tracker legt Tode aus der Zeit vor seinem ersten Stand eines Spielers als eigene Feed-Ereignisse an;
+  // eine frühere Epoche hat dieselben Tode oft schon über den Todeszähler erfasst. Wie im Live-Tracker
+  // (enrichDeathEvents) gilt ein Feed-Tod als derselbe, wenn ein Zähler-Tod desselben Spielers 2 Min davor bis
+  // 20 Min danach liegt (die Neon-Epoche fragte Einzelwerte nur alle 15 Min ab). Ein Zähler-Tod mit delta n nimmt
+  // höchstens n Feed-Tode auf. Der Feed-Tod entfällt, seine Angaben (Nachricht, Mörder) wandern in den Zähler-Tod.
+  // Feed-Tode ohne Gegenstück bleiben: diese Tode hat keine frühere Epoche gesehen.
+  {
+    const feedDeaths = (
+      await dst.query(`SELECT id, player, at, meta FROM events WHERE type = 'death' AND id LIKE 'feed-%' AND player IS NOT NULL ORDER BY at`)
+    ).rows;
+    const counter = (
+      await dst.query(
+        `SELECT id, player, at, COALESCE(delta, 1) AS delta FROM events WHERE type = 'death' AND id NOT LIKE 'feed-%' AND player IS NOT NULL ORDER BY at`,
+      )
+    ).rows;
+    const byPlayer = new Map();
+    for (const c of counter) (byPlayer.get(c.player) ?? byPlayer.set(c.player, []).get(c.player)).push({ ...c, left: Math.max(1, Math.round(Number(c.delta))) });
+    let absorbed = 0;
+    for (const f of feedDeaths) {
+      const t = new Date(f.at).getTime();
+      // Nächster passender Zähler-Tod mit freier Kapazität
+      const match = (byPlayer.get(f.player) ?? [])
+        .filter((c) => c.left > 0 && new Date(c.at).getTime() >= t - 2 * 60_000 && new Date(c.at).getTime() <= t + 20 * 60_000)
+        .sort((a, b) => Math.abs(new Date(a.at).getTime() - t) - Math.abs(new Date(b.at).getTime() - t))[0];
+      if (!match) continue;
+      match.left -= 1;
+      // Vorhandene Angaben des Zähler-Tods haben Vorrang. `beforeTracking` nicht übernehmen: der Zähler-Tod wurde live
+      // erfasst; mit der Markierung fiele er aus den Statistiken (lib/analytics.ts zählt solche Tode nicht).
+      const { beforeTracking: _ignored, ...feedMeta } = f.meta ?? {};
+      void _ignored;
+      await dst.query(`UPDATE events SET meta = $2::jsonb || COALESCE(meta, '{}'::jsonb) WHERE id = $1`, [match.id, JSON.stringify(feedMeta)]);
+      await dst.query(`DELETE FROM events WHERE id = $1`, [f.id]);
+      absorbed += 1;
+    }
+    report.push(`events: ${feedDeaths.length} Feed-Tode geprüft, ${absorbed} als Doppelung eines Zähler-Tods zusammengeführt, ${feedDeaths.length - absorbed} behalten`);
+  }
 
   /* 4) Spieler zusammenführen */
   const SUM = ["tracked_seconds", "sessions", "afk_seconds", "stream_on_server_seconds", "stream_off_server_seconds", "followers_on_server"];
