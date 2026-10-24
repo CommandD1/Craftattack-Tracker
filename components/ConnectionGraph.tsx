@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { duration, headUrl, num } from "@/lib/format";
+import type { LinkCounts, LinkKind } from "@/lib/connectionWeights";
 
 export interface GraphNode {
   id: string;
@@ -12,17 +13,11 @@ export interface GraphNode {
   live: boolean;
 }
 
-export interface GraphEdge {
-  a: string;
-  b: string;
-  raidsAB: number;
-  raidsBA: number;
-  chats: number;
-  chatSeconds: number;
-  msgsAB: number;
-  msgsBA: number;
+/** Verbindung mit den Punkten nach der eingestellten Gewichtung */
+export interface GraphEdge extends LinkCounts {
   weight: number;
-  now: boolean;
+  /** Art mit den meisten Punkten (Linienfarbe) */
+  kind: LinkKind;
 }
 
 interface Node extends GraphNode {
@@ -60,15 +55,6 @@ function describe(e: GraphEdge, self: string) {
   return parts.join(" · ");
 }
 
-/** Art, die bei einer Verbindung die meisten Punkte bringt (bestimmt die Farbe) */
-function kind(e: GraphEdge): "raid" | "shared" | "msgs" {
-  const raids = e.raidsAB + e.raidsBA;
-  // 10 Nachrichten = 1 Punkt, wie MESSAGES_PER_POINT in lib/connections.ts (server-only, hier nicht importierbar)
-  const msgs = (e.msgsAB + e.msgsBA) / 10;
-  if (raids >= e.chats && raids >= msgs) return "raid";
-  return e.chats >= msgs ? "shared" : "msgs";
-}
-
 /** Rand um das Netz im Canvas (Platz für Namen über den Köpfen) */
 const PAD = 36;
 const MAX_SCALE = 1.6;
@@ -80,8 +66,15 @@ const REPEL_RANGE = 420;
  * des anderen. Je mehr Punkte, desto dicker die Linie und desto stärker ziehen sich die beiden an.
  * Die Simulation läuft ohne Wände; danach wird das ganze Netz ins Canvas eingepasst, so nutzt es die Fläche aus.
  */
-export function ConnectionGraph({ nodes, edges }: { nodes: GraphNode[]; edges: GraphEdge[] }) {
+export function ConnectionGraph({ nodes, edges, focus = null }: { nodes: GraphNode[]; edges: GraphEdge[]; focus?: string | null }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  /** Positionen über Änderungen der Einstellungen hinweg: Das Netz ordnet sich nur neu, statt neu zu beginnen */
+  const positions = useRef(new Map<string, { x: number; y: number }>());
+  /** Hervorgehobener Spieler; als Ref, damit ein Wechsel die Simulation nicht neu startet */
+  const focusRef = useRef(focus);
+  useEffect(() => {
+    focusRef.current = focus;
+  }, [focus]);
   const router = useRouter();
   const [tip, setTip] = useState<Tip | null>(null);
 
@@ -107,17 +100,29 @@ export function ConnectionGraph({ nodes, edges }: { nodes: GraphNode[]; edges: G
         degree.set(id, (degree.get(id) ?? 0) + 1);
       }
     }
-    // Start auf einer Spirale: gleichmäßig verteilt, ohne dass zwei Knoten aufeinander liegen
+    // Bekannte Knoten behalten ihren Platz. Neue starten neben einem bekannten Nachbarn, sonst auf einer Spirale
+    // (gleichmäßig verteilt, ohne dass zwei Knoten aufeinander liegen).
+    const saved = positions.current;
+    const known = nodes.some((n) => saved.has(n.id));
+    const near = (id: string) => {
+      for (const e of edges) {
+        const other = e.a === id ? e.b : e.b === id ? e.a : null;
+        const p = other && saved.get(other);
+        if (p) return { x: p.x + (Math.random() - 0.5) * 60, y: p.y + (Math.random() - 0.5) * 60 };
+      }
+      return null;
+    };
     const ns: Node[] = nodes.map((n, i) => {
       const a = i * 2.39996;
       const rad = 24 * Math.sqrt(i + 1);
+      const pos = saved.get(n.id) ?? near(n.id) ?? { x: Math.cos(a) * rad, y: Math.sin(a) * rad };
       const img = new Image();
       img.src = headUrl(n.uuid, 64, n.id);
       const w = weight.get(n.id) ?? 0;
-      return { ...n, x: Math.cos(a) * rad, y: Math.sin(a) * rad, vx: 0, vy: 0, r: 11 + Math.min(13, Math.sqrt(w) * 2), degree: degree.get(n.id) ?? 1, img };
+      return { ...n, ...pos, vx: 0, vy: 0, r: 11 + Math.min(13, Math.sqrt(w) * 2), degree: degree.get(n.id) ?? 1, img };
     });
     const byId = new Map(ns.map((n) => [n.id, n]));
-    const es = edges.map((e) => ({ ...e, A: byId.get(e.a)!, B: byId.get(e.b)!, kind: kind(e) })).filter((e) => e.A && e.B);
+    const es = edges.map((e) => ({ ...e, A: byId.get(e.a)!, B: byId.get(e.b)! })).filter((e) => e.A && e.B);
     const maxW = Math.max(1, ...es.map((e) => e.weight));
     const neighbours = new Map<Node, Set<Node>>();
     for (const e of es) {
@@ -159,7 +164,8 @@ export function ConnectionGraph({ nodes, edges }: { nodes: GraphNode[]; edges: G
     let drag: Node | null = null;
     let hover: Node | null = null;
     let running = true;
-    let alpha = 1;
+    // Mit bekannten Positionen nur sanft nachordnen
+    let alpha = known ? 0.5 : 1;
     let moved = false;
 
     const step = () => {
@@ -236,10 +242,12 @@ export function ConnectionGraph({ nodes, edges }: { nodes: GraphNode[]; edges: G
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, W(), H());
       const base = es.length > 150 ? 0.4 : 0.55;
+      // Überfahrener Kopf, sonst der im Auswahlfeld hervorgehobene Spieler
+      const hl = hover ?? (focusRef.current ? (byId.get(focusRef.current) ?? null) : null);
       for (const e of es) {
-        const active = hover && (e.A === hover || e.B === hover);
+        const active = hl && (e.A === hl || e.B === hl);
         ctx.strokeStyle = e.now ? color("--grass") : kindColor[e.kind];
-        ctx.globalAlpha = hover ? (active ? 0.95 : 0.05) : base;
+        ctx.globalAlpha = hl ? (active ? 0.95 : 0.05) : base;
         ctx.lineWidth = 1.2 + Math.sqrt(e.weight / maxW) * 7;
         ctx.beginPath();
         ctx.moveTo(sx(e.A), sy(e.A));
@@ -251,7 +259,7 @@ export function ConnectionGraph({ nodes, edges }: { nodes: GraphNode[]; edges: G
       ctx.textAlign = "center";
       const labels: Node[] = [];
       for (const n of ns) {
-        const dim = hover && n !== hover && !neighbours.get(hover)?.has(n);
+        const dim = hl && n !== hl && !neighbours.get(hl)?.has(n);
         const x = sx(n);
         const y = sy(n);
         const r = sr(n);
@@ -278,7 +286,7 @@ export function ConnectionGraph({ nodes, edges }: { nodes: GraphNode[]; edges: G
       // Namen zuletzt, damit keine Linie oder kein Kopf darüber liegt. Größte Knoten (und der überfahrene) zuerst;
       // ein Name, der einen schon gesetzten überdecken würde, entfällt. So passen so viele Namen hin wie Platz ist.
       ctx.globalAlpha = 1;
-      labels.sort((a, b) => Number(b === hover) - Number(a === hover) || b.r - a.r);
+      labels.sort((a, b) => Number(b === hl) - Number(a === hl) || b.r - a.r);
       const placed: [number, number, number, number][] = [];
       for (const n of labels) {
         const y = sy(n) - sr(n) - 8;
@@ -300,7 +308,7 @@ export function ConnectionGraph({ nodes, edges }: { nodes: GraphNode[]; edges: G
       }
     };
     // Vorlauf ohne Zeichnen: Das Netz erscheint gleich halbwegs geordnet statt als Knäuel
-    for (let i = 0; i < 120; i++) step();
+    if (!known) for (let i = 0; i < 120; i++) step();
     const loop = () => {
       if (!running) return;
       if (alpha > 0 || drag) step();
@@ -372,6 +380,7 @@ export function ConnectionGraph({ nodes, edges }: { nodes: GraphNode[]; edges: G
     loop();
     return () => {
       running = false;
+      for (const n of ns) saved.set(n.id, { x: n.x, y: n.y });
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);

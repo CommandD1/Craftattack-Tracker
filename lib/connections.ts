@@ -1,30 +1,9 @@
 import "server-only";
 import { getDb } from "./db";
-
-/** So viele Chat-Nachrichten ergeben einen Punkt (ein Raid oder ein geteilter Chat zählt je einen) */
-export const MESSAGES_PER_POINT = 10;
+import type { LinkCounts } from "./connectionWeights";
 
 /** Verbindung zweier Spieler über Twitch: Raids, geteilte Chats und Nachrichten im Chat des anderen. */
-export interface ConnectionEdge {
-  /** IDs, alphabetisch sortiert (a < b) */
-  a: string;
-  b: string;
-  /** Raids von a nach b */
-  raidsAB: number;
-  /** Raids von b nach a */
-  raidsBA: number;
-  /** Geteilte Chats (Stream Together), an denen beide beteiligt waren */
-  chats: number;
-  /** Gemeinsame Zeit im geteilten Chat in Sekunden */
-  chatSeconds: number;
-  /** Nachrichten von a im Chat von b */
-  msgsAB: number;
-  /** Nachrichten von b im Chat von a */
-  msgsBA: number;
-  /** Gewicht für den Graphen: Raids + geteilte Chats + Nachrichten / MESSAGES_PER_POINT */
-  weight: number;
-  /** Gerade im geteilten Chat verbunden */
-  now: boolean;
+export interface ConnectionEdge extends LinkCounts {
   last: string;
 }
 
@@ -64,7 +43,7 @@ export async function getConnections(hours: number | null): Promise<ConnectionEd
     if (!e)
       pairs.set(
         key,
-        (e = { a, b, raidsAB: 0, raidsBA: 0, chats: 0, chatSeconds: 0, msgsAB: 0, msgsBA: 0, weight: 0, now: false, last: new Date(0).toISOString() }),
+        (e = { a, b, raidsAB: 0, raidsBA: 0, chats: 0, chatSeconds: 0, msgsAB: 0, msgsBA: 0, now: false, last: new Date(0).toISOString() }),
       );
     return e;
   };
@@ -77,7 +56,6 @@ export async function getConnections(hours: number | null): Promise<ConnectionEd
     const e = pair(r.src, r.dst);
     if (r.src === e.a) e.raidsAB += r.n;
     else e.raidsBA += r.n;
-    e.weight += r.n;
     touch(e, r.last);
   }
   for (const s of chats.rows) {
@@ -90,7 +68,6 @@ export async function getConnections(hours: number | null): Promise<ConnectionEd
         const e = pair(ids[i], ids[j]);
         e.chats++;
         e.chatSeconds += seconds;
-        e.weight++;
         if (!s.ended_at) e.now = true;
         touch(e, s.last_seen_at);
       }
@@ -99,7 +76,6 @@ export async function getConnections(hours: number | null): Promise<ConnectionEd
     const e = pair(m.src, m.dst);
     if (m.src === e.a) e.msgsAB += m.n;
     else e.msgsBA += m.n;
-    e.weight += m.n / MESSAGES_PER_POINT;
     touch(e, m.last);
   }
   return [...pairs.values()];
