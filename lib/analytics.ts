@@ -385,7 +385,8 @@ function sourceAfkFromRows(rows: AfkRow[], now: number, state: TrackerState): Ma
 /**
  * AFK-Phasen aus nach Spieler und Zeit sortierten Verlaufspunkten (siehe `getAfkSpans`). Vorrang hat die Quelle
  * (`sourceAfkFromRows`); nur wo sie keine Aussage macht (vor ihrer Aufzeichnung, Datenlücken, Abfrage fehlgeschlagen),
- * gilt die eigene Erkennung (`ownAfkFromRows`).
+ * gilt die eigene Erkennung (`ownAfkFromRows`). Ausnahme: stillstehend farmen (eigene Erkennung mit Farm-Art) zählt
+ * immer, denn die Quelle wertet Blöcke abbauen als Aktivität (bei ≥ 10 Blöcken pro Minute 0 % AFK laut Server).
  */
 function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, state: TrackerState): Map<string, Span[]> {
   const own = ownAfkFromRows(rows, from, to, now, state);
@@ -393,13 +394,15 @@ function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, stat
   const out = new Map<string, Span[]>();
   for (const id of new Set([...own.keys(), ...source.keys()])) {
     const src = source.get(id);
+    const ownList = own.get(id) ?? [];
+    const farms = mergeRanges(ownList.filter((s) => s[2]).map((s): [number, number] => [s[0], s[1]]));
     const list: Span[] = [];
     for (const s of src?.spans ?? []) {
       const a = Math.max(from, s[0]);
       const b = Math.min(to, s[1]);
-      if (b > a) list.push([a, b, ...s.slice(2)] as Span);
+      if (b > a) list.push(...subtractRanges([a, b, ...s.slice(2)] as Span, farms));
     }
-    for (const s of own.get(id) ?? []) list.push(...(src ? subtractRanges(s, src.covered) : [s]));
+    for (const s of ownList) list.push(...(s[2] || !src ? [s] : subtractRanges(s, src.covered)));
     if (list.length) out.set(id, list.sort((x, y) => x[0] - y[0]));
   }
   return out;

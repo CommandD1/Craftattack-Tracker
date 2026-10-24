@@ -8,14 +8,57 @@ import type { EventType, TrackerEvent } from "./types";
 
 /** Eine Phase, die bis kurz vor „jetzt“ reicht und deren Spieler online ist, läuft noch – die übernimmt der Live-Tracker. */
 const RUNNING_SLACK_MS = 90_000;
-/** Ein Ende-Ereignis des Live-Trackers darf etwas nach dem aus dem Verlauf berechneten Phasenende liegen (Poll-Takt). */
-const END_SLACK_MS = 10 * 60_000;
 
 const FARM_TYPES: EventType[] = ["afk_mobs_start", "afk_mobs_end", "afk_blocks_start", "afk_blocks_end"];
 const AFK_TYPES: EventType[] = ["afk_start", "afk_end", ...FARM_TYPES];
 
-/** Bei Änderungen der AFK-Erkennung erhöhen, damit bestehende Ereignisse aus dem Verlauf neu aufgebaut werden. */
-const AFK_HISTORY_VERSION = 1;
+/**
+ * Bei Änderungen der AFK-Erkennung erhöhen, damit bestehende Ereignisse aus dem Verlauf neu aufgebaut werden.
+ * 2 = AFK-Zähler des Servers, stillstehend farmen zählt als AFK-Farm, Farm-Fenster 3 Min, keine doppelten Phasen
+ */
+const AFK_HISTORY_VERSION = 2;
+
+/**
+ * Bestehende Phasen je Spieler aus Start-/Ende-Ereignissen: Ende mit `meta.since` ergibt [since, Ende], ein Start
+ * ohne passendes Ende gilt als bis jetzt laufend. Eine nachzutragende Phase, die eine davon überlappt, gibt es schon –
+ * so entstehen keine Doppelten, wenn Live-Tracker und Verlauf eine Phase etwas anders schneiden.
+ */
+async function existingPhases(startType: EventType, endType: EventType, now: number): Promise<Map<string, [number, number][]>> {
+  const db = await getDb();
+  const rows = (
+    await db.query<{ player: string; type: string; at: Date; since: string | null }>(
+      `SELECT player, type, at, meta->>'since' AS since FROM events WHERE type = ANY($1::text[]) AND player IS NOT NULL ORDER BY player, at`,
+      [[startType, endType]],
+    )
+  ).rows;
+  const out = new Map<string, [number, number][]>();
+  let open: { player: string; at: number } | null = null;
+  const add = (player: string, a: number, b: number) => {
+    const l = out.get(player) ?? [];
+    l.push([a, b]);
+    out.set(player, l);
+  };
+  for (const r of rows) {
+    const at = new Date(r.at).getTime();
+    if (open && open.player !== r.player) {
+      add(open.player, open.at, now);
+      open = null;
+    }
+    if (r.type === startType) {
+      if (open) add(open.player, open.at, at);
+      open = { player: r.player, at };
+    } else {
+      const since = r.since ? Date.parse(r.since) : open?.at ?? at;
+      add(r.player, Math.min(since, at), at);
+      open = null;
+    }
+  }
+  if (open) add(open.player, open.at, now);
+  return out;
+}
+
+const overlaps = (phases: Map<string, [number, number][]>, player: string, a: number, b: number) =>
+  (phases.get(player) ?? []).some(([x, y]) => x < b && y > a);
 
 /**
  * Aktuelle Stufe der einmaligen Verlaufs-Korrekturen (tracker_meta.history_fix):
@@ -236,18 +279,13 @@ async function fixCountersAndPlaytime(): Promise<void> {
 async function backfillAfkFarmEvents(): Promise<number> {
   await ensureLoaded();
   const state = await getState();
-  const db = await getDb();
   const now = Date.now();
   const spans = await loadAfkSpans(0, now, now);
 
-  const existing = (
-    await db.query<{ player: string; type: string; at: Date }>(
-      `SELECT player, type, at FROM events WHERE type = ANY($1::text[]) AND player IS NOT NULL`,
-      [FARM_TYPES],
-    )
-  ).rows.map((r) => ({ player: r.player, type: r.type, at: new Date(r.at).getTime() }));
-  const has = (player: string, type: EventType, from: number, to: number) =>
-    existing.some((e) => e.player === player && e.type === type && e.at >= from && e.at <= to);
+  const existing = {
+    mobs: await existingPhases("afk_mobs_start", "afk_mobs_end", now),
+    blocks: await existingPhases("afk_blocks_start", "afk_blocks_end", now),
+  };
 
   const events: TrackerEvent[] = [];
   for (const [id, list] of spans) {
@@ -256,41 +294,39 @@ async function backfillAfkFarmEvents(): Promise<number> {
       if (!kind || !farm) continue;
       // Läuft noch: Start/Ende meldet der Live-Tracker
       if (p?.online && b >= now - RUNNING_SLACK_MS) continue;
+      // Phase gibt es schon (live erkannt oder früher nachgetragen)
+      if (overlaps(existing[kind], id, a, b)) continue;
       const startType: EventType = kind === "mobs" ? "afk_mobs_start" : "afk_blocks_start";
       const endType: EventType = kind === "mobs" ? "afk_mobs_end" : "afk_blocks_end";
       const base = { player: id, playerName: p?.name ?? id, uuid: p?.uuid ?? "", where: "server" as const };
       const since = new Date(a).toISOString();
       const afkSince = new Date(farm.afkSince).toISOString();
       const key = `${id}-${a.toString(36)}`;
-      if (!has(id, startType, a, b)) {
-        events.push({
-          id: `bf-${kind}-start-${key}`,
-          at: new Date(farm.at).toISOString(),
-          type: startType,
-          ...base,
-          value: farm.atValue,
-          meta: { kind, since, afkSince, windowSeconds: farm.windowSeconds, [kind]: farm.atValue, backfilled: true },
-        });
-      }
-      if (!has(id, endType, a, b + END_SLACK_MS)) {
-        events.push({
-          id: `bf-${kind}-end-${key}`,
-          at: new Date(b).toISOString(),
-          type: endType,
-          ...base,
-          value: farm.value,
-          meta: {
-            kind,
-            afkSeconds: Math.round((b - a) / 1000),
-            since,
-            afkSince,
-            byLeave: farm.byLeave,
-            ...(farm.stillAfk ? { stillAfk: true } : {}),
-            [kind]: farm.value,
-            backfilled: true,
-          },
-        });
-      }
+      events.push({
+        id: `bf-${kind}-start-${key}`,
+        at: new Date(farm.at).toISOString(),
+        type: startType,
+        ...base,
+        value: farm.atValue,
+        meta: { kind, since, afkSince, windowSeconds: farm.windowSeconds, [kind]: farm.atValue, backfilled: true },
+      });
+      events.push({
+        id: `bf-${kind}-end-${key}`,
+        at: new Date(b).toISOString(),
+        type: endType,
+        ...base,
+        value: farm.value,
+        meta: {
+          kind,
+          afkSeconds: Math.round((b - a) / 1000),
+          since,
+          afkSince,
+          byLeave: farm.byLeave,
+          ...(farm.stillAfk ? { stillAfk: true } : {}),
+          [kind]: farm.value,
+          backfilled: true,
+        },
+      });
     }
   }
   return insertPastEvents(events);
@@ -300,17 +336,9 @@ async function backfillAfkFarmEvents(): Promise<number> {
 async function backfillAfkEvents(): Promise<number> {
   await ensureLoaded();
   const [state, sessions] = await Promise.all([getState(), loadAllSessions()]);
-  const db = await getDb();
   const now = Date.now();
   const spans = await loadAfkSpans(0, now, now);
-  const existing = (
-    await db.query<{ player: string; type: string; at: Date }>(
-      `SELECT player, type, at FROM events WHERE type = ANY($1::text[]) AND player IS NOT NULL`,
-      [["afk_start", "afk_end"]],
-    )
-  ).rows.map((r) => ({ player: r.player, type: r.type, at: new Date(r.at).getTime() }));
-  const has = (player: string, type: EventType, from: number, to: number) =>
-    existing.some((e) => e.player === player && e.type === type && e.at >= from && e.at <= to);
+  const existing = await existingPhases("afk_start", "afk_end", now);
   const events: TrackerEvent[] = [];
 
   for (const [id, list] of spans) {
@@ -322,17 +350,20 @@ async function backfillAfkEvents(): Promise<number> {
       const startAt = start;
       const key = `${id}-${start.toString(36)}`;
       const base = { player: id, playerName: p?.name ?? id, uuid: p?.uuid ?? "", where: "server" as const };
-      if (!has(id, "afk_start", startAt - 10 * 60_000, startAt + 10 * 60_000)) {
-        events.push({
-          id: `bf-afk-start-${key}`,
-          at: new Date(startAt).toISOString(),
-          type: "afk_start",
-          ...base,
-          meta: { since: new Date(start).toISOString(), backfilled: true },
-        });
-      }
       const running = p?.online && end >= now - RUNNING_SLACK_MS;
-      if (!running && !has(id, "afk_end", end - END_SLACK_MS, end + END_SLACK_MS)) {
+      // Phase gibt es schon (live erkannt oder früher nachgetragen): weder Start noch Ende nachtragen
+      if (overlaps(existing, id, startAt, running ? now : end)) {
+        start = null;
+        return;
+      }
+      events.push({
+        id: `bf-afk-start-${key}`,
+        at: new Date(startAt).toISOString(),
+        type: "afk_start",
+        ...base,
+        meta: { since: new Date(start).toISOString(), backfilled: true },
+      });
+      if (!running) {
         const byLeave = sessions.some((s) => s.player === id && s.end && Math.abs(Date.parse(s.end) - end) < 1_000);
         events.push({
           id: `bf-afk-end-${key}`,
