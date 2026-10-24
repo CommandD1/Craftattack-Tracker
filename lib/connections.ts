@@ -1,7 +1,10 @@
 import "server-only";
 import { getDb } from "./db";
 
-/** Verbindung zweier Spieler über Twitch: Raids in beide Richtungen und gemeinsame geteilte Chats. */
+/** So viele Chat-Nachrichten ergeben einen Punkt (ein Raid oder ein geteilter Chat zählt je einen) */
+export const MESSAGES_PER_POINT = 10;
+
+/** Verbindung zweier Spieler über Twitch: Raids, geteilte Chats und Nachrichten im Chat des anderen. */
 export interface ConnectionEdge {
   /** IDs, alphabetisch sortiert (a < b) */
   a: string;
@@ -14,18 +17,22 @@ export interface ConnectionEdge {
   chats: number;
   /** Gemeinsame Zeit im geteilten Chat in Sekunden */
   chatSeconds: number;
-  /** Gewicht für den Graphen: jeder Raid und jeder geteilte Chat zählt 1 */
+  /** Nachrichten von a im Chat von b */
+  msgsAB: number;
+  /** Nachrichten von b im Chat von a */
+  msgsBA: number;
+  /** Gewicht für den Graphen: Raids + geteilte Chats + Nachrichten / MESSAGES_PER_POINT */
   weight: number;
   /** Gerade im geteilten Chat verbunden */
   now: boolean;
   last: string;
 }
 
-/** Raids und geteilte Chats seit `hours` Stunden (null = gesamte Erfassung), zu Paaren zusammengefasst. */
+/** Raids, geteilte Chats und Chat-Nachrichten seit `hours` Stunden (null = gesamte Erfassung), zu Paaren zusammengefasst. */
 export async function getConnections(hours: number | null): Promise<ConnectionEdge[]> {
   const db = await getDb();
   const since = hours === null ? new Date(0) : new Date(Date.now() - hours * 3600_000);
-  const [raids, chats] = await Promise.all([
+  const [raids, chats, messages] = await Promise.all([
     db.query<{ src: string; dst: string; n: number; last: Date }>(
       `SELECT player AS src, meta->>'raidTargetPlayerId' AS dst, count(*)::int AS n, max(at) AS last
          FROM events
@@ -39,6 +46,14 @@ export async function getConnections(hours: number | null): Promise<ConnectionEd
         WHERE coalesce(ended_at, now()) >= $1 AND cardinality(participants) > 1`,
       [since],
     ),
+    // Nur der Kanal, in dem geschrieben wurde; Kopien im geteilten Chat (shared_with) zählen nicht extra
+    db.query<{ src: string; dst: string; n: number; last: Date }>(
+      `SELECT sender_id AS src, channel_id AS dst, count(*)::int AS n, max(at) AS last
+         FROM twitch_chat_messages
+        WHERE at >= $1 AND sender_id <> channel_id
+        GROUP BY 1, 2`,
+      [since],
+    ),
   ]);
 
   const pairs = new Map<string, ConnectionEdge>();
@@ -46,7 +61,11 @@ export async function getConnections(hours: number | null): Promise<ConnectionEd
     const [a, b] = x < y ? [x, y] : [y, x];
     const key = `${a}|${b}`;
     let e = pairs.get(key);
-    if (!e) pairs.set(key, (e = { a, b, raidsAB: 0, raidsBA: 0, chats: 0, chatSeconds: 0, weight: 0, now: false, last: new Date(0).toISOString() }));
+    if (!e)
+      pairs.set(
+        key,
+        (e = { a, b, raidsAB: 0, raidsBA: 0, chats: 0, chatSeconds: 0, msgsAB: 0, msgsBA: 0, weight: 0, now: false, last: new Date(0).toISOString() }),
+      );
     return e;
   };
   const touch = (e: ConnectionEdge, at: Date) => {
@@ -75,6 +94,13 @@ export async function getConnections(hours: number | null): Promise<ConnectionEd
         if (!s.ended_at) e.now = true;
         touch(e, s.last_seen_at);
       }
+  }
+  for (const m of messages.rows) {
+    const e = pair(m.src, m.dst);
+    if (m.src === e.a) e.msgsAB += m.n;
+    else e.msgsBA += m.n;
+    e.weight += m.n / MESSAGES_PER_POINT;
+    touch(e, m.last);
   }
   return [...pairs.values()];
 }

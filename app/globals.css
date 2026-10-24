@@ -4126,7 +4126,13 @@ a.rankboard__now {
 .conn__canvas {
   display: block;
   width: 100%;
-  height: min(75vh, 720px);
+  height: clamp(480px, 85vh, 900px);
+}
+@media (max-width: 640px) {
+  /* Schmal: annähernd quadratisch, das Netz ist eher rund */
+  .conn__canvas {
+    height: max(420px, 115vw);
+  }
 }
 .conn__tip {
   position: absolute;
