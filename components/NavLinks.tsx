@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/graph", label: "Graph" },
   { href: "/zeitstrahl", label: "Zeitstrahl" },
   { href: "/live", label: "Live" },
+  { href: "/verbindungen", label: "Verbindungen" },
   { href: "/events", label: "Events" },
 ] as const;
 

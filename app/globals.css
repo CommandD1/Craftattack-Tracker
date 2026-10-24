@@ -4115,3 +4115,61 @@ a.rankboard__now {
 .pfilter__suggest .dot {
   margin-left: 4px;
 }
+
+/* Verbindungen: Kräfte-Graph aus Raids und geteilten Chats */
+.conn__box {
+  padding: 0;
+}
+.conn__stage {
+  position: relative;
+}
+.conn__canvas {
+  display: block;
+  width: 100%;
+  height: min(75vh, 720px);
+}
+.conn__tip {
+  position: absolute;
+  translate: -50% -100%;
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow: 0 0 0 2px var(--line), 3px 3px 0 0 var(--line);
+  padding: 6px 10px;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.conn__tip .muted {
+  color: inherit;
+  opacity: 0.75;
+}
+.conn__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0;
+  padding: 12px 16px;
+  list-style: none;
+  font-size: 0.8125rem;
+  border-top: 2px solid color-mix(in srgb, var(--ink) 12%, transparent);
+}
+.conn__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.conn__legend i {
+  width: 18px;
+  height: 4px;
+  display: inline-block;
+}
+.conn__person {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
