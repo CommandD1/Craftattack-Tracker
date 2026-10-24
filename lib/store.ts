@@ -8,6 +8,37 @@ import { EXTRA_HISTORY_KEYS, EXTRA_KEY_OF_METRIC, EXTRA_METRICS, extraStatSql, t
 import type { BoardKey, DeathFeedItem, FeedItem, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind, AfkCheck } from "./types";
 
 const MAX_EVENTS_IN_MEMORY = 20000;
+/**
+ * Seltene Ereignisarten bleiben unabhängig von MAX_EVENTS_IN_MEMORY für die ganze Staffel im Speicher (zusammen
+ * gut 10.000). Sonst verdrängen die häufigen Zähler-Ereignisse (Strecke, Blöcke, Abos …) nach zwei Tagen alle Tode
+ * aus der Ereignisliste, und ältere Tode und Streams bekommen keinen VOD-Link mehr.
+ */
+const KEEP_IN_MEMORY = new Set<TrackerEvent["type"]>([
+  "death",
+  "raid",
+  "achievement",
+  "milestone",
+  "rank",
+  "record",
+  "first_join",
+  "diamonds",
+  "totemsUsed",
+  "stream_start",
+  "stream_end",
+  "shared_chat_start",
+  "shared_chat_end",
+  "chat",
+  "server_online",
+  "server_offline",
+  "tracker_start",
+]);
+
+/** Kürzt die (chronologisch sortierte) Liste auf die letzten MAX_EVENTS_IN_MEMORY, seltene Arten bleiben alle */
+function trimEvents(events: TrackerEvent[]): TrackerEvent[] {
+  if (events.length <= MAX_EVENTS_IN_MEMORY) return events;
+  const cut = events.length - MAX_EVENTS_IN_MEMORY;
+  return events.filter((e, i) => i >= cut || KEEP_IN_MEMORY.has(e.type));
+}
 const MAX_HISTORY_POINTS = 2880; // 24 h bei 30 s
 const MAX_BULK_INSERT_ROWS = 500;
 const MIN_VISIBLE_SUBSCRIPTION_COUNT = 10;
@@ -261,10 +292,17 @@ async function loadFromDb() {
       WHERE type = 'afk_farm'`,
   );
 
+  // Die letzten MAX_EVENTS_IN_MEMORY Ereignisse plus alle älteren der seltenen Arten
   const events = (
-    await db.query<EventRow>(`SELECT * FROM events ORDER BY at DESC, id DESC LIMIT $1`, [MAX_EVENTS_IN_MEMORY])
+    await db.query<EventRow>(
+      `SELECT * FROM (SELECT * FROM events ORDER BY at DESC, id DESC LIMIT $1) recent
+       UNION
+       SELECT * FROM events WHERE type = ANY($2)
+       ORDER BY at, id`,
+      [MAX_EVENTS_IN_MEMORY, [...KEEP_IN_MEMORY]],
+    )
   ).rows;
-  store.events = events.reverse().map(rowToEvent);
+  store.events = events.map(rowToEvent);
 
   const total = (await db.query<{ n: number | string }>(`SELECT count(*)::int AS n FROM events`)).rows[0];
   state.eventCount = Math.max(state.eventCount, Number(total?.n ?? 0));
@@ -343,7 +381,7 @@ async function refreshRecentFromDb() {
   // Ereignisse im Zeitfenster ersetzen (neue und nachträglich geänderte), ältere bleiben
   const cutoff = since.getTime();
   const keep = store.events.filter((e) => Date.parse(e.at) < cutoff);
-  store.events = [...keep, ...events.map(rowToEvent)].slice(-MAX_EVENTS_IN_MEMORY);
+  store.events = trimEvents([...keep, ...events.map(rowToEvent)]);
   state.eventCount = Math.max(state.eventCount, Number(total?.n ?? 0));
 }
 
@@ -519,9 +557,7 @@ export async function appendEvents(events: TrackerEvent[]): Promise<Set<string>>
   // Nur wirklich neue Ereignisse in den Speicher, sonst stünden erneut gelieferte Feed-Einträge doppelt darin
   store.events.push(...events.filter((e) => insertedIds.has(e.id)));
   store.events.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.id.localeCompare(b.id));
-  if (store.events.length > MAX_EVENTS_IN_MEMORY) {
-    store.events = store.events.slice(-MAX_EVENTS_IN_MEMORY);
-  }
+  store.events = trimEvents(store.events);
   return insertedIds;
 }
 
@@ -607,9 +643,7 @@ export async function appendLiveEvent(event: TrackerEvent): Promise<boolean> {
   const db = await getDb();
   if (!(await insertEventRow(db, event))) return false;
   store.events.push(event);
-  if (store.events.length > MAX_EVENTS_IN_MEMORY) {
-    store.events = store.events.slice(-MAX_EVENTS_IN_MEMORY);
-  }
+  store.events = trimEvents(store.events);
   if (store.state) store.state.eventCount += 1;
   return true;
 }
@@ -653,9 +687,7 @@ export async function incrementLiveSubscriptionEvent(event: TrackerEvent): Promi
     event.delta = Number(row.delta);
     store.events.push(event);
     store.events.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.id.localeCompare(b.id));
-    if (store.events.length > MAX_EVENTS_IN_MEMORY) {
-      store.events = store.events.slice(-MAX_EVENTS_IN_MEMORY);
-    }
+    store.events = trimEvents(store.events);
   }
   if (row.inserted && store.state) store.state.eventCount += 1;
 }
@@ -1170,7 +1202,7 @@ export async function insertPastEvents(events: TrackerEvent[]): Promise<number> 
   store.events.push(...addedEvents);
   if (added > 0) {
     store.events.sort((x, y) => Date.parse(x.at) - Date.parse(y.at) || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
-    if (store.events.length > MAX_EVENTS_IN_MEMORY) store.events = store.events.slice(-MAX_EVENTS_IN_MEMORY);
+    store.events = trimEvents(store.events);
     if (store.state) store.state.eventCount += added;
   }
   return added;
