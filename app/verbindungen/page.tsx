@@ -2,17 +2,15 @@ import Link from "next/link";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { PageSkeleton } from "@/components/Skeletons";
-import { ConnectionGraph, type GraphEdge, type GraphNode } from "@/components/ConnectionGraph";
+import type { GraphNode } from "@/components/ConnectionGraph";
+import { ConnectionExplorer } from "@/components/ConnectionExplorer";
 import { FigValue } from "@/components/FigValue";
-import { Head } from "@/components/Head";
 import { loadTracker } from "@/lib/data";
-import { getConnections, MESSAGES_PER_POINT } from "@/lib/connections";
-import { duration, num } from "@/lib/format";
+import { getConnections } from "@/lib/connections";
+import type { LinkCounts } from "@/lib/connectionWeights";
+import { num } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Verbindungen" };
-
-/** Punkte mit einer Nachkommastelle (Chat-Nachrichten zählen anteilig) */
-const points = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
 
 const RANGES: { key: string; label: string; hours: number | null }[] = [
   { key: "24h", label: "24 Std", hours: 24 },
@@ -33,26 +31,19 @@ async function Connections({ searchParams }: { searchParams: PageProps<"/verbind
   const sp = await searchParams;
   const range = RANGES.find((r) => r.key === sp.zeit) ?? RANGES[2];
   const [{ state }, all] = await Promise.all([loadTracker(), getConnections(range.hours)]);
-  // Nur erfasste Spieler als Knoten
-  const edges: GraphEdge[] = all.filter((e) => state.players[e.a] && state.players[e.b]);
+  // Nur erfasste Spieler; an den Browser gehen nur die Zählwerte, gewichtet wird dort
+  const edges: LinkCounts[] = all
+    .filter((e) => state.players[e.a] && state.players[e.b])
+    .map(({ a, b, raidsAB, raidsBA, chats, chatSeconds, msgsAB, msgsBA, now }) => ({ a, b, raidsAB, raidsBA, chats, chatSeconds, msgsAB, msgsBA, now }));
   const ids = [...new Set(edges.flatMap((e) => [e.a, e.b]))];
   const nodes: GraphNode[] = ids.map((id) => {
     const p = state.players[id];
     return { id, name: p.name, uuid: p.uuid, online: p.online, live: Boolean(p.live) };
   });
-  const name = (id: string) => state.players[id]?.name ?? id;
 
   const raids = edges.reduce((s, e) => s + e.raidsAB + e.raidsBA, 0);
   const chats = edges.reduce((s, e) => s + e.chats, 0);
   const msgs = edges.reduce((s, e) => s + e.msgsAB + e.msgsBA, 0);
-  const top = [...edges].sort((a, b) => b.weight - a.weight || b.chatSeconds - a.chatSeconds).slice(0, 25);
-
-  const Person = ({ id }: { id: string }) => (
-    <Link href={`/spieler/${encodeURIComponent(id)}`} className="conn__person">
-      <Head id={id} uuid={state.players[id]?.uuid} name={name(id)} size={22} decorative />
-      <span>{name(id)}</span>
-    </Link>
-  );
 
   return (
     <>
@@ -62,7 +53,8 @@ async function Connections({ searchParams }: { searchParams: PageProps<"/verbind
           <h1 className="t-1">Verbindungen</h1>
           <p>
             Wer wen geraidet hat, wer gemeinsam im geteilten Chat war und wer im Twitch-Chat des anderen schreibt. Je enger die
-            Verbindung, desto dicker die Linie und desto näher stehen die Köpfe zusammen.
+            Verbindung, desto dicker die Linie und desto näher stehen die Köpfe zusammen. Wie viel jede Art zählt, stellst du
+            selbst ein.
           </p>
         </div>
       </section>
@@ -105,80 +97,7 @@ async function Connections({ searchParams }: { searchParams: PageProps<"/verbind
 
       <section className="block" data-tone="paper">
         <div className="wrap">
-          <div className="box conn__box" data-tone="white">
-            <ConnectionGraph nodes={nodes} edges={edges} />
-            <ul className="conn__legend muted">
-              <li>
-                <i style={{ background: "var(--twitch)" }} /> vor allem Raids
-              </li>
-              <li>
-                <i style={{ background: "var(--diamond)" }} /> vor allem geteilter Chat
-              </li>
-              <li>
-                <i style={{ background: "var(--gold)" }} /> vor allem Chat-Nachrichten
-              </li>
-              <li>
-                <i style={{ background: "var(--grass)" }} /> gerade im geteilten Chat
-              </li>
-              <li>Lila Rahmen: live · grünes Kästchen: auf dem Server · Kopf ziehen zum Verschieben, anklicken fürs Profil</li>
-            </ul>
-          </div>
-
-          {top.length > 0 && (
-            <>
-              <div className="section-head" style={{ marginTop: 48 }}>
-                <h2 className="t-2">Stärkste Verbindungen</h2>
-                <p className="muted">Jeder Raid und jeder geteilte Chat zählt einen Punkt, {MESSAGES_PER_POINT} Chat-Nachrichten ebenfalls</p>
-              </div>
-              <div className="box" data-tone="white">
-                <div className="tbl-wrap">
-                  <table className="tbl">
-                    <thead>
-                      <tr>
-                        <th>Spieler</th>
-                        <th />
-                        <th className="num">Raids →</th>
-                        <th className="num">← Raids</th>
-                        <th className="num">Geteilte Chats</th>
-                        <th className="num">Zeit im Chat</th>
-                        <th className="num" title="Nachrichten des ersten Spielers im Chat des zweiten">Nachr. →</th>
-                        <th className="num" title="Nachrichten des zweiten Spielers im Chat des ersten">← Nachr.</th>
-                        <th className="num">Punkte</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {top.map((e) => (
-                        <tr key={`${e.a}|${e.b}`}>
-                          <td>
-                            <Person id={e.a} />
-                          </td>
-                          <td>
-                            <Person id={e.b} />
-                          </td>
-                          <td className="num">{e.raidsAB ? num(e.raidsAB) : "–"}</td>
-                          <td className="num">{e.raidsBA ? num(e.raidsBA) : "–"}</td>
-                          <td className="num">
-                            {e.now && (
-                              <span className="tag" data-tone="grass" style={{ fontSize: ".75rem", padding: "1px 6px", marginRight: 6 }}>
-                                jetzt
-                              </span>
-                            )}
-                            {e.chats ? num(e.chats) : "–"}
-                          </td>
-                          <td className="num">{e.chatSeconds ? duration(e.chatSeconds) : "–"}</td>
-                          <td className="num">{e.msgsAB ? num(e.msgsAB) : "–"}</td>
-                          <td className="num">{e.msgsBA ? num(e.msgsBA) : "–"}</td>
-                          <td className="num">
-                            <b>{points.format(e.weight)}</b>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </>
-          )}
+          <ConnectionExplorer nodes={nodes} edges={edges} />
         </div>
       </section>
     </>

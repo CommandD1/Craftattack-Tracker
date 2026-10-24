@@ -4179,3 +4179,89 @@ a.rankboard__now {
   align-items: center;
   gap: 8px;
 }
+
+/* Verbindungen: Einstellungen (Gewichtung je Art, Filter, Hervorhebung) */
+.conn__controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: 20px 32px;
+  margin-bottom: 24px;
+}
+.conn__group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.conn__group > legend {
+  padding: 0;
+  margin-bottom: 12px;
+}
+.conn__group .gb__seg {
+  margin: 0;
+  align-self: flex-start;
+}
+.conn__group .gb__seg button {
+  min-height: 32px;
+  padding: 3px 10px;
+  font-size: 0.8125rem;
+}
+.conn__weight {
+  display: grid;
+  grid-template-columns: 11rem 1fr 4rem;
+  align-items: center;
+  gap: 2px 12px;
+}
+.conn__weight input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  accent-color: var(--ink);
+}
+.conn__weight-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.conn__weight-name i {
+  width: 18px;
+  height: 4px;
+  display: inline-block;
+  flex: none;
+}
+.conn__weight-val {
+  text-align: right;
+}
+.conn__weight-unit {
+  grid-column: 2 / -1;
+  font-size: 0.8125rem;
+}
+.conn__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.conn__row > .conn__weight-name {
+  min-width: 11rem;
+}
+.conn__reset {
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8125rem;
+}
+@media (max-width: 520px) {
+  .conn__weight {
+    grid-template-columns: 1fr 4rem;
+  }
+  .conn__weight input[type="range"] {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .conn__weight-unit {
+    grid-column: 1 / -1;
+  }
+}
