@@ -6,10 +6,13 @@ import { ConnectionGraph, type GraphEdge, type GraphNode } from "@/components/Co
 import { FigValue } from "@/components/FigValue";
 import { Head } from "@/components/Head";
 import { loadTracker } from "@/lib/data";
-import { getConnections } from "@/lib/connections";
+import { getConnections, MESSAGES_PER_POINT } from "@/lib/connections";
 import { duration, num } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Verbindungen" };
+
+/** Punkte mit einer Nachkommastelle (Chat-Nachrichten zählen anteilig) */
+const points = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
 
 const RANGES: { key: string; label: string; hours: number | null }[] = [
   { key: "24h", label: "24 Std", hours: 24 },
@@ -41,6 +44,7 @@ async function Connections({ searchParams }: { searchParams: PageProps<"/verbind
 
   const raids = edges.reduce((s, e) => s + e.raidsAB + e.raidsBA, 0);
   const chats = edges.reduce((s, e) => s + e.chats, 0);
+  const msgs = edges.reduce((s, e) => s + e.msgsAB + e.msgsBA, 0);
   const top = [...edges].sort((a, b) => b.weight - a.weight || b.chatSeconds - a.chatSeconds).slice(0, 25);
 
   const Person = ({ id }: { id: string }) => (
@@ -57,8 +61,8 @@ async function Connections({ searchParams }: { searchParams: PageProps<"/verbind
           <p className="eyebrow">Twitch</p>
           <h1 className="t-1">Verbindungen</h1>
           <p>
-            Wer wen geraidet hat und wer gemeinsam im geteilten Chat war. Je mehr Raids und geteilte Chats, desto dicker die Linie und
-            desto näher stehen die Köpfe zusammen.
+            Wer wen geraidet hat, wer gemeinsam im geteilten Chat war und wer im Twitch-Chat des anderen schreibt. Je enger die
+            Verbindung, desto dicker die Linie und desto näher stehen die Köpfe zusammen.
           </p>
         </div>
       </section>
@@ -84,6 +88,10 @@ async function Connections({ searchParams }: { searchParams: PageProps<"/verbind
               <FigValue>{num(chats)}</FigValue>
             </div>
             <div className="box st-fig" data-tone="gold">
+              <dt title="Nachrichten von Spielern im Twitch-Chat eines anderen Spielers">Chat-Nachrichten</dt>
+              <FigValue>{num(msgs)}</FigValue>
+            </div>
+            <div className="box st-fig" data-tone="pink">
               <dt>Verbindungen</dt>
               <FigValue>{num(edges.length)}</FigValue>
             </div>
@@ -101,13 +109,13 @@ async function Connections({ searchParams }: { searchParams: PageProps<"/verbind
             <ConnectionGraph nodes={nodes} edges={edges} />
             <ul className="conn__legend muted">
               <li>
-                <i style={{ background: "var(--twitch)" }} /> nur Raids
+                <i style={{ background: "var(--twitch)" }} /> vor allem Raids
               </li>
               <li>
-                <i style={{ background: "var(--diamond)" }} /> nur geteilter Chat
+                <i style={{ background: "var(--diamond)" }} /> vor allem geteilter Chat
               </li>
               <li>
-                <i style={{ background: "var(--gold)" }} /> Raids und geteilter Chat
+                <i style={{ background: "var(--gold)" }} /> vor allem Chat-Nachrichten
               </li>
               <li>
                 <i style={{ background: "var(--grass)" }} /> gerade im geteilten Chat
@@ -120,7 +128,7 @@ async function Connections({ searchParams }: { searchParams: PageProps<"/verbind
             <>
               <div className="section-head" style={{ marginTop: 48 }}>
                 <h2 className="t-2">Stärkste Verbindungen</h2>
-                <p className="muted">Jeder Raid und jeder geteilte Chat zählt einen Punkt</p>
+                <p className="muted">Jeder Raid und jeder geteilte Chat zählt einen Punkt, {MESSAGES_PER_POINT} Chat-Nachrichten ebenfalls</p>
               </div>
               <div className="box" data-tone="white">
                 <div className="tbl-wrap">
@@ -133,6 +141,8 @@ async function Connections({ searchParams }: { searchParams: PageProps<"/verbind
                         <th className="num">← Raids</th>
                         <th className="num">Geteilte Chats</th>
                         <th className="num">Zeit im Chat</th>
+                        <th className="num" title="Nachrichten des ersten Spielers im Chat des zweiten">Nachr. →</th>
+                        <th className="num" title="Nachrichten des zweiten Spielers im Chat des ersten">← Nachr.</th>
                         <th className="num">Punkte</th>
                       </tr>
                     </thead>
@@ -156,8 +166,10 @@ async function Connections({ searchParams }: { searchParams: PageProps<"/verbind
                             {e.chats ? num(e.chats) : "–"}
                           </td>
                           <td className="num">{e.chatSeconds ? duration(e.chatSeconds) : "–"}</td>
+                          <td className="num">{e.msgsAB ? num(e.msgsAB) : "–"}</td>
+                          <td className="num">{e.msgsBA ? num(e.msgsBA) : "–"}</td>
                           <td className="num">
-                            <b>{num(e.weight)}</b>
+                            <b>{points.format(e.weight)}</b>
                           </td>
                         </tr>
                       ))}
