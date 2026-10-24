@@ -518,14 +518,18 @@ async function getAfkSpans(from: number, to: number, now: number): Promise<Map<s
 export async function loadAfkSpans(from: number, to: number, now: number): Promise<Map<string, Span[]>> {
   await ensureLoaded();
   const db = await getDb();
+  const state = await getState();
   // Vorlauf, damit die letzte Bewegung vor `from` bekannt ist
-  const rows = (
-    await db.query<AfkRow>(`SELECT ${AFK_COLS} FROM player_history WHERE at >= $1 AND at < $2 ORDER BY player, at`, [
-      new Date(from - 12 * 3600_000),
-      new Date(to),
-    ])
-  ).rows;
-  return afkFromRows(rows, from, to, now, await getState());
+  const range = [new Date(from - 12 * 3600_000), new Date(to)];
+  // Spielerweise laden: der gesamte Verlauf (über eine Million Zeilen) passt nicht auf einmal in den Speicher,
+  // und die Erkennung arbeitet ohnehin je Spieler.
+  const players = (await db.query<{ player: string }>(`SELECT DISTINCT player FROM player_history WHERE at >= $1 AND at < $2`, range)).rows;
+  const out = new Map<string, Span[]>();
+  for (const { player } of players) {
+    const rows = (await db.query<AfkRow>(`SELECT ${AFK_COLS} FROM player_history WHERE player = $1 AND at >= $2 AND at < $3 ORDER BY at`, [player, ...range])).rows;
+    for (const [id, spans] of afkFromRows(rows, from, to, now, state)) out.set(id, spans);
+  }
+  return out;
 }
 
 /** AFK-Phasen aller Spieler über die gesamte Laufzeit (für Bestenliste und Graph). */
