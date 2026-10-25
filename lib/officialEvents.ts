@@ -1,5 +1,5 @@
 import "server-only";
-import { fetchCraftAttack } from "./craftattackFetch";
+import { fetchCraftAttack, USER_AGENT } from "./craftattackFetch";
 import { getDb } from "./db";
 
 export interface OfficialEvent {
@@ -22,7 +22,7 @@ export interface OfficialEvent {
 export type EventState = "upcoming" | "today" | "live" | "past";
 
 const BASE = "https://craftattack.one";
-const HEADERS = { "user-agent": "actracker/1.0" };
+const HEADERS = { "user-agent": USER_AGENT };
 
 function decode(s: string) {
   return s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");

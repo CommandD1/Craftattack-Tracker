@@ -1,5 +1,5 @@
 import { connection } from "next/server";
-import { craftAttackPausedResponse, fetchCraftAttack } from "@/lib/craftattackFetch";
+import { craftAttackPausedResponse, fetchCraftAttack, USER_AGENT } from "@/lib/craftattackFetch";
 
 /**
  * Kopf-Bild eines Spielers.
@@ -20,7 +20,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/head/[id]">) {
   if (slug) {
     try {
       const r = await fetchCraftAttack(`https://craftattack.one/skins/${slug}-head.webp`, {
-        headers: { "user-agent": "actracker/1.0" },
+        headers: { "user-agent": USER_AGENT },
         next: { revalidate: 86400 },
       });
       if (r.ok) {
@@ -40,7 +40,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/head/[id]">) {
   const target = /^[0-9a-f-]{32,36}$/i.test(uuid) ? uuid : "MHF_Steve";
   try {
     const r = await fetch(`https://mc-heads.net/avatar/${target}/${size}`, {
-      headers: { "user-agent": "actracker/1.0" },
+      headers: { "user-agent": USER_AGENT },
       next: { revalidate: 86400 },
     });
     if (r.ok) {
