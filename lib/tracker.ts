@@ -37,10 +37,12 @@ const envNumber = (name: string, fallback: number, min: number) => {
   return Number.isFinite(v) && v >= min ? v : fallback;
 };
 /**
- * Einzelstatistik: nur Spieler, die online sind (oder es im vorigen Poll waren), werden abgefragt, dafür bei
- * jedem Poll. Offline können sich die Werte nicht ändern; der zuletzt gespeicherte Stand bleibt gültig.
+ * Einzelstatistik: nur Spieler, die online sind (oder es im vorigen Poll waren), werden abgefragt, je Spieler
+ * höchstens alle CA_PLAYER_INTERVAL_MS (Standard 5 Min), die ältesten zuerst; so verteilen sich die Anfragen über
+ * die Polls. Jeden Poll alle (~40 Anfragen pro Minute) führte dazu, dass Cloudflare vor craftattack.one die IP
+ * sperrte. Offline können sich die Werte nicht ändern; der zuletzt gespeicherte Stand bleibt gültig.
  */
-const EXT_ONLINE_TTL_MS = Math.min(30_000, MIN_POLL_INTERVAL_MS / 2);
+const EXT_ONLINE_TTL_MS = envNumber("CA_PLAYER_INTERVAL_MS", 5 * 60_000, 30_000);
 /** So lange bleibt eine Antwort verwendbar, wenn sie nicht rechtzeitig erneuert werden konnte */
 const EXT_CACHE_TTL_MS = 15 * 60_000;
 const EXT_REQUEST_INTERVAL_MS = envNumber("CA_PLAYER_REQUEST_INTERVAL_MS", 500, 250);
