@@ -28,6 +28,7 @@ const KEEP_IN_MEMORY = new Set<TrackerEvent["type"]>([
   "shared_chat_start",
   "shared_chat_end",
   "chat",
+  "cheer",
   "server_online",
   "server_offline",
   "tracker_start",
@@ -1031,6 +1032,68 @@ export async function getPlayerSharedChatSessions(id: string, limit = 20): Promi
   return (
     await db.query<SharedRow>(`SELECT * FROM shared_chat_sessions WHERE $1 = ANY(participants) ORDER BY started_at DESC LIMIT $2`, [id, limit])
   ).rows.map(sharedFromRow);
+}
+
+/* ---------- Cheers (Bits) ---------- */
+
+export interface TwitchCheer {
+  id: string;
+  at: string;
+  /** Spieler, in dessen Kanal gecheert wurde */
+  channelId: string;
+  fromLogin: string;
+  fromName: string;
+  bits: number;
+  /** Streamer war beim Cheer auf dem Server */
+  onServer: boolean;
+}
+
+/** Speichert einen Cheer; `false`, wenn es ihn schon gab (gleiche Twitch-Nachrichten-ID). */
+export async function saveTwitchCheer(c: TwitchCheer): Promise<boolean> {
+  const db = await getDb();
+  const r = await db.query(
+    `INSERT INTO twitch_cheers (id, at, channel_id, from_login, from_name, bits, on_server)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING RETURNING id`,
+    [c.id, toDate(c.at), c.channelId, c.fromLogin, c.fromName, c.bits, c.onServer],
+  );
+  return r.rows.length > 0;
+}
+
+export interface TwitchCheerProfile {
+  /** Bits, während der Streamer auf dem Server war */
+  onServer: number;
+  /** Alle erfassten Bits */
+  total: number;
+  count: number;
+  /** Größter einzelner Cheer auf dem Server */
+  biggest: { bits: number; fromName: string; at: string } | null;
+  /** Bits im laufenden Stream (ab `streamStartedAt`) */
+  currentStream: number;
+}
+
+export async function getTwitchCheerProfile(id: string, streamStartedAt: string | null): Promise<TwitchCheerProfile> {
+  const db = await getDb();
+  const [sum, top] = await Promise.all([
+    db.query<{ on_server: string | null; total: string | null; count: number; current: string | null }>(
+      `SELECT sum(bits) FILTER (WHERE on_server) AS on_server, sum(bits) AS total, count(*)::int AS count,
+              sum(bits) FILTER (WHERE $2::timestamptz IS NOT NULL AND at >= $2) AS current
+         FROM twitch_cheers WHERE channel_id = $1`,
+      [id, toDate(streamStartedAt)],
+    ),
+    db.query<{ bits: number; from_name: string; at: Date }>(
+      `SELECT bits, from_name, at FROM twitch_cheers WHERE channel_id = $1 AND on_server ORDER BY bits DESC, at LIMIT 1`,
+      [id],
+    ),
+  ]);
+  const s = sum.rows[0];
+  const t = top.rows[0];
+  return {
+    onServer: Number(s?.on_server ?? 0),
+    total: Number(s?.total ?? 0),
+    count: s?.count ?? 0,
+    biggest: t ? { bits: t.bits, fromName: t.from_name, at: iso(t.at)! } : null,
+    currentStream: Number(s?.current ?? 0),
+  };
 }
 
 interface TwitchSubscriptionProfile {

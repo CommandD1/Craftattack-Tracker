@@ -206,6 +206,18 @@ async function migrate(db: Db) {
   // Chat je Spieler im Profil (Tabelle ist auf 10.000 Nachrichten begrenzt, die Indizes bleiben klein)
   await db.query(`CREATE INDEX IF NOT EXISTS twitch_chat_messages_sender_idx ON twitch_chat_messages (sender_id, at DESC)`);
   await db.query(`CREATE INDEX IF NOT EXISTS twitch_chat_messages_channel_idx ON twitch_chat_messages (channel_id, at DESC)`);
+  // Cheers (Bits) in den Kanälen der Spieler, ohne Nachrichtentext. on_server: Streamer war dabei auf dem Server.
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS twitch_cheers (
+      id         text PRIMARY KEY,
+      at         timestamptz NOT NULL,
+      channel_id text NOT NULL,
+      from_login text NOT NULL,
+      from_name  text NOT NULL,
+      bits       integer NOT NULL,
+      on_server  boolean NOT NULL
+    )`);
+  await db.query(`CREATE INDEX IF NOT EXISTS twitch_cheers_channel_idx ON twitch_cheers (channel_id, at DESC)`);
   await db.query(`
     CREATE TABLE IF NOT EXISTS player_history (
       player           text NOT NULL,
