@@ -12,7 +12,7 @@ import { EventFeed } from "@/components/EventFeed";
 import { BOARD_ICON, Icon } from "@/components/Icons";
 import { FigValue } from "@/components/FigValue";
 import { StatSpark } from "@/components/StatSpark";
-import { getAllSessions, getFullBoard, getPlayerHistory, getPlayerSharedChatSessions, getPlayerTopHistory, getPlayerTwitchChat, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
+import { getAllSessions, getFullBoard, getPlayerHistory, getPlayerSharedChatSessions, getPlayerTopHistory, getPlayerTwitchChat, getTwitchCheerProfile, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
 import { SharedChatList } from "@/components/SharedChatList";
 import { ChatFeed, ChatPartners } from "@/components/ChatFeed";
 import { companionsOf, overlapsFor } from "@/lib/overlap";
@@ -256,11 +256,13 @@ async function HeadSection({ params }: { params: Params }) {
 async function StatsSection({ params }: { params: Params }) {
   const { id, state, now, p } = await ctxFor(params);
   if (!p) return null;
-  const [history, subscriptions, subscriptionBoard, followerBoard] = await Promise.all([
+  const streamStartedAt = p.live ? p.live.startedAt ?? p.liveSince ?? null : null;
+  const [history, subscriptions, subscriptionBoard, followerBoard, cheers] = await Promise.all([
     getPlayerHistory(id),
-    getTwitchSubscriptionProfile(id, p.live ? p.live.startedAt ?? p.liveSince ?? null : null),
+    getTwitchSubscriptionProfile(id, streamStartedAt),
     getTwitchSubscriptionBoard(),
     getFullBoard("followers"),
+    getTwitchCheerProfile(id, streamStartedAt),
   ]);
   // Für die Sparklines im Browser reichen ~300 Punkte; der volle Verlauf bleibt auf dem Server
   const sparkHistory = thinHistory(history);
@@ -277,7 +279,7 @@ async function StatsSection({ params }: { params: Params }) {
   ) as Record<BoardKey, { rank: number; of: number | null } | null>;
   const subscriptionRankIndex = subscriptionBoard.findIndex((entry) => entry.id === id);
   const followerRankIndex = followerBoard.findIndex((entry) => entry.id === id);
-  const profileStatKeys = [...BOARD_KEYS, "followers", "twitchSubs"] as const;
+  const profileStatKeys = [...BOARD_KEYS, "followers", "twitchSubs", "twitchBits"] as const;
   return (
     <section className="block block--tight" data-tone="ink">
       <div className="wrap">
@@ -306,6 +308,27 @@ async function StatsSection({ params }: { params: Params }) {
                     <FigValue>{p.followersAt ? num(p.followersOnServer) : "–"}</FigValue>
                   </Link>
                   <StatSpark points={sparkHistory} k="followersOnServer" label="Follower" href={graphHref(k)} />
+                </div>
+              );
+            }
+            if (k === "twitchBits") {
+              return (
+                <div key={k} className="box st-fig" data-tone={METRIC_TONE.twitchSubs}>
+                  <dt className="pstat">
+                    <span className="pstat__label" title="Bits aus Cheers im eigenen Kanal, während der Streamer auf dem Server war">
+                      <Icon.bits width={18} height={18} aria-hidden="true" />
+                      <span>Twitch Bits</span>
+                    </span>
+                  </dt>
+                  <FigValue>{num(cheers.onServer)}</FigValue>
+                  <p className="muted" style={{ fontSize: ".75rem", marginTop: 4 }}>
+                    {cheers.count === 0
+                      ? "Noch kein Cheer erfasst"
+                      : cheers.biggest
+                        ? `Größter Cheer: ${num(cheers.biggest.bits)} von ${cheers.biggest.fromName}`
+                        : `${num(cheers.total)} Bits, nicht auf dem Server`}
+                    {p.live && cheers.currentStream > 0 ? ` · Dieser Stream: ${num(cheers.currentStream)}` : ""}
+                  </p>
                 </div>
               );
             }

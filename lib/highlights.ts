@@ -63,6 +63,11 @@ function weight(e: TrackerEvent): number {
     }
     case "subscription_gift":
       return (e.delta ?? 0) >= 5 ? 4 : 0;
+    case "cheer": {
+      // Ereignis gibt es ab 1.000 Bits; 5.000 und 10.000 sind deutlich seltener
+      const bits = e.value ?? 0;
+      return bits >= 10_000 ? 6 : bits >= 5_000 ? 5 : 3;
+    }
     case "shared_chat_start":
       return 2;
     default:

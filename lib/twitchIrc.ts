@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { appendLiveEvent, chatEvent, getEvents, getState, incrementLiveSubscriptionEvent, saveTwitchChatMessage } from "./store";
+import { appendLiveEvent, chatEvent, getEvents, getState, incrementLiveSubscriptionEvent, saveTwitchCheer, saveTwitchChatMessage } from "./store";
 import { observeSharedChatPair } from "./sharedChat";
 import { KNOWN_LOGINS } from "./tracker";
 import type { PlayerState, TrackerEvent } from "./types";
@@ -12,6 +12,8 @@ const JOIN_INTERVAL_MS = 500;
 const JOIN_WINDOW_MS = 10_000;
 const MAX_JOINS_PER_WINDOW = 20;
 const MAX_SEEN_IDS = 10_000;
+/** Ab so vielen Bits in einem Cheer (während der Streamer auf dem Server ist) gibt es ein Ereignis; 1.000 Bits ≈ 10 € */
+const CHEER_EVENT_MIN_BITS = Number(process.env.CA_CHEER_EVENT_MIN ?? 1000);
 const SUB_NOTICE_TYPES: Record<string, string> = {
   sub: "Neues Abo",
   resub: "Resub",
@@ -313,6 +315,50 @@ function processLine(irc: IrcState, socket: WebSocket, line: string, tries: numb
     });
 }
 
+/**
+ * Speichert einen Cheer im Kanal eines Spielers. Ein großer Cheer (ab CHEER_EVENT_MIN_BITS) während der Streamer auf
+ * dem Server ist, wird außerdem ein Ereignis. Cheert ein anderer Spieler, steht er mit Kopf im Ereignis.
+ */
+async function recordCheer(
+  irc: IrcState,
+  message: TwitchIrcMessage,
+  channel: string,
+  owner: ChannelOwner,
+  fromLogin: string,
+  bits: number,
+  at: string,
+  players: Record<string, PlayerState>,
+) {
+  const player = players[owner.id];
+  if (!player) return;
+  const fromName = message.tags["display-name"] || fromLogin;
+  const idSource = message.tags.id ?? `${channel}:${fromLogin}:${at}:${bits}`;
+  const id = `twitch-cheer-${createHash("sha256").update(idSource).digest("hex").slice(0, 32)}`;
+  const onServer = player.online;
+  if (!(await saveTwitchCheer({ id, at, channelId: player.id, fromLogin, fromName, bits, onServer }))) return;
+  if (!onServer || bits < CHEER_EVENT_MIN_BITS || irc.seenIds.has(id)) return;
+  const cheerer = playerForTwitchLogin(players, fromLogin);
+  await appendLiveEvent({
+    id,
+    at,
+    type: "cheer",
+    player: player.id,
+    playerName: player.name,
+    uuid: player.uuid,
+    where: "twitch",
+    value: bits,
+    delta: bits,
+    meta: {
+      bits,
+      fromName,
+      fromLogin,
+      channel,
+      ...(cheerer && cheerer.id !== player.id ? { fromPlayerId: cheerer.id, fromPlayerName: cheerer.name, fromPlayerUuid: cheerer.uuid } : {}),
+    },
+  });
+  rememberEventId(irc, id);
+}
+
 function subscriptionEventFromNotice(message: TwitchIrcMessage, owner?: ChannelOwner): TrackerEvent | null {
   if (message.command !== "USERNOTICE") return null;
   const msgId = message.tags["msg-id"];
@@ -452,6 +498,10 @@ async function handleLine(irc: IrcState, socket: WebSocket, line: string) {
     const at = Number.isFinite(sentAt) && sentAt > 0 && Number.isFinite(timestamp.getTime())
       ? timestamp.toISOString()
       : new Date().toISOString();
+
+    // Cheer (Bits): nur im Ursprungskanal zählen, Kopien aus dem geteilten Chat nicht noch einmal
+    const bits = Number(message.tags.bits);
+    if (bits > 0 && !isCopy) await recordCheer(irc, message, channel, owner, senderLogin, bits, at, currentState.players);
 
     // Hinweis auf einen geteilten Chat zwischen zwei erfassten Kanälen (nur ohne Twitch-API-Zugang ausgewertet)
     if (isCopy && sourceOwner && currentState.players[sourceOwner.id] && currentState.players[owner.id]) {
