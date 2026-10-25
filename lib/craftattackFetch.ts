@@ -1,3 +1,9 @@
+/**
+ * User-Agent aller Anfragen nach außen: nennt Projekt und Kontakt, damit Betreiber (craftattack.one, mc-heads.net)
+ * den Tracker in ihren Logs zuordnen und sich melden können, statt ihn nur als unbekannten Bot zu sperren.
+ */
+export const USER_AGENT = "actracker/1.0 (+https://craftattack.hiorcraft.tv; hello@hxo.dev)";
+
 const BASE_COOLDOWN_MS = 5 * 60_000;
 const MAX_COOLDOWN_MS = 6 * 60 * 60_000;
 const STRIKE_RESET_MS = 24 * 60 * 60_000;

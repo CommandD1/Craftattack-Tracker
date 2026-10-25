@@ -3,7 +3,7 @@ import { EVENT_MIN_DELTA } from "./events";
 import { createHash } from "node:crypto";
 import { appendEvents, appendFeedItems, deathFeedMeta, enrichDeathEvents, getState, recordPlayerPoints, recordTopSnapshots, saveState } from "./store";
 import { fetchFollowerCounts, fetchLiveStreams, TWITCH_ENABLED, type TwitchFollowerChannel, type TwitchStream } from "./twitch";
-import { fetchCraftAttack, getCraftAttackPauseMs, maxCraftAttackTimerDelay } from "./craftattackFetch";
+import { fetchCraftAttack, getCraftAttackPauseMs, maxCraftAttackTimerDelay, USER_AGENT } from "./craftattackFetch";
 import { expireChatSessions, syncSharedChatFromApi } from "./sharedChat";
 import { trackedSecondsOf } from "./playtime";
 import {
@@ -181,7 +181,7 @@ function eventId(at: string) {
 
 async function fetchStats(): Promise<ApiStats> {
   const res = await fetchCraftAttack(STATS_URL, {
-    headers: { accept: "application/json", "user-agent": "actracker/1.0" },
+    headers: { accept: "application/json", "user-agent": USER_AGENT },
     cache: "no-store",
     signal: AbortSignal.timeout(15_000),
   });
@@ -191,7 +191,7 @@ async function fetchStats(): Promise<ApiStats> {
 
 async function fetchFeed(): Promise<ApiFeed> {
   const res = await fetchCraftAttack(FEED_URL, {
-    headers: { accept: "application/json", "user-agent": "actracker/1.0" },
+    headers: { accept: "application/json", "user-agent": USER_AGENT },
     cache: "no-store",
     signal: AbortSignal.timeout(15_000),
   });
@@ -360,7 +360,7 @@ function playerFeedItems(items: unknown, id: string): FeedItem[] {
 /** Holt die Einzelstatistik eines Spielers per Spieler-ID; `null`, wenn die API ihn nicht kennt (HTTP 404). */
 async function fetchExtPlayer(id: string): Promise<ExtPlayer | null> {
   const res = await fetchCraftAttack(`${PLAYER_URL}/${encodeURIComponent(id)}`, {
-    headers: { accept: "application/json", "user-agent": "actracker/1.0" },
+    headers: { accept: "application/json", "user-agent": USER_AGENT },
     cache: "no-store",
     signal: AbortSignal.timeout(15_000),
   });
