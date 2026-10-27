@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 import { timingSafeEqual } from "node:crypto";
 import type { Metadata } from "next";
@@ -5,16 +6,21 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { PageSkeleton } from "@/components/Skeletons";
 import { FigValue } from "@/components/FigValue";
-import { ExampleChart, heatmapAxes, MagnetTable, PairHeatmap, WaitingRoomTable } from "@/components/ViewerMigration";
+import { ExampleChart, HeirsTable, heatmapAxes, MagnetTable, PairHeatmap, RaidTable, WaitingRoomTable } from "@/components/ViewerMigration";
+import { DayStackChart, PlayerViewerChart, type ViewBand, type ViewMarker } from "@/components/ViewerCharts";
 import { loadTracker } from "@/lib/data";
-import { getViewerMigration } from "@/lib/viewerMigration";
+import { dayBounds, getDays, getDayStack, getPlayerDay, getStreamers, getViewerMigration, type ChartMarker, type Migration } from "@/lib/viewerMigration";
 import { num } from "@/lib/format";
 
 /** Interne Auswertung: nirgends verlinkt und nicht für Suchmaschinen */
 export const metadata: Metadata = { title: "Zuschauerwanderung", robots: { index: false, follow: false } };
 
 const pct = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1, signDisplay: "exceptZero" });
+const signed = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0, signDisplay: "exceptZero" });
 const day = new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "short", timeZone: "Europe/Berlin" });
+const dayLong = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "numeric", month: "short", timeZone: "Europe/Berlin" });
+const time = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+
 /** Zeitraum kurz, z. B. „10.–25. Okt.“ (passt in die Kennzahl-Kachel) */
 const span = (a: number, b: number) => {
   const x = day.formatToParts(a);
@@ -28,13 +34,23 @@ const span = (a: number, b: number) => {
  * Zugang nur mit `?key=` gleich INTERN_KEY (Server-Umgebung). Der Code ist öffentlich, der Pfad also bekannt; ohne
  * passenden Schlüssel (oder ohne gesetzten INTERN_KEY) gibt es eine gewöhnliche 404.
  */
-function allowed(key: unknown): boolean {
+function allowed(key: unknown): key is string {
   const secret = process.env.INTERN_KEY ?? "";
   if (secret.length < 16 || typeof key !== "string") return false;
   const a = Buffer.from(key);
   const b = Buffer.from(secret);
   return a.length === b.length && timingSafeEqual(a, b);
 }
+
+const VIEWS = [
+  { key: "uebersicht", label: "Starts" },
+  { key: "offline", label: "Offline & Raids" },
+  { key: "tag", label: "Tagesverlauf" },
+  { key: "spieler", label: "Spieler" },
+] as const;
+type View = (typeof VIEWS)[number]["key"];
+
+type Names = Record<string, { name: string; uuid: string } | undefined>;
 
 export default function Page(props: PageProps<"/intern/zuschauerwanderung">) {
   return (
@@ -46,13 +62,17 @@ export default function Page(props: PageProps<"/intern/zuschauerwanderung">) {
 
 async function Analysis({ searchParams }: { searchParams: PageProps<"/intern/zuschauerwanderung">["searchParams"] }) {
   await connection();
-  if (!allowed((await searchParams).key)) notFound();
+  const sp = await searchParams;
+  const key = sp.key;
+  if (!allowed(key)) notFound();
+  const view: View = VIEWS.some((v) => v.key === sp.ansicht) ? (sp.ansicht as View) : "uebersicht";
   const [{ state }, m] = await Promise.all([loadTracker(), getViewerMigration()]);
-  const names = Object.fromEntries(Object.values(state.players).map((p) => [p.id, { name: p.name, uuid: p.uuid }]));
-  const losers = m.waitingRooms.filter((r) => r.effect < 0).slice(0, 20);
-  const gainers = m.waitingRooms.filter((r) => r.effect > 0).reverse().slice(0, 8);
-  const { rows, cols } = heatmapAxes(m);
-  const range = m.from && m.to ? span(m.from, m.to) : "–";
+  const names: Names = Object.fromEntries(Object.values(state.players).map((p) => [p.id, { name: p.name, uuid: p.uuid }]));
+  const href = (params: Record<string, string | undefined>) => {
+    const q = new URLSearchParams({ key });
+    for (const [k, v] of Object.entries(params)) if (v) q.set(k, v);
+    return `/intern/zuschauerwanderung?${q}`;
+  };
 
   return (
     <>
@@ -61,95 +81,350 @@ async function Analysis({ searchParams }: { searchParams: PageProps<"/intern/zus
           <p className="eyebrow">Intern · nicht verlinkt</p>
           <h1 className="t-1 mig__title">Zuschauerwanderung</h1>
           <p>
-            Sind manche Streams nur das „Wartezimmer“, bis ein anderer CraftAttack-Streamer live geht? Für jeden Start mit mindestens
-            300 Zuschauern wird jeder andere laufende Stream verglichen: Zuschauer 5 Min vor dem Start gegen 10–20 Min danach, abzüglich
-            der Änderung, die dieser Stream sonst bei gleichem Streamalter und gleicher Tageszeit hat.
+            Wohin gehen Zuschauer, wenn ein CraftAttack-Streamer live geht oder aufhört? Gezählt wird jeder Start, egal wie groß, und
+            der Gesamtverlust der übrigen Streams 20–40 Min danach – gegenüber dem, was diese Streams sonst bei gleichem Streamalter und
+            gleicher Tageszeit tun. Raids sind kein Abwandern: Streams, die im Zeitfenster raiden oder geraidet werden, zählen nicht
+            mit; Raids stehen getrennt.
           </p>
         </div>
       </section>
 
       <section className="block block--tight" data-tone="ink">
         <div className="wrap">
+          <ul className="mig__tabs filters" aria-label="Ansicht">
+            {VIEWS.map((v) => (
+              <li key={v.key}>
+                <Link className="tag" aria-current={view === v.key ? "true" : undefined} href={href({ ansicht: v.key === "uebersicht" ? undefined : v.key })}>
+                  {v.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
           <dl className="grid st-figs">
             <div className="box st-fig" data-tone="white">
               <dt>Zeitraum</dt>
-              <FigValue>{range}</FigValue>
+              <FigValue>{m.from && m.to ? span(m.from, m.to) : "–"}</FigValue>
             </div>
             <div className="box st-fig" data-tone="white">
               <dt>Starts ausgewertet</dt>
-              <FigValue>{num(m.bigStarts)}</FigValue>
+              <FigValue>{num(m.starts)}</FigValue>
             </div>
             <div className="box st-fig" data-tone="white">
-              <dt title="Paare aus Start und gleichzeitig laufendem Stream">Beobachtungen</dt>
-              <FigValue>{num(m.observations)}</FigValue>
+              <dt title="Stream-Enden aus dem Verlauf, bei denen der Tracker danach weiterlief">Stream-Enden</dt>
+              <FigValue>{num(m.ends)}</FigValue>
             </div>
             <div className="box st-fig" data-tone="white">
-              <dt title="Mittlere Abweichung aller laufenden Streams nach einem fremden Start">Ø alle Streams</dt>
+              <dt title="Mittlere Abweichung aller laufenden Streams nach einem fremden Start (sollte nahe 0 liegen)">Ø alle Streams</dt>
               <FigValue>{`${pct.format(m.overall.effect * 100)} %`}</FigValue>
             </div>
           </dl>
           <p className="muted mig__note">
-            Im Mittel verlieren laufende Streams kaum ({pct.format(m.overall.effect * 100)} % ± {pct.format(m.overall.se * 100).replace("+", "")} %).
-            Das Wartezimmer gibt es also nicht überall, aber bei einzelnen Streams deutlich. „Unsicher“: unter 20 Starts oder der Effekt
-            ist kleiner als das Zweifache seines Standardfehlers. Starts überlagern sich und betreffen viele Streams gleichzeitig; die
-            Werte sind Hinweise, keine Beweise. Raids fallen heraus (der raidende Stream endet).
+            „Unsicher“: wenige Fälle oder der Effekt ist kleiner als das Zweifache seines Standardfehlers. Starts und Enden überlagern sich
+            und betreffen viele Streams gleichzeitig; die Werte sind Hinweise, keine Beweise. Wegen Raids ausgelassen: {num(m.skippedRaid)}{" "}
+            Beobachtungen. Startzeit laut Twitch, nicht der Zeitpunkt, an dem der Tracker den Start bemerkte.
           </p>
         </div>
       </section>
 
       <section className="block mig" data-tone="paper">
         <div className="wrap stack">
-          <div className="section-head">
-            <h2 className="t-2">Wartezimmer</h2>
-            <p className="muted">Streams, die nach fremden Starts mehr Zuschauer verlieren als sonst</p>
-          </div>
-          <div className="box" data-tone="white">
-            <WaitingRoomTable rows={losers} names={names} title="Streams mit Zuschauerverlust nach fremden Starts" />
-          </div>
-
-          <div className="section-head">
-            <h2 className="t-2">Magneten</h2>
-            <p className="muted">Wessen Start anderen CraftAttack-Streams am meisten Zuschauer abzieht</p>
-          </div>
-          <div className="box" data-tone="white">
-            <MagnetTable rows={m.magnets.slice(0, 15)} names={names} />
-          </div>
-
-          {rows.length > 0 && cols.length > 0 && (
-            <>
-              <div className="section-head">
-                <h2 className="t-2">Wer verliert an wen</h2>
-                <p className="muted">Zeilen: deutlichste Wartezimmer · Spalten: stärkste Magneten · Wert beim Überfahren</p>
-              </div>
-              <div className="box" data-tone="white">
-                <PairHeatmap rows={rows} cols={cols} pairs={m.pairs} names={names} />
-              </div>
-            </>
-          )}
-
-          <div className="section-head">
-            <h2 className="t-2">Beispiele</h2>
-            <p className="muted">Die sechs Starts mit dem größten Abzug: Zuschauer der drei größten Verlierer in % des Stands vor dem Start</p>
-          </div>
-          <div className="grid mig__examples">
-            {m.examples.map((ex) => (
-              <ExampleChart key={`${ex.b}-${ex.at}`} ex={ex} names={names} />
-            ))}
-          </div>
-
-          {gainers.length > 0 && (
-            <>
-              <div className="section-head">
-                <h2 className="t-2">Gegenrichtung</h2>
-                <p className="muted">Streams, die nach fremden Starts eher Zuschauer dazugewinnen</p>
-              </div>
-              <div className="box" data-tone="white">
-                <WaitingRoomTable rows={gainers} names={names} title="Streams mit Zuschauergewinn nach fremden Starts" />
-              </div>
-            </>
+          {view === "uebersicht" && <StartsView m={m} names={names} />}
+          {view === "offline" && <OfflineView m={m} names={names} />}
+          {view === "tag" && <DayView names={names} day={typeof sp.tag === "string" ? sp.tag : undefined} hidden={{ key, ansicht: "tag" }} />}
+          {view === "spieler" && (
+            <PlayerView
+              names={names}
+              id={typeof sp.spieler === "string" ? sp.spieler : undefined}
+              day={typeof sp.tag === "string" ? sp.tag : undefined}
+              hidden={{ key, ansicht: "spieler" }}
+              dayHref={(id, d) => href({ ansicht: "spieler", spieler: id, tag: d })}
+            />
           )}
         </div>
       </section>
+    </>
+  );
+}
+
+function StartsView({ m, names }: { m: Migration; names: Names }) {
+  const losers = m.waitingRooms.filter((r) => r.effect < 0).slice(0, 20);
+  const gainers = m.waitingRooms.filter((r) => r.effect > 0).reverse().slice(0, 8);
+  const { rows, cols } = heatmapAxes(m);
+  return (
+    <>
+      <div className="section-head">
+        <h2 className="t-2">Wartezimmer</h2>
+        <p className="muted">Streams, die nach fremden Starts mehr Zuschauer verlieren als sonst (mind. 15 Starts)</p>
+      </div>
+      <div className="box" data-tone="white">
+        <WaitingRoomTable rows={losers} names={names} title="Streams mit Zuschauerverlust nach fremden Starts" />
+      </div>
+      <div className="section-head">
+        <h2 className="t-2">Magneten</h2>
+        <p className="muted">Wessen Start allen anderen CraftAttack-Streams zusammen am meisten Zuschauer abzieht (mind. 3 Starts)</p>
+      </div>
+      <div className="box" data-tone="white">
+        <MagnetTable rows={m.magnets.slice(0, 15)} names={names} />
+      </div>
+      {rows.length > 0 && cols.length > 0 && (
+        <>
+          <div className="section-head">
+            <h2 className="t-2">Wer verliert an wen</h2>
+            <p className="muted">Zeilen: deutlichste Wartezimmer · Spalten: stärkste Magneten · Wert beim Überfahren</p>
+          </div>
+          <div className="box" data-tone="white">
+            <PairHeatmap rows={rows} cols={cols} pairs={m.pairs} names={names} />
+          </div>
+        </>
+      )}
+      <div className="section-head">
+        <h2 className="t-2">Beispiele</h2>
+        <p className="muted">Die sechs Starts mit dem größten Gesamtverlust der anderen: die drei größten Verlierer in % des Stands vorher</p>
+      </div>
+      <div className="grid mig__examples">
+        {m.examples.map((ex) => (
+          <ExampleChart key={`${ex.b}-${ex.at}`} ex={ex} names={names} />
+        ))}
+      </div>
+      {gainers.length > 0 && (
+        <>
+          <div className="section-head">
+            <h2 className="t-2">Gegenrichtung</h2>
+            <p className="muted">Streams, die nach fremden Starts eher Zuschauer dazugewinnen</p>
+          </div>
+          <div className="box" data-tone="white">
+            <WaitingRoomTable rows={gainers} names={names} title="Streams mit Zuschauergewinn nach fremden Starts" />
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+function OfflineView({ m, names }: { m: Migration; names: Names }) {
+  const heirs = m.heirs.filter((h) => h.n >= 3 && h.perEvent > 0).sort((x, y) => y.perEvent - x.perEvent).slice(0, 25);
+  return (
+    <>
+      <div className="section-head">
+        <h2 className="t-2">Erben</h2>
+        <p className="muted">
+          Wer nach dem Ende eines Streams mehr Zuschauer bekommt als üblich (mind. 3 Enden, ohne Raids). {num(m.ends)} Enden, davon{" "}
+          {num(m.endsWithRaid)} mit Raid.
+        </p>
+      </div>
+      <div className="box" data-tone="white">
+        <HeirsTable rows={heirs} names={names} />
+      </div>
+      <div className="section-head">
+        <h2 className="t-2">Raids</h2>
+        <p className="muted">Ausdrücklicher Wechsel mit der Zuschauerzahl laut Twitch – getrennt von den Berechnungen oben</p>
+      </div>
+      <div className="box" data-tone="white">
+        <RaidTable rows={m.raidFlows.slice(0, 25)} names={names} />
+      </div>
+    </>
+  );
+}
+
+function DayPicker({ days, current, hidden, extra }: { days: string[]; current: string; hidden: Record<string, string>; extra?: React.ReactNode }) {
+  return (
+    <form className="mig__pick" method="get" action="/intern/zuschauerwanderung">
+      {Object.entries(hidden).map(([k, v]) => (
+        <input key={k} type="hidden" name={k} value={v} />
+      ))}
+      {extra}
+      <label className="gb__select">
+        <span className="eyebrow">Tag</span>
+        <select name="tag" defaultValue={current}>
+          {days.map((d) => (
+            <option key={d} value={d}>
+              {dayLong.format(dayBounds(d)[0] + 3_600_000)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button type="submit" className="tag">
+        Anzeigen
+      </button>
+    </form>
+  );
+}
+
+async function DayView({ names, day: wanted, hidden }: { names: Names; day?: string; hidden: Record<string, string> }) {
+  const days = await getDays();
+  const d = wanted && days.includes(wanted) ? wanted : days[0];
+  if (!d) return <p className="muted">Keine Zuschauerdaten.</p>;
+  const stack = await getDayStack(d);
+  const series = stack.series.map((s) => ({ id: s.id, name: s.id ? (names[s.id]?.name ?? s.id) : "Andere", values: s.values }));
+  const total = stack.table.reduce((s, r) => s + r.hours, 0);
+  return (
+    <>
+      <div className="section-head">
+        <h2 className="t-2">Tagesverlauf</h2>
+        <p className="muted">Zuschauer aller CraftAttack-Streams, gestapelt; die sieben größten Streams der Staffel mit fester Farbe</p>
+      </div>
+      <DayPicker days={days} current={d} hidden={hidden} />
+      <div className="box" data-tone="white">
+        <DayStackChart times={stack.times} covered={stack.covered} series={series} />
+      </div>
+      <div className="box" data-tone="white">
+        <div className="tbl-wrap">
+          <table className="tbl mig__tbl">
+            <caption className="sr-only">Zuschauerstunden je Streamer an diesem Tag</caption>
+            <thead>
+              <tr>
+                <th>Streamer</th>
+                <th className="num">Zuschauerstunden</th>
+                <th className="num">Anteil am Tag</th>
+                <th className="num">Spitze</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stack.table.slice(0, 30).map((r) => (
+                <tr key={r.id}>
+                  <td>{names[r.id]?.name ?? r.id}</td>
+                  <td className="num">{num(r.hours)}</td>
+                  <td className="num">{pct.format((100 * r.hours) / Math.max(1, total)).replace("+", "")} %</td>
+                  <td className="num">{num(r.peak)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** Text und Farbe je Ereignis im Spielerverlauf */
+function markerView(mk: ChartMarker, names: Names): ViewMarker {
+  const other = mk.other ? (names[mk.other]?.name ?? mk.other) : "";
+  const v = mk.viewers ?? 0;
+  switch (mk.kind) {
+    case "own_start":
+      return { at: mk.at, tone: "own", label: "Stream startet" };
+    case "own_end":
+      return { at: mk.at, tone: "own", label: "Stream endet" };
+    case "title":
+      return { at: mk.at, tone: "own", label: `Neuer Titel: ${(mk.text ?? "").slice(0, 80)}` };
+    case "raid_in":
+      return { at: mk.at, tone: "gain", label: `Raid von ${other} (${num(v)} Zuschauer)` };
+    case "raid_out":
+      return { at: mk.at, tone: "loss", label: `Raidet ${other} (${num(v)} Zuschauer)` };
+    case "shared_start":
+      return { at: mk.at, tone: "own", label: `Geteilter Chat beginnt${mk.text ? ` (${mk.text})` : ""}` };
+    case "shared_end":
+      return { at: mk.at, tone: "own", label: "Geteilter Chat endet" };
+    case "server_event":
+      return { at: mk.at, tone: "own", label: `Server-Event: ${mk.text ?? ""}` };
+    case "other_start":
+      return { at: mk.at, tone: "loss", label: `${other} geht live: ${signed.format(v)} ggü. üblich` };
+    case "other_end":
+      return { at: mk.at, tone: "gain", label: `${other} geht offline: ${signed.format(v)} ggü. üblich` };
+  }
+}
+
+async function PlayerView({
+  names,
+  id: wanted,
+  day: wantedDay,
+  hidden,
+  dayHref,
+}: {
+  names: Names;
+  id?: string;
+  day?: string;
+  hidden: Record<string, string>;
+  dayHref: (id: string, day: string) => string;
+}) {
+  const streamers = await getStreamers();
+  const id = wanted && streamers.includes(wanted) ? wanted : streamers[0];
+  if (!id) return <p className="muted">Keine Zuschauerdaten.</p>;
+  const pd = await getPlayerDay(id, wantedDay);
+  if (!pd) return <p className="muted">Keine Zuschauerdaten für diesen Spieler.</p>;
+  const d = pd.day;
+  const [dayStart, dayEnd] = dayBounds(d);
+  // Zeitachse auf den Bereich mit Daten (±30 Min), nicht den ganzen Tag
+  const first = pd.points[0]?.[0] ?? dayStart;
+  const last = pd.points.at(-1)?.[0] ?? dayEnd;
+  const from = Math.max(dayStart, first - 30 * 60_000);
+  const to = Math.min(dayEnd, Math.max(last + 30 * 60_000, from + 2 * 3_600_000));
+  const markers = pd.markers.map((mk) => markerView(mk, names));
+  const bands: ViewBand[] = pd.anomalies.map((a) => ({
+    from: a.from,
+    to: a.to,
+    kind: a.kind,
+    label: `${a.kind === "dip" ? "Ungeklärter Einbruch" : "Ungeklärter Anstieg"}: ${signed.format(a.change)} Zuschauer in ${Math.round((a.to - a.from) / 60_000)} Min`,
+  }));
+  const sorted = [...streamers].sort((a, b) => (names[a]?.name ?? a).localeCompare(names[b]?.name ?? b, "de"));
+  const idx = pd.days.indexOf(d);
+  return (
+    <>
+      <div className="section-head">
+        <h2 className="t-2">{names[id]?.name ?? id}</h2>
+        <p className="muted">
+          Zuschauer am {dayLong.format(dayStart + 3_600_000)} mit allem, was sie verändert hat. Ungeklärt: Änderung in 10 Min weit außerhalb
+          dessen, was dieser Stream sonst hat, ohne Ereignis in der Nähe – vermutlich der Stream selbst.
+          {pd.vods.length > 0 ? " Klick in den Graphen öffnet das VOD an dieser Stelle." : " Für diesen Tag ist kein VOD verfügbar."}
+        </p>
+      </div>
+      <DayPicker
+        days={pd.days}
+        current={d}
+        hidden={hidden}
+        extra={
+          <label className="gb__select">
+            <span className="eyebrow">Spieler</span>
+            <select name="spieler" defaultValue={id}>
+              {sorted.map((s) => (
+                <option key={s} value={s}>
+                  {names[s]?.name ?? s}
+                </option>
+              ))}
+            </select>
+          </label>
+        }
+      />
+      <p className="mig__pick">
+        {idx < pd.days.length - 1 && (
+          <Link className="tag" href={dayHref(id, pd.days[idx + 1])}>
+            ← Tag davor
+          </Link>
+        )}
+        {idx > 0 && (
+          <Link className="tag" href={dayHref(id, pd.days[idx - 1])}>
+            Tag danach →
+          </Link>
+        )}
+      </p>
+      <div className="box" data-tone="white">
+        <PlayerViewerChart points={pd.points} markers={markers} bands={bands} vods={pd.vods} from={from} to={to} />
+      </div>
+      <div className="box" data-tone="white">
+        <div className="tbl-wrap">
+          <table className="tbl mig__tbl">
+            <caption className="sr-only">Ereignisse und ungeklärte Änderungen an diesem Tag</caption>
+            <thead>
+              <tr>
+                <th>Zeit</th>
+                <th>Ereignis</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...markers.map((mk) => ({ at: mk.at, tone: mk.tone, label: mk.label })), ...bands.map((b) => ({ at: b.from, tone: b.kind === "dip" ? "loss" : "gain", label: b.label }))]
+                .sort((x, y) => x.at - y.at)
+                .map((r, i) => (
+                  <tr key={`${r.at}-${i}`}>
+                    <td className="num">{time.format(r.at)}</td>
+                    <td>
+                      <i className={`mig__key mig__mk-${r.tone}`} aria-hidden="true" /> {r.label}
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </>
   );
 }

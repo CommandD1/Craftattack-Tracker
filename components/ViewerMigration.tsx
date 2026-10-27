@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Head } from "./Head";
-import type { Example, Magnet, Migration, Pair, WaitingRoom } from "@/lib/viewerMigration";
+import type { Example, Magnet, Migration, Pair, RaidFlow, WaitingRoom } from "@/lib/viewerMigration";
 import { num } from "@/lib/format";
 
 /**
@@ -105,8 +105,7 @@ export function MagnetTable({ rows, names }: { rows: Magnet[]; names: Names }) {
           <tr>
             <th>Streamer geht live</th>
             <th className="num">Starts</th>
-            <th className="num" title="Ø Spitze 10–30 Min nach dem Start">Ø Spitze</th>
-            <th>Zuschauer, die andere zusätzlich verlieren</th>
+            <th>Zuschauer, die andere zusätzlich verlieren (20–40 Min danach)</th>
             <th className="num">je Start</th>
           </tr>
         </thead>
@@ -120,15 +119,17 @@ export function MagnetTable({ rows, names }: { rows: Magnet[]; names: Names }) {
                   <Person id={r.id} names={names} />
                 </td>
                 <td className="num">{num(r.starts)}</td>
-                <td className="num">{num(r.peak)}</td>
                 <td>
                   <svg className="mig__bar" viewBox={`0 0 ${W} 18`} width={W} height={18} role="img" aria-label={`${name}: ca. ${num(r.pulled)} Zuschauer je Start`}>
                     <title>{`${name}: andere verlieren je Start zusammen ca. ${num(r.pulled)} Zuschauer mehr als üblich (${r.starts} Starts)`}</title>
                     <line x1={0} x2={0} y1={0} y2={18} className="mig__zero" />
-                    {len > 0 && <rect x={0} y={4} width={len} height={10} rx={2} className="mig__s1" />}
+                    {len > 0 && <rect x={0} y={4} width={len} height={10} rx={2} className="mig__s1" opacity={unsure({ n: r.starts * 5, t: r.t }) ? 0.35 : 1} />}
                   </svg>
                 </td>
-                <td className="num">{num(Math.max(0, r.pulled))}</td>
+                <td className="num">
+                  {num(Math.max(0, r.pulled))}
+                  {unsure({ n: r.starts * 5, t: r.t }) && <span className="mig__unsure"> unsicher</span>}
+                </td>
               </tr>
             );
           })}
@@ -141,7 +142,7 @@ export function MagnetTable({ rows, names }: { rows: Magnet[]; names: Names }) {
 /** Heatmap: Zeile = Stream, der verliert; Spalte = Stream, der live geht; dunkler = mehr Verlust je Start */
 export function PairHeatmap({ rows, cols, pairs, names }: { rows: string[]; cols: string[]; pairs: Pair[]; names: Names }) {
   const byKey = new Map(pairs.map((p) => [`${p.a}|${p.b}`, p]));
-  const losses = pairs.filter((p) => rows.includes(p.a) && cols.includes(p.b) && p.n >= 2 && p.perStart < 0).map((p) => -p.perStart);
+  const losses = pairs.filter((p) => rows.includes(p.a) && cols.includes(p.b) && p.n >= 2 && p.perEvent < 0).map((p) => -p.perEvent);
   const max = Math.max(1, ...losses);
   const STEPS = 6;
   const step = (loss: number) => Math.min(STEPS - 1, Math.floor((loss / max) * STEPS));
@@ -170,11 +171,11 @@ export function PairHeatmap({ rows, cols, pairs, names }: { rows: string[]; cols
                 const x = left + j * cell;
                 const y = top + i * cell;
                 const tip = p
-                  ? `${name(a)} bei ${p.n} Start${p.n === 1 ? "" : "s"} von ${name(b)}: ${signed.format(p.perStart)} Zuschauer je Start gegenüber dem Üblichen`
+                  ? `${name(a)} bei ${p.n} Start${p.n === 1 ? "" : "s"} von ${name(b)}: ${signed.format(p.perEvent)} Zuschauer je Start gegenüber dem Üblichen`
                   : a === b
                     ? name(a)
                     : `${name(a)} lief bei keinem Start von ${name(b)}`;
-                const cls = !p || p.n < 2 ? "mig__cell-none" : p.perStart >= 0 ? "mig__cell-mid" : `mig__h${step(-p.perStart)}`;
+                const cls = !p || p.n < 2 ? "mig__cell-none" : p.perEvent >= 0 ? "mig__cell-mid" : `mig__h${step(-p.perEvent)}`;
                 return (
                   <rect key={b} x={x + 1} y={y + 1} width={cell - 2} height={cell - 2} rx={3} className={cls}>
                     <title>{tip}</title>
@@ -223,7 +224,7 @@ export function ExampleChart({ ex, names }: { ex: Example; names: Names }) {
   return (
     <figure className="box mig__ex" data-tone="white">
       <figcaption>
-        <b>{name(ex.b)}</b> geht live <span className="muted">· {when} · Spitze {num(ex.peak)} Zuschauer</span>
+        <b>{name(ex.b)}</b> geht live <span className="muted">· {when}</span>
         <br />
         <span className="muted">Andere CraftAttack-Streams verlieren zusammen ca. {num(ex.pulled)} Zuschauer mehr als üblich</span>
       </figcaption>
@@ -291,4 +292,90 @@ export function heatmapAxes(m: Migration): { rows: string[]; cols: string[] } {
   const rows = m.waitingRooms.filter((r) => r.effect < 0 && !unsure(r)).slice(0, 10).map((r) => r.id);
   const cols = m.magnets.slice(0, 10).map((r) => r.id);
   return { rows, cols };
+}
+
+/** Erben: wer nach dem Ende eines Streams mehr Zuschauer bekommt als üblich (ohne Raids) */
+export function HeirsTable({ rows, names }: { rows: Pair[]; names: Names }) {
+  const max = Math.max(1, ...rows.map((r) => Math.abs(r.perEvent)));
+  const W = 220;
+  return (
+    <div className="tbl-wrap">
+      <table className="tbl mig__tbl">
+        <caption className="sr-only">Wer nach dem Ende eines Streams zusätzliche Zuschauer bekommt</caption>
+        <thead>
+          <tr>
+            <th>Geht offline</th>
+            <th>Bekommt Zuschauer</th>
+            <th className="num">Enden</th>
+            <th>Zusätzliche Zuschauer 5–25 Min danach</th>
+            <th className="num">je Ende</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const u = unsure({ n: r.n * 5, t: r.t });
+            const len = (Math.max(0, r.perEvent) / max) * (W - 4);
+            const label = `${names[r.b]?.name ?? r.b} nach dem Ende von ${names[r.a]?.name ?? r.a}: ${signed.format(r.perEvent)} Zuschauer gegenüber dem Üblichen (${r.n} Enden, t = ${r.t.toFixed(1)})`;
+            return (
+              <tr key={`${r.a}|${r.b}`}>
+                <td>
+                  <Person id={r.a} names={names} />
+                </td>
+                <td>
+                  <Person id={r.b} names={names} />
+                </td>
+                <td className="num">{num(r.n)}</td>
+                <td>
+                  <svg className="mig__bar" viewBox={`0 0 ${W} 18`} width={W} height={18} role="img" aria-label={label}>
+                    <title>{label}</title>
+                    <line x1={0} x2={0} y1={0} y2={18} className="mig__zero" />
+                    {len > 0 && <rect x={0} y={4} width={len} height={10} rx={2} className="mig__s1" opacity={u ? 0.35 : 1} />}
+                  </svg>
+                </td>
+                <td className="num">
+                  {signed.format(r.perEvent)}
+                  {u && <span className="mig__unsure"> unsicher</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Raids: ausdrücklicher Wechsel mit Zuschauerzahl laut Twitch */
+export function RaidTable({ rows, names }: { rows: RaidFlow[]; names: Names }) {
+  return (
+    <div className="tbl-wrap">
+      <table className="tbl mig__tbl">
+        <caption className="sr-only">Raids zwischen CraftAttack-Streams</caption>
+        <thead>
+          <tr>
+            <th>Raidet</th>
+            <th>Ziel</th>
+            <th className="num">Raids</th>
+            <th className="num">Zuschauer gesamt</th>
+            <th className="num">Ø je Raid</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={`${r.from}|${r.to}`}>
+              <td>
+                <Person id={r.from} names={names} />
+              </td>
+              <td>
+                <Person id={r.to} names={names} />
+              </td>
+              <td className="num">{num(r.n)}</td>
+              <td className="num">{num(r.viewers)}</td>
+              <td className="num">{num(r.viewers / r.n)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }

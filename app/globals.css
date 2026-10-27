@@ -4439,3 +4439,137 @@ html[data-theme="dark"] .mig {
   hyphens: auto;
   overflow-wrap: anywhere;
 }
+
+/* Zuschauerwanderung: Tagesverteilung (8 Plätze, geprüfte Reihenfolge) und Spielerverlauf */
+.mig {
+  --mig-c1: #2a78d6;
+  --mig-c2: #eb6834;
+  --mig-c3: #1baf7a;
+  --mig-c4: #eda100;
+  --mig-c5: #e87ba4;
+  --mig-c6: #008300;
+  --mig-c7: #6250d6;
+  --mig-c0: #b5b3ad;
+  --mig-mk-own: color-mix(in srgb, var(--ink) 55%, transparent);
+}
+html[data-theme="dark"] .mig {
+  --mig-c1: #3987e5;
+  --mig-c2: #d95926;
+  --mig-c3: #199e70;
+  --mig-c4: #c98500;
+  --mig-c5: #d55181;
+  --mig-c6: #008300;
+  --mig-c7: #9085e9;
+  --mig-c0: #6b6a66;
+}
+.mig__c0 { fill: var(--mig-c0); background: var(--mig-c0); }
+.mig__c1 { fill: var(--mig-c1); background: var(--mig-c1); }
+.mig__c2 { fill: var(--mig-c2); background: var(--mig-c2); }
+.mig__c3 { fill: var(--mig-c3); background: var(--mig-c3); }
+.mig__c4 { fill: var(--mig-c4); background: var(--mig-c4); }
+.mig__c5 { fill: var(--mig-c5); background: var(--mig-c5); }
+.mig__c6 { fill: var(--mig-c6); background: var(--mig-c6); }
+.mig__c7 { fill: var(--mig-c7); background: var(--mig-c7); }
+.mig__band {
+  /* 1 px Fläche als Trennung zwischen den Stapeln statt einer Umrandung */
+  stroke: var(--white);
+  stroke-width: 1;
+}
+.mig__chart {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mig__keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+.mig__keys li,
+.mig__tip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mig__keys i,
+.mig__tip i {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  display: inline-block;
+  flex: none;
+}
+.mig__plot {
+  position: relative;
+}
+.mig__plot svg {
+  display: block;
+  touch-action: pan-y;
+}
+.mig__cross {
+  stroke: var(--ink);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+.mig__tip {
+  position: absolute;
+  top: 0;
+  translate: -50% 0;
+  min-width: 180px;
+  max-width: min(320px, 90vw);
+  background: var(--ink);
+  color: var(--paper);
+  padding: 6px 10px;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  pointer-events: none;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 0 0 2px var(--line);
+}
+.mig__tip .muted {
+  color: inherit;
+  opacity: 0.75;
+}
+.mig__mk line {
+  stroke-width: 1.5;
+  opacity: 0.7;
+}
+.mig__mk circle {
+  stroke: var(--white);
+  stroke-width: 2;
+}
+.mig__mk-loss line { stroke: var(--mig-loss); }
+.mig__mk-loss circle,
+i.mig__mk-loss { fill: var(--mig-loss); background: var(--mig-loss); }
+.mig__mk-gain line { stroke: var(--mig-gain); }
+.mig__mk-gain circle,
+i.mig__mk-gain { fill: var(--mig-gain); background: var(--mig-gain); }
+.mig__mk-own line { stroke: var(--mig-mk-own); }
+.mig__mk-own circle,
+i.mig__mk-own { fill: var(--mig-mk-own); background: var(--mig-mk-own); }
+.mig__bd-dip { fill: color-mix(in srgb, var(--mig-loss) 16%, transparent); background: color-mix(in srgb, var(--mig-loss) 30%, transparent); }
+.mig__bd-hype { fill: color-mix(in srgb, var(--mig-gain) 16%, transparent); background: color-mix(in srgb, var(--mig-gain) 30%, transparent); }
+.mig__clickable {
+  cursor: pointer;
+}
+.mig__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.mig__pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
