@@ -1,5 +1,7 @@
 import { Suspense } from "react";
+import { timingSafeEqual } from "node:crypto";
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { PageSkeleton } from "@/components/Skeletons";
 import { FigValue } from "@/components/FigValue";
@@ -22,16 +24,29 @@ const span = (a: number, b: number) => {
   return month(x) === month(y) ? `${d(x)}.–${d(y)}. ${month(y)}` : `${day.format(a)} – ${day.format(b)}`;
 };
 
-export default function Page() {
+/**
+ * Zugang nur mit `?key=` gleich INTERN_KEY (Server-Umgebung). Der Code ist öffentlich, der Pfad also bekannt; ohne
+ * passenden Schlüssel (oder ohne gesetzten INTERN_KEY) gibt es eine gewöhnliche 404.
+ */
+function allowed(key: unknown): boolean {
+  const secret = process.env.INTERN_KEY ?? "";
+  if (secret.length < 16 || typeof key !== "string") return false;
+  const a = Buffer.from(key);
+  const b = Buffer.from(secret);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export default function Page(props: PageProps<"/intern/zuschauerwanderung">) {
   return (
     <Suspense fallback={<PageSkeleton eyebrow="Intern" title="Zuschauerwanderung" tone="ender" />}>
-      <Analysis />
+      <Analysis searchParams={props.searchParams} />
     </Suspense>
   );
 }
 
-async function Analysis() {
+async function Analysis({ searchParams }: { searchParams: PageProps<"/intern/zuschauerwanderung">["searchParams"] }) {
   await connection();
+  if (!allowed((await searchParams).key)) notFound();
   const [{ state }, m] = await Promise.all([loadTracker(), getViewerMigration()]);
   const names = Object.fromEntries(Object.values(state.players).map((p) => [p.id, { name: p.name, uuid: p.uuid }]));
   const losers = m.waitingRooms.filter((r) => r.effect < 0).slice(0, 20);
