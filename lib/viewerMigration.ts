@@ -1,7 +1,7 @@
 import "server-only";
 import { getDb } from "./db";
 import { createSwrCache } from "./swrCache";
-import { findVodAt } from "./twitch";
+import { vodsBetween } from "./twitch";
 
 /**
  * Zuschauerwanderung zwischen CraftAttack-Streams (interne Auswertung).
@@ -73,6 +73,8 @@ interface Base {
   /** Minuten, in denen der Tracker irgendeinen Zuschauerwert schrieb */
   cover: Set<number>;
   starts: StartEv[];
+  /** Echte Startzeiten (Twitch) je Spieler, sortiert, Minuten */
+  startsBy: Map<string, Float64Array>;
   raids: RaidEv[];
   markers: MarkerEv[];
   logins: Map<string, string>;
@@ -219,7 +221,9 @@ async function loadBase(): Promise<Base> {
     markers.push({ type: "server_event", t, players: [], text: o.title });
   }
   markers.sort((x, y) => x.t - y.t);
-  return { series, cover, starts, raids, markers, logins, from, to };
+  const startsBy = new Map<string, Float64Array>();
+  for (const [p, l] of group(starts, (x) => x.b)) startsBy.set(p, Float64Array.from(l.map((x) => x.t0)).sort());
+  return { series, cover, starts, startsBy, raids, markers, logins, from, to };
 }
 
 /** Lief der Tracker in [a, b] durchgehend (höchstens 3 Minuten ohne irgendeinen Wert)? */
@@ -308,6 +312,34 @@ export interface RaidFlow {
   viewers: number;
 }
 
+/** Ein Raid mit Bindung: Anteil der Raid-Zuschauer, die nach m Minuten noch da sind */
+export interface RaidStay {
+  from: string;
+  to: string;
+  /** ms */
+  at: number;
+  /** Raid-Größe laut Twitch */
+  viewers: number;
+  /** Zuschauer von B vor dem Raid (Median 6–1 Min davor) */
+  before: number;
+  /** angekommen: höchster Stand in 8 Min nach dem Raid, als Anteil der Raid-Größe */
+  arrived: number;
+  r10: number | null;
+  r30: number | null;
+  r60: number | null;
+}
+
+export interface RaidRetention {
+  /** Je Minute nach dem Raid: Median und mittlere Hälfte (25–75 %) des Anteils, der noch da ist */
+  curve: { m: number; median: number; p25: number; p75: number; n: number }[];
+  /** Median „angekommen“ */
+  arrived: number;
+  raids: RaidStay[];
+  /** Je Raid-Ziel (mind. 3 Raids): Median nach 30 Min */
+  byTarget: { to: string; n: number; r30: number; arrived: number }[];
+  skipped: number;
+}
+
 export interface ExampleLine {
   a: string;
   before: number;
@@ -336,6 +368,7 @@ export interface Migration {
   pairs: Pair[];
   heirs: Pair[];
   raidFlows: RaidFlow[];
+  raidRetention: RaidRetention;
   examples: Example[];
   /** Beobachtungen je Spieler für die Spieleransicht (Start: A verliert; Ende: C gewinnt) */
   startObs: Map<string, { b: string; t0: number; exAbs: number; before: number }[]>;
@@ -443,6 +476,8 @@ async function computeMigration(): Promise<Migration> {
     })
     .sort((x, y) => y.viewers - x.viewers);
 
+  const raidRetention = computeRaidRetention(base);
+
   // Beispiele: die Starts mit dem größten Gesamtverlust der anderen, die drei größten Verlierer
   const byIdx = group(obs, (o) => o.idx);
   const examples: Example[] = [...perStart]
@@ -494,10 +529,78 @@ async function computeMigration(): Promise<Migration> {
     pairs,
     heirs,
     raidFlows,
+    raidRetention,
     examples,
     startObs,
     endObs,
   };
+}
+
+/* ------------------------------------------------------------------ Raid-Bindung */
+
+/** Raids zählen ab so vielen Zuschauern (kleinere gehen im Rauschen unter) */
+const RAID_MIN_VIEWERS = 50;
+const RAID_HORIZON = 60;
+
+/**
+ * Wie viele Raid-Zuschauer bleiben? Je Raid A → B: Stand von B vorher (Median 6–1 Min davor), dann je Minute der
+ * Median ±2 Min abzüglich B's eigenem Trend der 15 Min davor, als Anteil der Raid-Größe laut Twitch. Twitch-Zahlen
+ * kommen in Stufen von ~3 Min und zeigen den Raid 1–3 Min nach der Meldung, daher „angekommen“ als Höchststand in
+ * 8 Min. Nur Raids, bei denen B von 20 Min davor bis 60 Min danach durchgehend live ist und keinen weiteren Raid
+ * in dieser Stunde bekommt.
+ */
+function computeRaidRetention(base: Base): RaidRetention {
+  const liveThrough = (s: Series, a: number, b: number) => {
+    const i = lowerBound(s.t, a);
+    const j = lowerBound(s.t, b + 1e-9) - 1;
+    if (i >= s.t.length || j < i || s.t[i] > a + 5 || s.t[j] < b - 5) return false;
+    for (let k = i + 1; k <= j; k++) if (s.t[k] - s.t[k - 1] > 10) return false;
+    return true;
+  };
+  const maxIn = (s: Series, a: number, b: number) => {
+    let m: number | null = null;
+    for (let i = lowerBound(s.t, a); i < s.t.length && s.t[i] <= b; i++) m = Math.max(m ?? 0, s.v[i]);
+    return m;
+  };
+  const raids: RaidStay[] = [];
+  const perMinute: number[][] = Array.from({ length: RAID_HORIZON + 1 }, () => []);
+  let skipped = 0;
+  for (const r of base.raids) {
+    const s = base.series.get(r.to);
+    if (!s || r.viewers < RAID_MIN_VIEWERS) continue;
+    const t = r.t;
+    if (!liveThrough(s, t - 20, t + RAID_HORIZON) || base.raids.some((o) => o !== r && o.to === r.to && Math.abs(o.t - t) < RAID_HORIZON)) {
+      skipped++;
+      continue;
+    }
+    const before = medianIn(s, t - 6, t - 1);
+    const pre = medianIn(s, t - 21, t - 16);
+    const peak = maxIn(s, t, t + 8);
+    if (before === null || peak === null) {
+      skipped++;
+      continue;
+    }
+    const trend = pre !== null ? (before - pre) / 15 : 0;
+    const stay = (m: number) => {
+      const v = medianIn(s, t + m - 2, t + m + 2);
+      return v === null ? null : (v - before - trend * m) / r.viewers;
+    };
+    for (let m = 0; m <= RAID_HORIZON; m++) {
+      const x = stay(m);
+      if (x !== null) perMinute[m].push(x);
+    }
+    raids.push({ from: r.from, to: r.to, at: t * 60_000, viewers: r.viewers, before, arrived: (peak - before) / r.viewers, r10: stay(10), r30: stay(30), r60: stay(60) });
+  }
+  const q = (l: number[], p: number) => {
+    const v = [...l].sort((x, y) => x - y);
+    return v.length ? v[Math.min(v.length - 1, Math.floor(p * v.length))] : 0;
+  };
+  const curve = perMinute.map((l, m) => ({ m, median: l.length ? median(l) : 0, p25: q(l, 0.25), p75: q(l, 0.75), n: l.length }));
+  const byTarget = [...group(raids, (r) => r.to)]
+    .filter(([, l]) => l.length >= 3)
+    .map(([to, l]) => ({ to, n: l.length, r30: median(l.map((r) => r.r30 ?? 0)), arrived: median(l.map((r) => r.arrived)) }))
+    .sort((x, y) => y.r30 - x.r30);
+  return { curve, arrived: raids.length ? median(raids.map((r) => r.arrived)) : 0, raids: raids.sort((x, y) => y.at - x.at), byTarget, skipped };
 }
 
 /* ------------------------------------------------------------------ Tagesverlauf */
@@ -565,6 +668,56 @@ export async function getDayStack(day: string): Promise<DayStack> {
   return { day, times, covered: coveredBins, series: [...series, { id: "", values: others }], table };
 }
 
+/* ------------------------------------------------------------------ Tage überlagern */
+
+/** Pseudo-Spieler: alle Streams zusammen */
+export const ALL_STREAMS = "__alle";
+/** Höchstens so viele Tage auf einmal */
+const OVERLAY_MAX_DAYS = 31;
+
+export interface Overlay {
+  id: string;
+  days: string[];
+  /** Minute des Tages (Berlin) je 5-Minuten-Abschnitt */
+  minutes: number[];
+  /**
+   * je Tag je Abschnitt: Zuschauer (Ø im Abschnitt), 0 = Tracker lief, Stream war aus, null = Tracker lief nicht.
+   * Ohne diese Trennung würden Summe und Durchschnitt Ausfälle als „0 Zuschauer“ zählen.
+   */
+  values: (number | null)[][];
+}
+
+/** Zuschauer eines Streams in [a, b): Ø, bei nur einem Punkt dieser, ohne Punkt 0 */
+function binValue(s: Series, a: number, b: number) {
+  const m = avg(s, a, b - 1e-6);
+  if (m !== null) return m;
+  const k = lowerBound(s.t, a);
+  return k < s.t.length && s.t[k] < b ? s.v[k] : 0;
+}
+
+export async function getOverlay(id: string, fromDay: string, toDay: string): Promise<Overlay> {
+  const base = await getBase();
+  const [lo, hi] = fromDay <= toDay ? [fromDay, toDay] : [toDay, fromDay];
+  const all = new Set<string>();
+  for (const m of base.cover) all.add(dayOf(m * 60_000));
+  const days = [...all].filter((d) => d >= lo && d <= hi).sort().slice(-OVERLAY_MAX_DAYS);
+  const bins = (24 * 60) / BIN_MIN;
+  const minutes = Array.from({ length: bins }, (_, i) => i * BIN_MIN);
+  const series = id === ALL_STREAMS ? [...base.series.values()] : [base.series.get(id)].filter((x): x is Series => Boolean(x));
+  const values = days.map((d) => {
+    const t0 = dayBounds(d)[0] / 60_000;
+    return minutes.map((m) => {
+      const a = t0 + m;
+      const b = a + BIN_MIN;
+      let covered = false;
+      for (let x = a; x < b && !covered; x++) covered = base.cover.has(x);
+      if (!covered) return null;
+      return Math.round(series.reduce((sum, sr) => sum + binValue(sr, a, b), 0));
+    });
+  });
+  return { id, days, minutes, values };
+}
+
 /** Streamer mit Zuschauerdaten, nach Zuschauerminuten der Staffel absteigend */
 export async function getStreamers(): Promise<string[]> {
   const base = await getBase();
@@ -596,8 +749,12 @@ export interface Anomaly {
   /** ms */
   from: number;
   to: number;
-  /** Änderung in Zuschauern über den Abschnitt */
+  /** tatsächliche Änderung in Zuschauern über den Abschnitt */
   change: number;
+  /** erwartete Änderung in Zuschauern (übliches Muster dieses Streams + was alle anderen gleichzeitig tun) */
+  expected: number;
+  /** gleichzeitige Änderung aller anderen Streams (Anteil, Median) */
+  market: number;
   kind: "dip" | "hype";
 }
 
@@ -634,10 +791,91 @@ const ANOMALY_MIN_SHARE = 0.05;
 /** Ungeklärt: 10-Minuten-Änderung mindestens so viele Standardabweichungen vom Üblichen dieses Streams */
 const ANOMALY_Z = 3;
 const ANOMALY_WIN = 10;
-/** Aufwärmphase nach Streamstart: Zuschauer strömen herein, das ist kein ungeklärter Anstieg */
-const ANOMALY_WARMUP_MIN = 45;
 
 /** Verlauf eines Spielers an einem Tag; ohne (gültigen) Tag der letzte Tag, an dem er live war */
+function medianIn(s: Series, a: number, b: number): number | null {
+  const vals: number[] = [];
+  for (let j = lowerBound(s.t, a); j < s.t.length && s.t[j] <= b; j++) vals.push(s.v[j]);
+  if (vals.length < 2) return null;
+  vals.sort((x, y) => x - y);
+  const h = vals.length >> 1;
+  return vals.length % 2 ? vals[h] : (vals[h - 1] + vals[h]) / 2;
+}
+
+/**
+ * Anhaltende Änderung um t: Median der 5 Min davor gegen 5–10 Min danach, innerhalb einer Sitzung. Twitch-Zahlen
+ * kommen in Stufen von ~3 Min und haben Nadeln von 1–2 Min; der Median übergeht beides.
+ */
+function medianStep(s: Series, t: number, starts: Float64Array | undefined): { before: number; after: number; age: number; end: number } | null {
+  const k = pointAt(s, t);
+  const k2 = pointAt(s, t + ANOMALY_WIN);
+  if (k < 0 || k2 < 0 || s.sess[k2] !== s.sess[k]) return null;
+  const before = medianIn(s, t - 5, t);
+  const after = medianIn(s, t + 5, t + ANOMALY_WIN);
+  if (before === null || after === null || before < MIN_VIEWERS) return null;
+  return { before, after, age: streamAge(s, k, t, starts), end: s.t[k2] };
+}
+
+/**
+ * Minuten seit dem echten Streamstart (Twitch). Lücken im Verlauf kommen meist von Tracker-Ausfällen, nicht von
+ * Streamstarts; ohne Start in dieser Sitzung (Tracker kam mitten im Stream zurück) gilt der Stream als lange live.
+ */
+function streamAge(s: Series, k: number, t: number, starts: Float64Array | undefined): number {
+  if (starts) {
+    const j = lowerBound(starts, t + 1e-9) - 1;
+    if (j >= 0 && starts[j] >= s.sess[k] - 60) return t - starts[j];
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+/** Feinere Streamalter-Stufen, damit die Aufwärmphase ihr eigenes übliches Muster hat; −1 = zu früh zum Bewerten */
+const fineAge = (m: number) => (m < 10 ? -1 : m < 20 ? 0 : m < 30 ? 1 : m < 60 ? 2 : m < 120 ? 3 : m < 240 ? 4 : 5);
+
+const median = (l: number[]) => {
+  const v = [...l].sort((x, y) => x - y);
+  const h = v.length >> 1;
+  return v.length % 2 ? v[h] : (v[h - 1] + v[h]) / 2;
+};
+
+/**
+ * Übliche Änderung aller Streams je (Streamalter, Tageszeit) bzw. Streamalter – Ersatz für Streamer mit wenigen
+ * eigenen Daten (die Aufwärmphase nach dem Start sieht bei allen ähnlich aus). Einmal je Basisdaten berechnet.
+ */
+const globalUsualCache = new WeakMap<Base, Map<string, number>>();
+function globalUsual(base: Base): Map<string, number> {
+  const hit = globalUsualCache.get(base);
+  if (hit) return hit;
+  const lists = new Map<string, number[]>();
+  for (const [p, sp] of base.series) {
+    for (let i = 0; i < sp.t.length; i += 4) {
+      const st = medianStep(sp, sp.t[i], base.startsBy.get(p));
+      if (!st || fineAge(st.age) < 0) continue;
+      const rel = (st.after - st.before) / st.before;
+      for (const k of [`${fineAge(st.age)}|${hourBlock(sp.t[i])}`, `${fineAge(st.age)}`]) {
+        const l = lists.get(k);
+        if (l) l.push(rel);
+        else lists.set(k, [rel]);
+      }
+    }
+  }
+  const out = new Map<string, number>();
+  for (const [k, l] of lists) if (l.length >= 30) out.set(k, median(l));
+  globalUsualCache.set(base, out);
+  return out;
+}
+
+/** Was alle anderen Streams gleichzeitig tun: Median ihrer Änderung um t (ohne Raid-Beteiligte und Aufwärmphase) */
+function marketAt(base: Base, t: number, exclude: string): number | null {
+  const rels: number[] = [];
+  for (const [p, sp] of base.series) {
+    if (p === exclude) continue;
+    const st = medianStep(sp, t, base.startsBy.get(p));
+    if (!st || st.age < MIN_AGE_MIN || raidNear(base, p, t - 10, t + 15)) continue;
+    rels.push((st.after - st.before) / st.before);
+  }
+  return rels.length >= 3 ? median(rels) : null;
+}
+
 export async function getPlayerDay(id: string, wanted?: string): Promise<PlayerDay | null> {
   const [base, mig] = await Promise.all([getBase(), getViewerMigration()]);
   const s = base.series.get(id);
@@ -653,8 +891,10 @@ export async function getPlayerDay(id: string, wanted?: string): Promise<PlayerD
   const points: [number, number][] = [];
   for (let i = lowerBound(s.t, t0); i < s.t.length && s.t[i] < t1; i++) points.push([s.t[i] * 60_000, s.v[i]]);
 
+  // Ereignisse auch 30 Min vor/nach dem Tag sammeln: Sie erklären Änderungen kurz vor Mitternacht; angezeigt
+  // werden am Ende nur die des Tages
   const markers: ChartMarker[] = [];
-  const inDay = (x: number) => x >= t0 && x < t1;
+  const inDay = (x: number) => x >= t0 - 30 && x < t1 + 30;
   for (const st of base.starts) if (st.b === id && inDay(st.t0)) markers.push({ at: st.t0 * 60_000, kind: "own_start" });
   for (let i = lowerBound(s.t, t0); i < s.t.length && s.t[i] < t1; i++) {
     if (s.send[i] === s.t[i] && covered(base, s.t[i], s.t[i] + 15)) markers.push({ at: s.t[i] * 60_000, kind: "own_end" });
@@ -693,62 +933,78 @@ export async function getPlayerDay(id: string, wanted?: string): Promise<PlayerD
     else seen.add(k);
   }
 
-  // Ungeklärte Einbrüche/Hypes: anhaltende Änderung weit außerhalb dessen, was dieser Stream sonst hat, und kein
-  // Ereignis (eigenes, Raid, fremder Start/Ende, geteilter Chat, Titel) von 10 Min davor bis 5 Min danach.
-  // Verglichen werden Mediane (5 Min bis zum Punkt gegen 5–10 Min danach): einzelne Ausreißer der Twitch-Zählung
-  // (Nadeln von 1–2 Minuten) bewegen den Median nicht, eine echte Änderung schon.
-  const median = (a: number, b: number) => {
-    const vals: number[] = [];
-    for (let j = lowerBound(s.t, a); j < s.t.length && s.t[j] <= b; j++) vals.push(s.v[j]);
-    if (vals.length < 2) return null;
-    vals.sort((x, y) => x - y);
-    const h = vals.length >> 1;
-    return vals.length % 2 ? vals[h] : (vals[h - 1] + vals[h]) / 2;
-  };
-  const step = (i: number) => {
-    const t = s.t[i];
-    const k = pointAt(s, t + ANOMALY_WIN);
-    if (k < 0 || s.sess[k] !== s.sess[i] || t - s.sess[i] < ANOMALY_WARMUP_MIN) return null;
-    const before = median(t - 5, t);
-    const after = median(t + 5, t + ANOMALY_WIN);
-    if (before === null || after === null || before < MIN_VIEWERS) return null;
-    return { t, end: s.t[k], before, change: after - before, rel: (after - before) / before };
-  };
-  const rels: number[] = [];
-  for (let i = 0; i < s.t.length; i += 3) {
-    const st = step(i);
-    if (st) rels.push(st.rel);
+  // Ungeklärte Einbrüche/Hypes. Erwartet wird, was dieser Stream sonst bei diesem Streamalter (inkl. Aufwärmphase)
+  // und dieser Tageszeit tut, plus was gleichzeitig mit allen anderen Streams passiert (Abendandrang, Server-Event).
+  // Ungeklärt ist nur, was deutlich darüber hinausgeht und kein Ereignis in der Nähe hat.
+  const myStarts = base.startsBy.get(id);
+  const usualMap = new Map<string, number[]>();
+  for (let i = 0; i < s.t.length; i += 2) {
+    const st = medianStep(s, s.t[i], myStarts);
+    if (!st || fineAge(st.age) < 0) continue;
+    const rel = (st.after - st.before) / st.before;
+    for (const k of [`${fineAge(st.age)}|${hourBlock(s.t[i])}`, `${fineAge(st.age)}`]) {
+      const l = usualMap.get(k);
+      if (l) l.push(rel);
+      else usualMap.set(k, [rel]);
+    }
   }
-  const mu = mean(rels);
-  const sd = Math.sqrt(mean(rels.map((x) => (x - mu) ** 2))) || 1;
+  // Eigenes Muster, wenn genug eigene Daten; sonst das aller Streams (gleiches Streamalter, gleiche Tageszeit)
+  const everyone = globalUsual(base);
+  const usualAt = (age: number, t: number) => {
+    for (const k of [`${fineAge(age)}|${hourBlock(t)}`, `${fineAge(age)}`]) {
+      const l = usualMap.get(k);
+      if (l && l.length >= 20) return median(l);
+      const g = everyone.get(k);
+      if (g !== undefined) return g;
+    }
+    return 0;
+  };
+  // Streuung der Abweichung vom Erwarteten über die ganze Staffel dieses Streams
+  const resids: number[] = [];
+  for (let i = 0; i < s.t.length; i += 6) {
+    const st = medianStep(s, s.t[i], myStarts);
+    if (!st || fineAge(st.age) < 0) continue;
+    resids.push((st.after - st.before) / st.before - usualAt(st.age, s.t[i]) - (marketAt(base, s.t[i], id) ?? 0));
+  }
+  const mu = resids.length ? median(resids) : 0;
+  const sd = resids.length ? Math.sqrt(mean(resids.map((x) => (x - mu) ** 2))) || 1 : 1;
   const near = (x: number) => markers.some((m) => m.at >= (x - 10) * 60_000 && m.at <= (x + ANOMALY_WIN + 5) * 60_000);
   const anomalies: Anomaly[] = [];
   for (let i = lowerBound(s.t, t0); i < s.t.length && s.t[i] < t1; i++) {
-    const st = step(i);
-    if (!st) continue;
-    if (Math.abs(st.rel - mu) < ANOMALY_Z * sd || Math.abs(st.change) < Math.max(CAUSE_MIN_ABS, ANOMALY_MIN_SHARE * st.before)) continue;
-    if (!covered(base, st.t, st.end) || near(st.t)) continue;
-    const kind = st.rel > mu ? "hype" : "dip";
+    const t = s.t[i];
+    const st = medianStep(s, t, myStarts);
+    if (!st || fineAge(st.age) < 0) continue;
+    const rel = (st.after - st.before) / st.before;
+    const market = marketAt(base, t, id) ?? 0;
+    const expectedRel = usualAt(st.age, t) + market;
+    const resid = rel - expectedRel;
+    const residAbs = resid * st.before;
+    if (Math.abs(resid - mu) < ANOMALY_Z * sd || Math.abs(residAbs) < Math.max(CAUSE_MIN_ABS, ANOMALY_MIN_SHARE * st.before)) continue;
+    if (!covered(base, t, st.end) || near(t)) continue;
+    const kind = resid > mu ? "hype" : "dip";
+    // Anstieg in der ersten Stunde nach dem Start ist das Hereinströmen – wie steil, hängt vor allem an der Größe
+    // des Streamers, nicht an etwas Besonderem im Stream
+    if (kind === "hype" && st.age < 60) continue;
+    const change = st.after - st.before;
+    const expected = expectedRel * st.before;
     const last = anomalies[anomalies.length - 1];
-    if (last && last.kind === kind && st.t * 60_000 <= last.to) {
+    if (last && last.kind === kind && t * 60_000 <= last.to) {
       last.to = Math.max(last.to, st.end * 60_000);
-      last.change = kind === "dip" ? Math.min(last.change, st.change) : Math.max(last.change, st.change);
-    } else anomalies.push({ from: st.t * 60_000, to: st.end * 60_000, change: Math.round(st.change), kind });
+      if (kind === "dip" ? change < last.change : change > last.change) {
+        last.change = Math.round(change);
+        last.expected = Math.round(expected);
+        last.market = market;
+      }
+    } else anomalies.push({ from: t * 60_000, to: st.end * 60_000, change: Math.round(change), expected: Math.round(expected), market, kind });
   }
 
-  // VOD je Sitzung des Tages (Twitch-API): Klick im Graphen springt an die Stelle
+  // Alle VODs des Tages mit echtem Beginn und Ende (Twitch-API): Ein Klick nimmt das VOD, das seinen Zeitpunkt abdeckt
   const login = base.logins.get(id);
-  const vods: VodSpan[] = [];
-  if (login) {
-    const sessions = new Map<number, number>();
-    for (let i = lowerBound(s.t, t0); i < s.t.length && s.t[i] < t1; i++) sessions.set(s.sess[i], s.send[i]);
-    for (const [from, to] of sessions) {
-      const probe = Math.max(from, t0) + 2;
-      const hit = await findVodAt(login, probe * 60_000).catch(() => null);
-      if (hit) vods.push({ from: from * 60_000, to: to * 60_000, vodId: hit.vodId, vodStart: probe * 60_000 - hit.offset * 1000 });
-    }
-  }
-  return { id, day, points, markers, anomalies, vods, days };
+  const vods: VodSpan[] = login
+    ? (await vodsBetween(login, a, b).catch(() => [])).map((v) => ({ from: v.start, to: v.end, vodId: v.id, vodStart: v.start }))
+    : [];
+  const shown = markers.filter((m) => m.at >= a && m.at < b);
+  return { id, day, points, markers: shown, anomalies, vods, days };
 }
 
 /* ------------------------------------------------------------------ Zwischenspeicher */

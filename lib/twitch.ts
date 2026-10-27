@@ -111,6 +111,19 @@ async function fetchVideos(key: string): Promise<Vod[]> {
   return list;
 }
 
+/**
+ * Alle Archiv-VODs eines Kanals, die [fromMs, toMs] berühren, mit Beginn und Ende. 24/7-Streams teilt Twitch in VODs
+ * von höchstens 48 Stunden, dazwischen liegen manchmal Mini-VODs von Sekunden – ein Klick braucht das VOD, das genau
+ * seinen Zeitpunkt abdeckt, nicht eins pro Stream.
+ */
+export async function vodsBetween(login: string, fromMs: number, toMs: number): Promise<{ id: string; start: number; end: number }[]> {
+  if (!TWITCH_ENABLED) return [];
+  const list = await videos(login);
+  return list
+    .map((v) => ({ id: v.id, start: v.startMs, end: v.startMs + Math.max(1, v.durationSec) * 1000 }))
+    .filter((v) => v.start <= toMs && v.end >= fromMs);
+}
+
 /** Laufender Stream laut Twitch Helix `streams` */
 export interface TwitchStream {
   /** Twitch-Nutzer-ID des Kanals (für Shared-Chat-Abfragen) */

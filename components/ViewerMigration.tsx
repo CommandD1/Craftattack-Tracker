@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Head } from "./Head";
-import type { Example, Magnet, Migration, Pair, RaidFlow, WaitingRoom } from "@/lib/viewerMigration";
+import type { Example, Magnet, Migration, Pair, RaidFlow, RaidRetention, RaidStay, WaitingRoom } from "@/lib/viewerMigration";
 import { num } from "@/lib/format";
 
 /**
@@ -372,6 +372,100 @@ export function RaidTable({ rows, names }: { rows: RaidFlow[]; names: Names }) {
               <td className="num">{num(r.n)}</td>
               <td className="num">{num(r.viewers)}</td>
               <td className="num">{num(r.viewers / r.n)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const pct0 = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
+const share = (x: number | null) => (x === null ? "–" : `${pct0.format(x * 100)} %`);
+const when = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+
+/** Raid-Bindung je Ziel: wie viel kommt an, wie viel ist nach 30 Min noch da */
+export function RaidTargetTable({ rows, names }: { rows: RaidRetention["byTarget"]; names: Names }) {
+  const W = 220;
+  return (
+    <div className="tbl-wrap">
+      <table className="tbl mig__tbl">
+        <caption className="sr-only">Wie viele Raid-Zuschauer bei welchem Ziel bleiben</caption>
+        <thead>
+          <tr>
+            <th>Raid-Ziel</th>
+            <th className="num">Raids</th>
+            <th className="num" title="Höchster Stand in 8 Min nach dem Raid, Anteil der Raid-Größe (Median)">angekommen</th>
+            <th>nach 30 Min noch da (Median)</th>
+            <th className="num">nach 30 Min</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const len = Math.max(0, Math.min(1, r.r30)) * (W - 4);
+            const label = `${names[r.to]?.name ?? r.to}: nach 30 Min ${share(r.r30)} der Raid-Zuschauer noch da (${r.n} Raids)`;
+            return (
+              <tr key={r.to}>
+                <td>
+                  <Person id={r.to} names={names} />
+                </td>
+                <td className="num">{num(r.n)}</td>
+                <td className="num">{share(r.arrived)}</td>
+                <td>
+                  <svg className="mig__bar" viewBox={`0 0 ${W} 18`} width={W} height={18} role="img" aria-label={label}>
+                    <title>{label}</title>
+                    <line x1={0} x2={0} y1={0} y2={18} className="mig__zero" />
+                    {len > 0 && <rect x={0} y={4} width={len} height={10} rx={2} className="mig__s1" opacity={r.n < 5 ? 0.35 : 1} />}
+                  </svg>
+                </td>
+                <td className="num">
+                  {share(r.r30)}
+                  {r.n < 5 && <span className="mig__unsure"> unsicher</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Einzelne Raids mit Bindung */
+export function RaidStayTable({ rows, names }: { rows: RaidStay[]; names: Names }) {
+  return (
+    <div className="tbl-wrap">
+      <table className="tbl mig__tbl">
+        <caption className="sr-only">Einzelne Raids: Größe, angekommen und wie viele nach 10, 30 und 60 Minuten noch da sind</caption>
+        <thead>
+          <tr>
+            <th>Zeit</th>
+            <th>Raidet</th>
+            <th>Ziel</th>
+            <th className="num">Raid</th>
+            <th className="num" title="Zuschauer des Ziels vor dem Raid">Ziel vorher</th>
+            <th className="num">angekommen</th>
+            <th className="num">10 Min</th>
+            <th className="num">30 Min</th>
+            <th className="num">60 Min</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={`${r.from}|${r.to}|${r.at}`}>
+              <td>{when.format(r.at)}</td>
+              <td>
+                <Person id={r.from} names={names} />
+              </td>
+              <td>
+                <Person id={r.to} names={names} />
+              </td>
+              <td className="num">{num(r.viewers)}</td>
+              <td className="num">{num(r.before)}</td>
+              <td className="num">{share(r.arrived)}</td>
+              <td className="num">{share(r.r10)}</td>
+              <td className="num">{share(r.r30)}</td>
+              <td className="num">{share(r.r60)}</td>
             </tr>
           ))}
         </tbody>

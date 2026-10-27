@@ -4573,3 +4573,28 @@ i.mig__mk-own { fill: var(--mig-mk-own); background: var(--mig-mk-own); }
   gap: 8px 16px;
   align-items: center;
 }
+
+/* Zuschauerwanderung: Raid-Bindung und überlagerte Tage */
+.mig__iqr {
+  fill: color-mix(in srgb, var(--mig-c1) 18%, transparent);
+}
+.mig__band-key {
+  background: color-mix(in srgb, var(--mig-c1) 30%, transparent);
+}
+.mig__ln {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.mig__ln-strong {
+  stroke-width: 2.5;
+}
+.mig__ln0 { stroke: var(--mig-c0); stroke-width: 1; opacity: 0.6; }
+.mig__ln1 { stroke: var(--mig-c1); }
+.mig__ln2 { stroke: var(--mig-c2); }
+.mig__ln3 { stroke: var(--mig-c3); }
+.mig__ln4 { stroke: var(--mig-c4); }
+.mig__ln5 { stroke: var(--mig-c5); }
+.mig__ln6 { stroke: var(--mig-c6); }
+.mig__ln7 { stroke: var(--mig-c7); }
