@@ -218,6 +218,15 @@ async function migrate(db: Db) {
       on_server  boolean NOT NULL
     )`);
   await db.query(`CREATE INDEX IF NOT EXISTS twitch_cheers_channel_idx ON twitch_cheers (channel_id, at DESC)`);
+  // Köpfe und Skins (craftattack.one, mc-heads.net): bleiben über Deploys erhalten und werden ausgeliefert, wenn die
+  // Quelle gerade nicht erreichbar ist (z. B. Cloudflare-Sperre). Ein paar hundert kleine Bilder.
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS image_cache (
+      key          text PRIMARY KEY,
+      content_type text NOT NULL,
+      body         bytea NOT NULL,
+      fetched_at   timestamptz NOT NULL
+    )`);
   await db.query(`
     CREATE TABLE IF NOT EXISTS player_history (
       player           text NOT NULL,
