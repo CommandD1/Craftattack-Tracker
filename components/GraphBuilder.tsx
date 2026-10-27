@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { DayProfileChart, daysBetween, type DayLine } from "./DayProfileChart";
 import {
   COLORS,
   MAX_METRICS,
@@ -17,6 +18,9 @@ import {
   toSearch,
   valueOfRank,
   type GraphQuery,
+  DAY_MODES,
+  DAY_SPREADS,
+  WEEKDAYS,
   type ItemOptions,
   type Metric,
   type MetricMeta,
@@ -34,8 +38,17 @@ type PickerTab = (typeof PICKER_TABS)[number]["key"];
 /** `datetime-local`-Wert (lokale Zeit des Browsers) → Millisekunden */
 const localMs = (s: string) => (s ? Date.parse(s) : NaN);
 
+/**
+ * Raster für die Abfrage: Im Tagesverlauf braucht ein Tag genug Abschnitte, „Auto“ wählt dort 15 Min
+ * (bei „Alles“ 1 Std), statt bei langen Zeiträumen auf Stunden oder Tage zu vergröbern.
+ */
+function effectiveRaster(q: Pick<GraphQuery, "zeit" | "raster" | "ansicht">) {
+  if (q.ansicht !== "tag" || q.raster !== "auto") return q.raster;
+  return q.zeit === "alle" ? "60" : "15";
+}
+
 /** Zeitraum-Parameter der API aus der Auswahl */
-function rangeParams(q: Pick<GraphQuery, "zeit" | "von" | "bis" | "raster">, now: number, p: URLSearchParams) {
+function rangeParams(q: Pick<GraphQuery, "zeit" | "von" | "bis" | "raster" | "ansicht">, now: number, p: URLSearchParams) {
   const r = RANGES.find((x) => x.key === q.zeit);
   if (q.zeit === "eigen") {
     const a = localMs(q.von);
@@ -46,7 +59,8 @@ function rangeParams(q: Pick<GraphQuery, "zeit" | "von" | "bis" | "raster">, now
     // Auf die Minute gerundet: Gleiche Auswahl ergibt dieselbe URL, der Server-Cache kann sie für alle Besucher teilen
     p.set("von", String(Math.floor((now - r.ms) / 60_000) * 60_000));
   }
-  if (q.raster !== "auto") p.set("raster", q.raster);
+  const raster = effectiveRaster(q);
+  if (raster !== "auto") p.set("raster", raster);
 }
 
 function apiUrl(q: GraphQuery, metric: Metric, players: string[], now: number) {
@@ -68,7 +82,7 @@ interface CacheEntry {
 }
 
 /** Zeitraum im Cache-Schlüssel: relative Zeiträume über ihren Namen, damit „24 Std“ nicht ständig neu lädt */
-const rangeKey = (q: GraphQuery) => [q.zeit === "eigen" ? `${q.von}~${q.bis}` : q.zeit, q.raster].join(":");
+const rangeKey = (q: GraphQuery) => [q.zeit === "eigen" ? `${q.von}~${q.bis}` : q.zeit, effectiveRaster(q)].join(":");
 
 /**
  * Datenteile einer Auswahl: je Kennzahl ein Teil pro gewähltem Spieler, sonst einer für Summe bzw. beste fünf.
@@ -469,6 +483,7 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
   const view = useMemo(() => {
     if (!viewQ) return null;
     const vq: GraphQuery = { ...viewQ, achse: q.achse, modus: q.modus };
+    const dayView = q.ansicht === "tag";
     const lines: Line[] = [];
     let bucketMinutes = 0;
     for (const metric of vq.metrics) {
@@ -476,7 +491,8 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
       const entries = partsOf({ ...vq, metrics: [metric] }, meta).map((p) => cache.get(p.key)!);
       const series = entries.flatMap((e) => e.lines);
       bucketMinutes = Math.max(bucketMinutes, ...entries.map((e) => e.bucketMinutes));
-      const delta = vq.modus === "zuwachs" && m.counter;
+      // Im Tagesverlauf zeigen Zähler immer den Zuwachs je Abschnitt; ein laufender Stand über den Tag ergäbe nichts
+      const delta = (vq.modus === "zuwachs" || dayView) && m.counter;
       // Zähler stehen offline auf dem letzten Stand: Linie bis zur Abfrage fortführen (eigener Zeitraum hat ein festes Ende)
       const loadedAt = Math.min(...entries.map((e) => e.at));
       const holdUntil = (points: ApiLine["points"]) => {
@@ -498,8 +514,15 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
         });
       }
     }
-    return { q: vq, lines, bucketMinutes, key: toSearch(vq).toString() };
-  }, [viewQ, q.achse, q.modus, cache, meta]);
+    // Zeitraum für den Tagesverlauf: relative Zeiträume bis zum Laden, eigener Zeitraum fest, „Alles“ ab dem ersten Punkt
+    const loadedAt = Math.max(0, ...partsOf(vq, meta).map((p) => cache.get(p.key)?.at ?? 0));
+    const firstPoint = Math.min(...lines.flatMap((l) => (l.points.length ? [Date.parse(l.points[0].at)] : [])));
+    const r = RANGES.find((x) => x.key === vq.zeit);
+    const rangeTo = vq.zeit === "eigen" && Number.isFinite(localMs(vq.bis)) ? localMs(vq.bis) : loadedAt;
+    const rangeFrom =
+      vq.zeit === "eigen" && Number.isFinite(localMs(vq.von)) ? localMs(vq.von) : r?.ms ? loadedAt - r.ms : Number.isFinite(firstPoint) ? firstPoint : loadedAt;
+    return { q: vq, lines, bucketMinutes, key: toSearch(vq).toString(), rangeFrom, rangeTo };
+  }, [viewQ, q.achse, q.modus, q.ansicht, cache, meta]);
   const lines = view?.lines ?? [];
 
   const set = (patch: Partial<GraphQuery>) => {
@@ -656,6 +679,18 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
         )}
 
         <div className="gb__line gb__controls">
+          <div className="gb__seg" role="group" aria-label="Ansicht" title="Tagesverlauf: alle Tage des Zeitraums auf eine Achse von 0 bis 24 Uhr legen">
+            <button type="button" aria-pressed={q.ansicht === "zeit"} onClick={() => set({ ansicht: "zeit" })}>
+              Zeitachse
+            </button>
+            <button
+              type="button"
+              aria-pressed={q.ansicht === "tag"}
+              onClick={() => set({ ansicht: "tag", ...(["1h", "6h", "24h"].includes(q.zeit) ? { zeit: "7d" } : {}) })}
+            >
+              Tagesverlauf
+            </button>
+          </div>
           <div className="gb__seg" role="group" aria-label="Zeitraum">
             {RANGES.map((r) => (
               <button key={r.key} type="button" aria-pressed={q.zeit === r.key} onClick={() => set({ zeit: r.key })}>
@@ -679,7 +714,7 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
               ))}
             </select>
           </label>
-          {anyCounter && (
+          {anyCounter && q.ansicht === "zeit" && (
             <div className="gb__seg" role="group" aria-label="Anzeige" title={q.modus === "zuwachs" && multi ? "Zuwachs gilt nur für Zähler, andere Kennzahlen zeigen den Stand" : undefined}>
               <button type="button" aria-pressed={q.modus === "wert"} onClick={() => set({ modus: "wert" })}>
                 Stand
@@ -708,19 +743,130 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
             </button>
           </div>
         </div>
+        {q.ansicht === "tag" && (
+          <div className="gb__line gb__controls gb__day">
+            <span className="gb__group">
+              <span className="eyebrow">Tage</span>
+              <span className="gb__seg" role="group" aria-label="Tage zusammenfassen">
+                {DAY_MODES.map((d) => (
+                  <button key={d.key} type="button" aria-pressed={q.tage === d.key} onClick={() => set({ tage: d.key })}>
+                    {d.label}
+                  </button>
+                ))}
+              </span>
+            </span>
+            {q.tage === "schnitt" && (
+              <span className="gb__group">
+                <span className="eyebrow">Streuung</span>
+                <span className="gb__seg" role="group" aria-label="Streuung um den Durchschnitt">
+                  {DAY_SPREADS.map((d) => (
+                    <button
+                      key={d.key}
+                      type="button"
+                      aria-pressed={q.streuung === d.key}
+                      onClick={() => set({ streuung: d.key })}
+                      title={d.key === "quartile" ? "Band, in dem die mittlere Hälfte der Tage liegt (25–75 %)" : d.key === "spanne" ? "Band vom niedrigsten bis zum höchsten Tag" : undefined}
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                </span>
+              </span>
+            )}
+            <span className="gb__group">
+              <span className="eyebrow">Wochentage</span>
+              <span className="gb__seg" role="group" aria-label="Wochentage">
+                {WEEKDAYS.map((w, i) => {
+                  const d = String(i + 1);
+                  const on = q.wochentage.includes(d);
+                  return (
+                    <button
+                      key={w}
+                      type="button"
+                      aria-pressed={on}
+                      // Der letzte Tag bleibt: ohne Wochentag gäbe es nichts zu zeigen
+                      disabled={on && q.wochentage.length === 1}
+                      onClick={() => set({ wochentage: (on ? q.wochentage.replace(d, "") : q.wochentage + d).split("").sort().join("") })}
+                    >
+                      {w}
+                    </button>
+                  );
+                })}
+              </span>
+              <span className="gb__quick">
+                {[
+                  { label: "alle", v: "1234567" },
+                  { label: "Mo–Fr", v: "12345" },
+                  { label: "Sa–So", v: "67" },
+                ].map((o) => (
+                  <button key={o.v} type="button" className="gb__link" aria-pressed={q.wochentage === o.v} onClick={() => set({ wochentage: o.v })}>
+                    {o.label}
+                  </button>
+                ))}
+              </span>
+            </span>
+            <span className="gb__group">
+              <span className="eyebrow">Ohne Messpunkt</span>
+              <span className="gb__seg" role="group" aria-label="Abschnitte ohne Messpunkt">
+                <button
+                  type="button"
+                  aria-pressed={q.luecken === "auto"}
+                  onClick={() => set({ luecken: "auto" })}
+                  title="Zähler: 0 (offline = kein Zuwachs); andere Kennzahlen: auslassen"
+                >
+                  automatisch
+                </button>
+                <button type="button" aria-pressed={q.luecken === "auslassen"} onClick={() => set({ luecken: "auslassen" })} title="Zählt nicht mit, z. B. Durchschnitt nur über Tage, an denen gestreamt wurde">
+                  auslassen
+                </button>
+                <button type="button" aria-pressed={q.luecken === "null"} onClick={() => set({ luecken: "null" })} title="Zählt als 0, z. B. Durchschnitt über alle Tage">
+                  als 0
+                </button>
+              </span>
+            </span>
+            {anyCounter && <p className="muted gb__hint">Zähler zeigen im Tagesverlauf den Zuwachs je Abschnitt.</p>}
+          </div>
+        )}
       </div>
 
       <div className="box gb__chart" data-tone="white" aria-busy={loading}>
         <div className="chart__head">
           <span className="eyebrow">
             {(view?.q.metrics ?? q.metrics).map((m) => meta(m).label).join(" + ")}
-            {q.modus === "zuwachs" && anyCounter && " · Zuwachs"}
+            {q.ansicht === "tag" && ` · Tagesverlauf, ${DAY_MODES.find((d) => d.key === q.tage)?.label}`}
+            {(q.modus === "zuwachs" || q.ansicht === "tag") && anyCounter && " · Zuwachs"}
             {bucket !== undefined && <span className="muted"> · {bucket >= 60 ? `${bucket / 60} Std` : `${bucket} Min`} je Punkt</span>}
           </span>
           {loading && !error && <span className="muted gb__loading">Lädt …</span>}
           {error && <span className="gb__loading">Fehler: {error}</span>}
         </div>
-        {view ? (
+        {view && q.ansicht === "tag" ? (
+          (view.bucketMinutes ?? 0) > 180 ? (
+            <p className="chart__empty">Das Raster ist für den Tagesverlauf zu grob – wähle „Auto“, 15 Min oder 1 Std.</p>
+          ) : (
+            <DayProfileChart
+              lines={lines.map(
+                (l): DayLine => ({
+                  id: l.id,
+                  name: l.name,
+                  color: l.color,
+                  unit: l.meta.unit,
+                  invert: l.meta.invert,
+                  additive: Boolean(l.delta),
+                  zeroFill: q.luecken === "null" ? true : q.luecken === "auslassen" ? false : Boolean(l.delta),
+                  format: l.format,
+                  points: l.points,
+                }),
+              )}
+              hidden={hidden}
+              days={daysBetween(view.rangeFrom, view.rangeTo, new Set(q.wochentage.split("").map(Number)))}
+              slotMin={Math.max(5, view.bucketMinutes || 15)}
+              mode={q.tage}
+              spread={q.streuung}
+              percent={q.achse === "prozent"}
+            />
+          )
+        ) : view ? (
           <MultiChart lines={lines} hidden={hidden} dataKey={view.key} percent={q.achse === "prozent"} />
         ) : (
           <p className="chart__empty">{error ? `Fehler: ${error}` : "Lädt …"}</p>
@@ -747,10 +893,14 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
                   >
                     <i style={{ background: l.color }} />
                     <span className="gb__legend-name">{l.name}</span>
-                    <span className="num">{delta ? `Σ ${total(l)}` : latest(l)}</span>
-                    <span className="muted num">
-                      {l.meta.invert ? "bester" : "max"} {best(l)}
-                    </span>
+                    {q.ansicht === "zeit" && (
+                      <>
+                        <span className="num">{delta ? `Σ ${total(l)}` : latest(l)}</span>
+                        <span className="muted num">
+                          {l.meta.invert ? "bester" : "max"} {best(l)}
+                        </span>
+                      </>
+                    )}
                   </button>
                 </li>
               );

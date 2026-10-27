@@ -4598,3 +4598,56 @@ i.mig__mk-own { fill: var(--mig-mk-own); background: var(--mig-mk-own); }
 .mig__ln5 { stroke: var(--mig-c5); }
 .mig__ln6 { stroke: var(--mig-c6); }
 .mig__ln7 { stroke: var(--mig-c7); }
+
+/* Graph-Baukasten: Tagesverlauf-Einstellungen */
+.gb__day {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 2px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  align-items: flex-end;
+  gap: 10px 20px;
+}
+.gb__group {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.gb__group > .eyebrow {
+  font-size: 0.6875rem;
+}
+.gb__quick {
+  display: inline-flex;
+  gap: 10px;
+  font-size: 0.8125rem;
+}
+.gb__link {
+  font: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+.gb__link[aria-pressed="true"] {
+  font-weight: 700;
+  text-decoration: none;
+  opacity: 1;
+}
+.gb__day .gb__hint {
+  flex-basis: 100%;
+  margin: 0;
+}
+.gb-chart__tip-group {
+  display: grid;
+  gap: 4px;
+}
+.gb-chart__tip-group + .gb-chart__tip-group {
+  margin-top: 4px;
+}
+.gb-chart__tip-head {
+  font-weight: 700;
+  font-size: 0.8125rem;
+}
