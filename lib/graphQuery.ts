@@ -206,6 +206,21 @@ export interface PlayerOption {
 
 export const MAX_METRICS = 6;
 
+/** Tagesverlauf: wie die Tage zusammengefasst werden */
+export const DAY_MODES = [
+  { key: "linien", label: "Linie je Tag" },
+  { key: "summe", label: "Summe" },
+  { key: "schnitt", label: "Durchschnitt" },
+] as const;
+export type DayModeKey = (typeof DAY_MODES)[number]["key"];
+export const DAY_SPREADS = [
+  { key: "keine", label: "keine" },
+  { key: "quartile", label: "mittlere Hälfte" },
+  { key: "spanne", label: "Spannweite" },
+] as const;
+export type DaySpreadKey = (typeof DAY_SPREADS)[number]["key"];
+export const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"] as const;
+
 export interface GraphQuery {
   /** Mindestens eine Kennzahl; mehrere werden gemeinsam gezeichnet */
   metrics: Metric[];
@@ -217,6 +232,16 @@ export interface GraphQuery {
   modus: "wert" | "zuwachs";
   /** Y-Achse: gemeinsame Einheit (wenn möglich) oder immer Prozent des eigenen Maximums */
   achse: "einheit" | "prozent";
+  /** Zeitachse (fortlaufend) oder Tagesverlauf (alle Tage auf 0–24 Uhr gelegt) */
+  ansicht: "zeit" | "tag";
+  /** Tagesverlauf: Linie je Tag, Summe oder Durchschnitt */
+  tage: DayModeKey;
+  /** Tagesverlauf, Durchschnitt: Streuband */
+  streuung: DaySpreadKey;
+  /** Tagesverlauf: erlaubte Wochentage als Ziffern 1 (Mo) … 7 (So) */
+  wochentage: string;
+  /** Tagesverlauf: Abschnitte ohne Messpunkt – auto (Zähler 0, sonst auslassen), als 0 oder auslassen */
+  luecken: "auto" | "null" | "auslassen";
 }
 
 /** Query-Parameter → Konfiguration (auch serverseitig nutzbar) */
@@ -232,6 +257,11 @@ export function parseGraphQuery(sp: Record<string, string | string[] | undefined
     raster: RASTER.some((r) => r.key === s("raster")) ? s("raster") : "auto",
     modus: s("modus") === "zuwachs" ? "zuwachs" : "wert",
     achse: s("achse") === "prozent" ? "prozent" : "einheit",
+    ansicht: s("ansicht") === "tag" ? "tag" : "zeit",
+    tage: DAY_MODES.some((m) => m.key === s("tage")) ? (s("tage") as DayModeKey) : "schnitt",
+    streuung: DAY_SPREADS.some((m) => m.key === s("streuung")) ? (s("streuung") as DaySpreadKey) : "quartile",
+    wochentage: [...new Set(s("wochentage").replace(/[^1-7]/g, ""))].sort().join("") || "1234567",
+    luecken: s("luecken") === "null" || s("luecken") === "auslassen" ? (s("luecken") as "null" | "auslassen") : "auto",
   };
 }
 
@@ -247,6 +277,13 @@ export function toSearch(q: GraphQuery) {
   if (q.raster !== "auto") p.set("raster", q.raster);
   if (q.modus !== "wert") p.set("modus", q.modus);
   if (q.achse !== "einheit") p.set("achse", q.achse);
+  if (q.ansicht === "tag") {
+    p.set("ansicht", "tag");
+    if (q.tage !== "schnitt") p.set("tage", q.tage);
+    if (q.streuung !== "quartile") p.set("streuung", q.streuung);
+    if (q.wochentage !== "1234567") p.set("wochentage", q.wochentage);
+    if (q.luecken !== "auto") p.set("luecken", q.luecken);
+  }
   return p;
 }
 
