@@ -173,6 +173,20 @@ export interface ViewVod {
 /** Ab hier im VOD einsteigen: etwas vor dem geklickten Zeitpunkt */
 const VOD_LEAD_S = 30;
 
+/**
+ * Als normalen neuen Tab öffnen: `window.open` mit Fenster-Optionen (z. B. "noopener") öffnet ein Popup-Fenster und
+ * wird teils blockiert; ein Klick auf einen Link mit target="_blank" ist überall ein Tab.
+ */
+function openTab(url: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 function vodUrl(v: ViewVod, at: number) {
   const o = Math.max(0, Math.floor((at - v.vodStart) / 1000) - VOD_LEAD_S);
   return `https://www.twitch.tv/videos/${encodeURIComponent(v.vodId)}?t=${Math.floor(o / 3600)}h${Math.floor((o % 3600) / 60)}m${o % 60}s`;
@@ -227,7 +241,9 @@ export function PlayerViewerChart({
     for (const p of points) if (!best || Math.abs(p[0] - t) < Math.abs(best[0] - t)) best = p;
     return best && Math.abs(best[0] - t) <= 10 * 60_000 ? best : null;
   };
-  const vodFor = (t: number) => vods.find((v) => t >= v.from - 60_000 && t <= v.to + 60_000) ?? null;
+  // VOD, das den Zeitpunkt abdeckt; überlappen mehrere (Mini-VODs an 48-h-Grenzen), das längste
+  const vodFor = (t: number) =>
+    vods.filter((v) => t >= v.from && t <= v.to).sort((x, y) => y.to - y.from - (x.to - x.from))[0] ?? null;
   const ht = hover;
   const hp = ht !== null ? nearest(ht) : null;
   const hm = ht !== null ? markers.filter((m) => Math.abs(m.at - ht) <= 6 * 60_000) : [];
@@ -276,7 +292,7 @@ export function PlayerViewerChart({
           onClick={(e) => {
             const t = timeAt(e.clientX);
             const v = t !== null ? vodFor(t) : null;
-            if (t !== null && v) window.open(vodUrl(v, t), "_blank", "noopener");
+            if (t !== null && v) openTab(vodUrl(v, t));
           }}
         >
           {bands.map((b) => (
@@ -320,6 +336,256 @@ export function PlayerViewerChart({
             ))}
             {hb && <span>{hb.label}</span>}
             {hv && <span className="muted">Klick: VOD ab {timeFmt.format(Math.max(hv.vodStart, ht - VOD_LEAD_S * 1000))}</span>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ Raid-Bindung */
+
+const pctFmt = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
+
+export function RetentionChart({ curve }: { curve: { m: number; median: number; p25: number; p75: number; n: number }[] }) {
+  const ref = useRef<SVGSVGElement>(null);
+  const [hover, setHover] = useState<number | null>(null);
+  const W = 900;
+  const H = 280;
+  const L = 52;
+  const R = 12;
+  const T = 12;
+  const B = 28;
+  const maxM = curve.length - 1;
+  const yMax = Math.max(1, Math.ceil(Math.max(...curve.map((c) => c.p75)) * 5) / 5);
+  const yMin = Math.min(0, Math.floor(Math.min(...curve.map((c) => c.p25)) * 5) / 5);
+  const x = (m: number) => L + (m / maxM) * (W - L - R);
+  const y = (v: number) => T + (1 - (v - yMin) / (yMax - yMin)) * (H - T - B);
+  const ticks: number[] = [];
+  for (let v = yMin; v <= yMax + 1e-9; v += 0.2) ticks.push(Math.round(v * 10) / 10);
+  const band = `M${curve.map((c) => `${x(c.m).toFixed(1)},${y(c.p75).toFixed(1)}`).join("L")}L${[...curve]
+    .reverse()
+    .map((c) => `${x(c.m).toFixed(1)},${y(c.p25).toFixed(1)}`)
+    .join("L")}Z`;
+  const line = curve.map((c) => `${x(c.m).toFixed(1)},${y(c.median).toFixed(1)}`).join(" ");
+  const hc = hover !== null ? curve[hover] : null;
+  return (
+    <div className="mig__chart">
+      <ul className="mig__keys" aria-label="Legende">
+        <li>
+          <i className="mig__c1" aria-hidden="true" /> Median aller Raids
+        </li>
+        <li>
+          <i className="mig__band-key" aria-hidden="true" /> mittlere Hälfte (25–75 %)
+        </li>
+      </ul>
+      <div className="mig__plot">
+        <svg
+          ref={ref}
+          viewBox={`0 0 ${W} ${H}`}
+          width="100%"
+          role="img"
+          aria-label="Anteil der Raid-Zuschauer, die nach 0 bis 60 Minuten noch da sind"
+          onPointerMove={(e) => {
+            if (!ref.current) return;
+            const px = svgX(ref.current, e.clientX, W);
+            setHover(Math.max(0, Math.min(maxM, Math.round(((px - L) / (W - L - R)) * maxM))));
+          }}
+          onPointerLeave={() => setHover(null)}
+        >
+          {ticks.map((v) => (
+            <g key={v}>
+              <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} className={v === 0 || v === 1 ? "mig__ref" : "mig__grid"} />
+              <text x={L - 6} y={y(v) + 4} textAnchor="end" className="mig__tick">
+                {pctFmt.format(v * 100)} %
+              </text>
+            </g>
+          ))}
+          {[0, 10, 20, 30, 40, 50, 60]
+            .filter((m) => m <= maxM)
+            .map((m) => (
+              <text key={m} x={x(m)} y={H - 8} textAnchor="middle" className="mig__tick">
+                {m === 0 ? "Raid" : `+${m} Min`}
+              </text>
+            ))}
+          <path d={band} className="mig__iqr" />
+          <polyline points={line} className="mig__line mig__l1" />
+          {hc && (
+            <>
+              <line x1={x(hc.m)} x2={x(hc.m)} y1={T} y2={H - B} className="mig__cross" />
+              <circle cx={x(hc.m)} cy={y(hc.median)} r={4.5} className="mig__dot mig__l1" />
+            </>
+          )}
+        </svg>
+        {hc && (
+          <div className="mig__tip" style={{ left: `${(x(hc.m) / W) * 100}%` }} role="status">
+            <b>
+              {hc.m === 0 ? "Beim Raid" : `${hc.m} Min nach dem Raid`}: {pctFmt.format(hc.median * 100)} % noch da
+            </b>
+            <span>
+              mittlere Hälfte: {pctFmt.format(hc.p25 * 100)}–{pctFmt.format(hc.p75 * 100)} %
+            </span>
+            <span className="muted">{hc.n} Raids</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ Tage überlagern */
+
+export type OverlayMode = "linien" | "summe" | "schnitt";
+
+/** Bis so viele Tage bekommt jeder Tag eine eigene Farbe (Palette mit 7 Plätzen); darüber graue Linien + Ø */
+const OVERLAY_COLORED = 7;
+
+export function OverlayChart({ minutes, days, mode }: { minutes: number[]; days: { label: string; values: (number | null)[] }[]; mode: OverlayMode }) {
+  const ref = useRef<SVGSVGElement>(null);
+  const [hover, setHover] = useState<number | null>(null);
+  const W = 900;
+  const H = 320;
+  const L = 56;
+  const R = 12;
+  const T = 12;
+  const B = 28;
+  const n = minutes.length;
+  const present = minutes.map((_, i) => days.map((d) => d.values[i]).filter((v): v is number => v !== null));
+  const sum = present.map((p) => (p.length ? p.reduce((a, b) => a + b, 0) : null));
+  const avgL = present.map((p) => (p.length ? p.reduce((a, b) => a + b, 0) / p.length : null));
+  const minL = present.map((p) => (p.length ? Math.min(...p) : null));
+  const maxL = present.map((p) => (p.length ? Math.max(...p) : null));
+  const visible = mode === "summe" ? sum : mode === "schnitt" ? maxL : days.flatMap((d) => d.values);
+  const ticks = niceTicks(Math.max(10, ...visible.filter((v): v is number => v !== null)));
+  const yMax = ticks[ticks.length - 1];
+  const x = (i: number) => L + (i / Math.max(1, n - 1)) * (W - L - R);
+  const y = (v: number) => T + (1 - v / yMax) * (H - T - B);
+  /** Linie mit Lücken, wo keine Daten sind */
+  const path = (vals: (number | null)[]) => {
+    let d = "";
+    let pen = false;
+    vals.forEach((v, i) => {
+      if (v === null) {
+        pen = false;
+        return;
+      }
+      d += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`;
+      pen = true;
+    });
+    return d;
+  };
+  // Band (niedrigster bis höchster Tag) je zusammenhängendem Abschnitt mit Daten
+  const rangeBand = () => {
+    let d = "";
+    let run: number[] = [];
+    const flush = () => {
+      if (run.length >= 2) {
+        d += `M${run.map((i) => `${x(i).toFixed(1)},${y(maxL[i]!).toFixed(1)}`).join("L")}L${[...run]
+          .reverse()
+          .map((i) => `${x(i).toFixed(1)},${y(minL[i]!).toFixed(1)}`)
+          .join("L")}Z`;
+      }
+      run = [];
+    };
+    minutes.forEach((_, i) => (maxL[i] === null ? flush() : run.push(i)));
+    flush();
+    return d;
+  };
+  const colored = mode === "linien" && days.length <= OVERLAY_COLORED;
+  const label = (i: number) => `${String(Math.floor(minutes[i] / 60)).padStart(2, "0")}:${String(minutes[i] % 60).padStart(2, "0")}`;
+  return (
+    <div className="mig__chart">
+      <ul className="mig__keys" aria-label="Legende">
+        {mode === "linien" &&
+          colored &&
+          days.map((d, k) => (
+            <li key={d.label}>
+              <i className={`mig__c${k + 1}`} aria-hidden="true" /> {d.label}
+            </li>
+          ))}
+        {mode === "linien" && !colored && (
+          <>
+            <li>
+              <i className="mig__c0" aria-hidden="true" /> einzelne Tage ({days.length})
+            </li>
+            <li>
+              <i className="mig__c1" aria-hidden="true" /> Durchschnitt
+            </li>
+          </>
+        )}
+        {mode === "summe" && (
+          <li>
+            <i className="mig__c1" aria-hidden="true" /> Summe über {days.length} Tage
+          </li>
+        )}
+        {mode === "schnitt" && (
+          <>
+            <li>
+              <i className="mig__c1" aria-hidden="true" /> Durchschnitt über {days.length} Tage
+            </li>
+            <li>
+              <i className="mig__band-key" aria-hidden="true" /> niedrigster bis höchster Tag
+            </li>
+          </>
+        )}
+      </ul>
+      <div className="mig__plot">
+        <svg
+          ref={ref}
+          viewBox={`0 0 ${W} ${H}`}
+          width="100%"
+          role="img"
+          aria-label="Zuschauer mehrerer Tage über einen Tag gelegt"
+          onPointerMove={(e) => {
+            if (!ref.current) return;
+            const px = svgX(ref.current, e.clientX, W);
+            setHover(Math.max(0, Math.min(n - 1, Math.round(((px - L) / (W - L - R)) * (n - 1)))));
+          }}
+          onPointerLeave={() => setHover(null)}
+        >
+          {ticks.map((v) => (
+            <g key={v}>
+              <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} className="mig__grid" />
+              <text x={L - 6} y={y(v) + 4} textAnchor="end" className="mig__tick">
+                {short(v)}
+              </text>
+            </g>
+          ))}
+          {minutes.map((m, i) =>
+            m % 180 === 0 ? (
+              <text key={m} x={x(i)} y={H - 8} textAnchor="middle" className="mig__tick">
+                {m / 60} Uhr
+              </text>
+            ) : null,
+          )}
+          {mode === "schnitt" && <path d={rangeBand()} className="mig__iqr" />}
+          {mode === "linien" &&
+            days.map((d, k) => <path key={d.label} d={path(d.values)} className={colored ? `mig__ln mig__ln${k + 1}` : "mig__ln mig__ln0"} />)}
+          {mode === "linien" && !colored && <path d={path(avgL)} className="mig__ln mig__ln1 mig__ln-strong" />}
+          {mode === "summe" && <path d={path(sum)} className="mig__ln mig__ln1 mig__ln-strong" />}
+          {mode === "schnitt" && <path d={path(avgL)} className="mig__ln mig__ln1 mig__ln-strong" />}
+          {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={T} y2={H - B} className="mig__cross" />}
+        </svg>
+        {hover !== null && (
+          <div className="mig__tip" style={{ left: `${(x(hover) / W) * 100}%` }} role="status">
+            <b>{label(hover)} Uhr</b>
+            {mode === "summe" && <span>Summe: {sum[hover] === null ? "keine Daten" : nf.format(sum[hover]!)}</span>}
+            {(mode === "schnitt" || (mode === "linien" && !colored)) && (
+              <span>
+                Durchschnitt: {avgL[hover] === null ? "keine Daten" : nf.format(Math.round(avgL[hover]!))}
+                {minL[hover] !== null && ` (${nf.format(minL[hover]!)}–${nf.format(maxL[hover]!)})`}
+              </span>
+            )}
+            {mode === "linien" &&
+              colored &&
+              days.map((d, k) => (
+                <span key={d.label}>
+                  <i className={`mig__c${k + 1}`} aria-hidden="true" /> {d.label}: {d.values[hover] === null ? "keine Daten" : nf.format(d.values[hover]!)}
+                </span>
+              ))}
+            <span className="muted">
+              {present[hover].length} von {days.length} Tagen mit Daten
+            </span>
           </div>
         )}
       </div>

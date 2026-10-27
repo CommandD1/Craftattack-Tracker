@@ -6,10 +6,10 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { PageSkeleton } from "@/components/Skeletons";
 import { FigValue } from "@/components/FigValue";
-import { ExampleChart, HeirsTable, heatmapAxes, MagnetTable, PairHeatmap, RaidTable, WaitingRoomTable } from "@/components/ViewerMigration";
-import { DayStackChart, PlayerViewerChart, type ViewBand, type ViewMarker } from "@/components/ViewerCharts";
+import { ExampleChart, HeirsTable, heatmapAxes, MagnetTable, PairHeatmap, RaidStayTable, RaidTable, RaidTargetTable, WaitingRoomTable } from "@/components/ViewerMigration";
+import { DayStackChart, OverlayChart, PlayerViewerChart, RetentionChart, type OverlayMode, type ViewBand, type ViewMarker } from "@/components/ViewerCharts";
 import { loadTracker } from "@/lib/data";
-import { dayBounds, getDays, getDayStack, getPlayerDay, getStreamers, getViewerMigration, type ChartMarker, type Migration } from "@/lib/viewerMigration";
+import { ALL_STREAMS, dayBounds, getDays, getDayStack, getOverlay, getPlayerDay, getStreamers, getViewerMigration, type ChartMarker, type Migration } from "@/lib/viewerMigration";
 import { num } from "@/lib/format";
 
 /** Interne Auswertung: nirgends verlinkt und nicht für Suchmaschinen */
@@ -47,6 +47,7 @@ const VIEWS = [
   { key: "offline", label: "Offline & Raids" },
   { key: "tag", label: "Tagesverlauf" },
   { key: "spieler", label: "Spieler" },
+  { key: "muster", label: "Tage überlagern" },
 ] as const;
 type View = (typeof VIEWS)[number]["key"];
 
@@ -131,6 +132,16 @@ async function Analysis({ searchParams }: { searchParams: PageProps<"/intern/zus
           {view === "uebersicht" && <StartsView m={m} names={names} />}
           {view === "offline" && <OfflineView m={m} names={names} />}
           {view === "tag" && <DayView names={names} day={typeof sp.tag === "string" ? sp.tag : undefined} hidden={{ key, ansicht: "tag" }} />}
+          {view === "muster" && (
+            <OverlayView
+              names={names}
+              id={typeof sp.spieler === "string" ? sp.spieler : undefined}
+              from={typeof sp.von === "string" ? sp.von : undefined}
+              to={typeof sp.bis === "string" ? sp.bis : undefined}
+              mode={sp.darstellung === "summe" || sp.darstellung === "schnitt" ? sp.darstellung : "linien"}
+              hidden={{ key, ansicht: "muster" }}
+            />
+          )}
           {view === "spieler" && (
             <PlayerView
               names={names}
@@ -215,12 +226,132 @@ function OfflineView({ m, names }: { m: Migration; names: Names }) {
       <div className="box" data-tone="white">
         <HeirsTable rows={heirs} names={names} />
       </div>
+      <RaidRetentionSection m={m} names={names} />
       <div className="section-head">
         <h2 className="t-2">Raids</h2>
         <p className="muted">Ausdrücklicher Wechsel mit der Zuschauerzahl laut Twitch – getrennt von den Berechnungen oben</p>
       </div>
       <div className="box" data-tone="white">
         <RaidTable rows={m.raidFlows.slice(0, 25)} names={names} />
+      </div>
+    </>
+  );
+}
+
+const pct0 = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
+
+function RaidRetentionSection({ m, names }: { m: Migration; names: Names }) {
+  const rr = m.raidRetention;
+  const at = (min: number) => rr.curve[min]?.median ?? 0;
+  return (
+    <>
+      <div className="section-head">
+        <h2 className="t-2">Wie viele Raid-Zuschauer bleiben</h2>
+        <p className="muted">
+          {num(rr.raids.length)} Raids ab 50 Zuschauern, bei denen das Ziel von 20 Min davor bis 60 Min danach durchgehend live war
+          (ausgelassen: {num(rr.skipped)}). Im Median kommen {pct0.format(rr.arrived * 100)} % der gemeldeten Raid-Zuschauer an; nach 10 Min
+          sind {pct0.format(at(10) * 100)} % noch da, nach 30 Min {pct0.format(at(30) * 100)} %, nach 60 Min {pct0.format(at(60) * 100)} %
+          (abzüglich des Trends, den das Ziel vorher hatte).
+        </p>
+      </div>
+      <div className="box" data-tone="white">
+        <RetentionChart curve={rr.curve} />
+      </div>
+      {rr.byTarget.length > 0 && (
+        <div className="box" data-tone="white">
+          <RaidTargetTable rows={rr.byTarget} names={names} />
+        </div>
+      )}
+      <div className="box" data-tone="white">
+        <RaidStayTable rows={rr.raids.slice(0, 40)} names={names} />
+      </div>
+    </>
+  );
+}
+
+async function OverlayView({
+  names,
+  id: wanted,
+  from: wantedFrom,
+  to: wantedTo,
+  mode,
+  hidden,
+}: {
+  names: Names;
+  id?: string;
+  from?: string;
+  to?: string;
+  mode: OverlayMode;
+  hidden: Record<string, string>;
+}) {
+  const [days, streamers] = await Promise.all([getDays(), getStreamers()]);
+  if (!days.length) return <p className="muted">Keine Zuschauerdaten.</p>;
+  const id = wanted === ALL_STREAMS || (wanted && streamers.includes(wanted)) ? wanted : ALL_STREAMS;
+  // Standard: die letzten 7 Tage mit Daten
+  const to = wantedTo && days.includes(wantedTo) ? wantedTo : days[0];
+  const from = wantedFrom && days.includes(wantedFrom) ? wantedFrom : days[Math.min(6, days.length - 1)];
+  const ov = await getOverlay(id, from, to);
+  const sorted = [...streamers].sort((a, b) => (names[a]?.name ?? a).localeCompare(names[b]?.name ?? b, "de"));
+  const label = (d: string) => dayLong.format(dayBounds(d)[0] + 3_600_000);
+  const who = id === ALL_STREAMS ? "alle Streams zusammen" : (names[id]?.name ?? id);
+  return (
+    <>
+      <div className="section-head">
+        <h2 className="t-2">Tage überlagern</h2>
+        <p className="muted">
+          Mehrere Tage auf einer Achse von 0 bis 24 Uhr: {who}, {ov.days.length} Tage. Statt Tag und Nacht hintereinander zeigt das, wie ein
+          typischer Tag aussieht. Lücken: Der Tracker lief nicht (zählen weder in Summe noch Durchschnitt).
+        </p>
+      </div>
+      <form className="mig__pick" method="get" action="/intern/zuschauerwanderung">
+        {Object.entries(hidden).map(([k, v]) => (
+          <input key={k} type="hidden" name={k} value={v} />
+        ))}
+        <label className="gb__select">
+          <span className="eyebrow">Streams</span>
+          <select name="spieler" defaultValue={id}>
+            <option value={ALL_STREAMS}>Alle Streams zusammen</option>
+            {sorted.map((s) => (
+              <option key={s} value={s}>
+                {names[s]?.name ?? s}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="gb__select">
+          <span className="eyebrow">Von</span>
+          <select name="von" defaultValue={from}>
+            {days.map((d) => (
+              <option key={d} value={d}>
+                {label(d)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="gb__select">
+          <span className="eyebrow">Bis</span>
+          <select name="bis" defaultValue={to}>
+            {days.map((d) => (
+              <option key={d} value={d}>
+                {label(d)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="gb__select">
+          <span className="eyebrow">Darstellung</span>
+          <select name="darstellung" defaultValue={mode}>
+            <option value="linien">Linie je Tag</option>
+            <option value="summe">Summe</option>
+            <option value="schnitt">Durchschnitt</option>
+          </select>
+        </label>
+        <button type="submit" className="tag">
+          Anzeigen
+        </button>
+      </form>
+      <div className="box" data-tone="white">
+        <OverlayChart minutes={ov.minutes} days={ov.days.map((d, k) => ({ label: label(d), values: ov.values[k] }))} mode={mode} />
       </div>
     </>
   );
@@ -354,7 +485,7 @@ async function PlayerView({
     from: a.from,
     to: a.to,
     kind: a.kind,
-    label: `${a.kind === "dip" ? "Ungeklärter Einbruch" : "Ungeklärter Anstieg"}: ${signed.format(a.change)} Zuschauer in ${Math.round((a.to - a.from) / 60_000)} Min`,
+    label: `${a.kind === "dip" ? "Ungeklärter Einbruch" : "Ungeklärter Anstieg"}: ${signed.format(a.change)} Zuschauer, erwartet ${signed.format(a.expected)} (alle anderen Streams ${pct.format(a.market * 100)} %)`,
   }));
   const sorted = [...streamers].sort((a, b) => (names[a]?.name ?? a).localeCompare(names[b]?.name ?? b, "de"));
   const idx = pd.days.indexOf(d);
@@ -363,8 +494,9 @@ async function PlayerView({
       <div className="section-head">
         <h2 className="t-2">{names[id]?.name ?? id}</h2>
         <p className="muted">
-          Zuschauer am {dayLong.format(dayStart + 3_600_000)} mit allem, was sie verändert hat. Ungeklärt: Änderung in 10 Min weit außerhalb
-          dessen, was dieser Stream sonst hat, ohne Ereignis in der Nähe – vermutlich der Stream selbst.
+          Zuschauer am {dayLong.format(dayStart + 3_600_000)} mit allem, was sie verändert hat. Ungeklärt: Änderung weit über dem
+          Erwarteten – dem, was dieser Stream sonst bei diesem Streamalter (auch in der Aufwärmphase) und dieser Tageszeit tut, plus dem,
+          was gleichzeitig mit allen anderen Streams passiert – und kein Ereignis in der Nähe: vermutlich der Stream selbst.
           {pd.vods.length > 0 ? " Klick in den Graphen öffnet das VOD an dieser Stelle." : " Für diesen Tag ist kein VOD verfügbar."}
         </p>
       </div>
