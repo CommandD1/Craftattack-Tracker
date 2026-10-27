@@ -4265,3 +4265,177 @@ a.rankboard__now {
     grid-column: 1 / -1;
   }
 }
+
+/* Zuschauerwanderung (intern): geprüfte Diagramm-Palette, hell und dunkel getrennt abgestimmt */
+.mig {
+  --mig-s1: #2a78d6;
+  --mig-s2: #eb6834;
+  --mig-s3: #1baf7a;
+  --mig-loss: #e34948;
+  --mig-gain: #2a78d6;
+  --mig-mid: #f0efec;
+  --mig-none: transparent;
+  --mig-h0: #cde2fb;
+  --mig-h1: #9ec5f4;
+  --mig-h2: #6da7ec;
+  --mig-h3: #3987e5;
+  --mig-h4: #256abf;
+  --mig-h5: #104281;
+  --mig-grid: color-mix(in srgb, var(--ink) 10%, transparent);
+  --mig-axis: color-mix(in srgb, var(--ink) 65%, transparent);
+}
+html[data-theme="dark"] .mig {
+  --mig-s1: #3987e5;
+  --mig-s2: #d95926;
+  --mig-s3: #199e70;
+  --mig-loss: #e66767;
+  --mig-gain: #3987e5;
+  --mig-mid: #383835;
+  --mig-h0: #184f95;
+  --mig-h1: #1c5cab;
+  --mig-h2: #256abf;
+  --mig-h3: #3987e5;
+  --mig-h4: #6da7ec;
+  --mig-h5: #9ec5f4;
+}
+.mig__note {
+  margin-top: 16px;
+  max-width: 70ch;
+  font-size: 0.875rem;
+  color: var(--ink-fg);
+  opacity: 0.8;
+}
+.mig__tbl td {
+  vertical-align: middle;
+}
+.mig__bar {
+  display: block;
+}
+.mig__zero,
+.mig__ref {
+  stroke: var(--mig-axis);
+  stroke-width: 1;
+}
+.mig__grid {
+  stroke: var(--mig-grid);
+  stroke-width: 1;
+}
+.mig__start {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+.mig__loss {
+  fill: var(--mig-loss);
+}
+.mig__gain,
+.mig__s1 {
+  fill: var(--mig-gain);
+}
+.mig__unsure {
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--ink) 60%, transparent);
+}
+.mig__axis,
+.mig__tick,
+.mig__label {
+  fill: var(--ink);
+  font-size: 11px;
+  font-family: var(--font-body);
+}
+.mig__tick {
+  fill: var(--mig-axis);
+}
+.mig__label {
+  font-weight: 600;
+}
+.mig__fig {
+  margin: 0;
+}
+.mig__heat rect {
+  stroke: var(--white);
+  stroke-width: 0;
+}
+.mig__cell-none {
+  fill: transparent;
+  stroke: var(--mig-grid) !important;
+  stroke-width: 1 !important;
+}
+.mig__cell-mid {
+  fill: var(--mig-mid);
+}
+.mig__h0 { fill: var(--mig-h0); background: var(--mig-h0); }
+.mig__h1 { fill: var(--mig-h1); background: var(--mig-h1); }
+.mig__h2 { fill: var(--mig-h2); background: var(--mig-h2); }
+.mig__h3 { fill: var(--mig-h3); background: var(--mig-h3); }
+.mig__h4 { fill: var(--mig-h4); background: var(--mig-h4); }
+.mig__h5 { fill: var(--mig-h5); background: var(--mig-h5); }
+.mig__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin-top: 12px;
+  font-size: 0.8125rem;
+}
+.mig__legend i {
+  width: 18px;
+  height: 12px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.mig__legend i.mig__cell-mid {
+  background: var(--mig-mid);
+  margin-left: 12px;
+}
+.mig__legend i.mig__cell-none {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--mig-grid);
+}
+.mig__examples {
+  --min: min(320px, 100% - 16px);
+  --gap: 16px;
+}
+.mig__ex {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.875rem;
+}
+.mig__line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.mig__l1 { stroke: var(--mig-s1); fill: var(--mig-s1); background: var(--mig-s1); }
+.mig__l2 { stroke: var(--mig-s2); fill: var(--mig-s2); background: var(--mig-s2); }
+.mig__l3 { stroke: var(--mig-s3); fill: var(--mig-s3); background: var(--mig-s3); }
+.mig__line.mig__l1,
+.mig__line.mig__l2,
+.mig__line.mig__l3 {
+  fill: none;
+}
+.mig__dot {
+  stroke: var(--white);
+  stroke-width: 2;
+}
+.mig__key {
+  width: 12px;
+  height: 3px;
+  display: inline-block;
+  vertical-align: middle;
+  border-radius: 2px;
+}
+.mig__mini {
+  font-size: 0.8125rem;
+}
+.mig__mini th,
+.mig__mini td {
+  padding: 4px 6px;
+}
+.mig__title {
+  /* Ein langes Wort in der Pixelschrift: auf dem Handy trennen statt über den Rand zu ragen */
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
