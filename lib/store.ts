@@ -1059,6 +1059,33 @@ export async function saveTwitchCheer(c: TwitchCheer): Promise<boolean> {
   return r.rows.length > 0;
 }
 
+export interface TwitchSub {
+  id: string;
+  at: string;
+  channelId: string;
+  /** Twitch `msg-id`, z. B. sub, resub, subgift, submysterygift */
+  kind: string;
+  /** 1000, 2000, 3000 oder Prime */
+  plan: string | null;
+  months: number | null;
+  /** Anzahl bei Community-Geschenken */
+  giftCount: number | null;
+  /** Verbindet ein Community-Geschenk mit seinen Einzelmeldungen */
+  giftGroup: string | null;
+  fromLogin: string | null;
+  onServer: boolean;
+}
+
+/** Speichert eine Abo-Meldung einzeln (für die interne Einnahmen-Schätzung). */
+export async function saveTwitchSub(s: TwitchSub): Promise<void> {
+  const db = await getDb();
+  await db.query(
+    `INSERT INTO twitch_subs (id, at, channel_id, kind, plan, months, gift_count, gift_group, from_login, on_server)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (id) DO NOTHING`,
+    [s.id, toDate(s.at), s.channelId, s.kind, s.plan, s.months, s.giftCount, s.giftGroup, s.fromLogin, s.onServer],
+  );
+}
+
 export interface TwitchCheerProfile {
   /** Bits, während der Streamer auf dem Server war */
   onServer: number;

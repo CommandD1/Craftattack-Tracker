@@ -218,6 +218,23 @@ async function migrate(db: Db) {
       on_server  boolean NOT NULL
     )`);
   await db.query(`CREATE INDEX IF NOT EXISTS twitch_cheers_channel_idx ON twitch_cheers (channel_id, at DESC)`);
+  // Jede Abo-Meldung einzeln mit Stufe (die Ereignisse fassen nur Anzahlen je Minute zusammen). gift_group verbindet
+  // ein Community-Geschenk mit den Einzelmeldungen je Empfänger, damit es nicht doppelt zählt. Für die interne
+  // Einnahmen-Schätzung; ohne Nachrichtentext und ohne Empfänger.
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS twitch_subs (
+      id         text PRIMARY KEY,
+      at         timestamptz NOT NULL,
+      channel_id text NOT NULL,
+      kind       text NOT NULL,
+      plan       text,
+      months     integer,
+      gift_count integer,
+      gift_group text,
+      from_login text,
+      on_server  boolean NOT NULL
+    )`);
+  await db.query(`CREATE INDEX IF NOT EXISTS twitch_subs_channel_idx ON twitch_subs (channel_id, at)`);
   // Köpfe und Skins (craftattack.one, mc-heads.net): bleiben über Deploys erhalten und werden ausgeliefert, wenn die
   // Quelle gerade nicht erreichbar ist (z. B. Cloudflare-Sperre). Ein paar hundert kleine Bilder.
   await db.query(`

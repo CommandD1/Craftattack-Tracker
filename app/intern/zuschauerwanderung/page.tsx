@@ -11,6 +11,8 @@ import { DayStackChart, OverlayChart, PlayerViewerChart, RetentionChart, type Ov
 import { loadTracker } from "@/lib/data";
 import { ALL_STREAMS, dayBounds, getDays, getDayStack, getOverlay, getPlayerDay, getStreamers, getViewerMigration, type ChartMarker, type Migration } from "@/lib/viewerMigration";
 import { num } from "@/lib/format";
+import { parseShare } from "@/lib/earnings";
+import { EarningsView } from "./EarningsView";
 
 /** Interne Auswertung: nirgends verlinkt und nicht für Suchmaschinen */
 export const metadata: Metadata = { title: "Zuschauerwanderung", robots: { index: false, follow: false } };
@@ -48,6 +50,7 @@ const VIEWS = [
   { key: "tag", label: "Tagesverlauf" },
   { key: "spieler", label: "Spieler" },
   { key: "muster", label: "Tage überlagern" },
+  { key: "einnahmen", label: "Einnahmen (experimentell)" },
 ] as const;
 type View = (typeof VIEWS)[number]["key"];
 
@@ -67,7 +70,8 @@ async function Analysis({ searchParams }: { searchParams: PageProps<"/intern/zus
   const key = sp.key;
   if (!allowed(key)) notFound();
   const view: View = VIEWS.some((v) => v.key === sp.ansicht) ? (sp.ansicht as View) : "uebersicht";
-  const [{ state }, m] = await Promise.all([loadTracker(), getViewerMigration()]);
+  const earnings = view === "einnahmen";
+  const [{ state }, m] = await Promise.all([loadTracker(), earnings ? null : getViewerMigration()]);
   const names: Names = Object.fromEntries(Object.values(state.players).map((p) => [p.id, { name: p.name, uuid: p.uuid }]));
   const href = (params: Record<string, string | undefined>) => {
     const q = new URLSearchParams({ key });
@@ -81,12 +85,14 @@ async function Analysis({ searchParams }: { searchParams: PageProps<"/intern/zus
         <div className="wrap">
           <p className="eyebrow">Intern · nicht verlinkt</p>
           <h1 className="t-1 mig__title">Zuschauerwanderung</h1>
-          <p>
-            Wohin gehen Zuschauer, wenn ein CraftAttack-Streamer live geht oder aufhört? Gezählt wird jeder Start, egal wie groß, und
-            der Gesamtverlust der übrigen Streams 20–40 Min danach – gegenüber dem, was diese Streams sonst bei gleichem Streamalter und
-            gleicher Tageszeit tun. Raids sind kein Abwandern: Streams, die im Zeitfenster raiden oder geraidet werden, zählen nicht
-            mit; Raids stehen getrennt.
-          </p>
+          {!earnings && (
+            <p>
+              Wohin gehen Zuschauer, wenn ein CraftAttack-Streamer live geht oder aufhört? Gezählt wird jeder Start, egal wie groß, und
+              der Gesamtverlust der übrigen Streams 20–40 Min danach – gegenüber dem, was diese Streams sonst bei gleichem Streamalter und
+              gleicher Tageszeit tun. Raids sind kein Abwandern: Streams, die im Zeitfenster raiden oder geraidet werden, zählen nicht
+              mit; Raids stehen getrennt.
+            </p>
+          )}
         </div>
       </section>
 
@@ -101,36 +107,49 @@ async function Analysis({ searchParams }: { searchParams: PageProps<"/intern/zus
               </li>
             ))}
           </ul>
-          <dl className="grid st-figs">
-            <div className="box st-fig" data-tone="white">
-              <dt>Zeitraum</dt>
-              <FigValue>{m.from && m.to ? span(m.from, m.to) : "–"}</FigValue>
-            </div>
-            <div className="box st-fig" data-tone="white">
-              <dt>Starts ausgewertet</dt>
-              <FigValue>{num(m.starts)}</FigValue>
-            </div>
-            <div className="box st-fig" data-tone="white">
-              <dt title="Stream-Enden aus dem Verlauf, bei denen der Tracker danach weiterlief">Stream-Enden</dt>
-              <FigValue>{num(m.ends)}</FigValue>
-            </div>
-            <div className="box st-fig" data-tone="white">
-              <dt title="Mittlere Abweichung aller laufenden Streams nach einem fremden Start (sollte nahe 0 liegen)">Ø alle Streams</dt>
-              <FigValue>{`${pct.format(m.overall.effect * 100)} %`}</FigValue>
-            </div>
-          </dl>
-          <p className="muted mig__note">
-            „Unsicher“: wenige Fälle oder der Effekt ist kleiner als das Zweifache seines Standardfehlers. Starts und Enden überlagern sich
-            und betreffen viele Streams gleichzeitig; die Werte sind Hinweise, keine Beweise. Wegen Raids ausgelassen: {num(m.skippedRaid)}{" "}
-            Beobachtungen. Startzeit laut Twitch, nicht der Zeitpunkt, an dem der Tracker den Start bemerkte.
-          </p>
+          {m && (
+            <>
+              <dl className="grid st-figs">
+                <div className="box st-fig" data-tone="white">
+                  <dt>Zeitraum</dt>
+                  <FigValue>{m.from && m.to ? span(m.from, m.to) : "–"}</FigValue>
+                </div>
+                <div className="box st-fig" data-tone="white">
+                  <dt>Starts ausgewertet</dt>
+                  <FigValue>{num(m.starts)}</FigValue>
+                </div>
+                <div className="box st-fig" data-tone="white">
+                  <dt title="Stream-Enden aus dem Verlauf, bei denen der Tracker danach weiterlief">Stream-Enden</dt>
+                  <FigValue>{num(m.ends)}</FigValue>
+                </div>
+                <div className="box st-fig" data-tone="white">
+                  <dt title="Mittlere Abweichung aller laufenden Streams nach einem fremden Start (sollte nahe 0 liegen)">Ø alle Streams</dt>
+                  <FigValue>{`${pct.format(m.overall.effect * 100)} %`}</FigValue>
+                </div>
+              </dl>
+              <p className="muted mig__note">
+                „Unsicher“: wenige Fälle oder der Effekt ist kleiner als das Zweifache seines Standardfehlers. Starts und Enden überlagern sich
+                und betreffen viele Streams gleichzeitig; die Werte sind Hinweise, keine Beweise. Wegen Raids ausgelassen: {num(m.skippedRaid)}{" "}
+                Beobachtungen. Startzeit laut Twitch, nicht der Zeitpunkt, an dem der Tracker den Start bemerkte.
+              </p>
+            </>
+          )}
         </div>
       </section>
 
       <section className="block mig" data-tone="paper">
         <div className="wrap stack">
-          {view === "uebersicht" && <StartsView m={m} names={names} />}
-          {view === "offline" && <OfflineView m={m} names={names} />}
+          {m && view === "uebersicht" && <StartsView m={m} names={names} />}
+          {m && view === "offline" && <OfflineView m={m} names={names} />}
+          {earnings && (
+            <EarningsView
+              names={names}
+              id={typeof sp.spieler === "string" ? sp.spieler : undefined}
+              share={parseShare(sp.anteil)}
+              hidden={{ key, ansicht: "einnahmen" }}
+              playerHref={(id) => href({ ansicht: "einnahmen", spieler: id, anteil: typeof sp.anteil === "string" ? sp.anteil : undefined })}
+            />
+          )}
           {view === "tag" && <DayView names={names} day={typeof sp.tag === "string" ? sp.tag : undefined} hidden={{ key, ansicht: "tag" }} />}
           {view === "muster" && (
             <OverlayView

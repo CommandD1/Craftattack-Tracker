@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { appendLiveEvent, chatEvent, getEvents, getState, incrementLiveSubscriptionEvent, saveTwitchCheer, saveTwitchChatMessage } from "./store";
+import { appendLiveEvent, chatEvent, getEvents, getState, incrementLiveSubscriptionEvent, saveTwitchCheer, saveTwitchChatMessage, saveTwitchSub } from "./store";
 import { observeSharedChatPair } from "./sharedChat";
 import { KNOWN_LOGINS } from "./tracker";
 import type { PlayerState, TrackerEvent } from "./types";
@@ -359,6 +359,31 @@ async function recordCheer(
   rememberEventId(irc, id);
 }
 
+/** Hält eine Abo-Meldung einzeln mit Stufe fest, auch abseits des Servers (Einnahmen-Schätzung, intern). */
+async function recordSub(message: TwitchIrcMessage, event: TrackerEvent, player: PlayerState) {
+  const kind = message.tags["msg-id"];
+  const number = (key: string) => {
+    const n = Number(message.tags[key]);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  // Community-Geschenk und seine Einzelmeldungen tragen dieselbe ID; ältere Meldungen nur origin-id am Sammelhinweis
+  const group = message.tags["msg-param-community-gift-id"]
+    || (kind.endsWith("submysterygift") ? message.tags["msg-param-origin-id"] : "")
+    || null;
+  await saveTwitchSub({
+    id: event.id,
+    at: event.at,
+    channelId: player.id,
+    kind,
+    plan: message.tags["msg-param-sub-plan"] || null,
+    months: number("msg-param-cumulative-months") ?? number("msg-param-months"),
+    giftCount: number("msg-param-mass-gift-count"),
+    giftGroup: group,
+    fromLogin: message.tags.login?.toLowerCase() || null,
+    onServer: player.online,
+  });
+}
+
 function subscriptionEventFromNotice(message: TwitchIrcMessage, owner?: ChannelOwner): TrackerEvent | null {
   if (message.command !== "USERNOTICE") return null;
   const msgId = message.tags["msg-id"];
@@ -554,6 +579,11 @@ async function handleLine(irc: IrcState, socket: WebSocket, line: string) {
   if (!event || irc.seenIds.has(event.id)) return;
   const currentState = await getState();
   const player = event.player ? currentState.players[event.player] : undefined;
+  if (player) {
+    await recordSub(message, event, player).catch((error) => {
+      console.error("[twitch-irc] Abo-Meldung nicht gespeichert:", error instanceof Error ? error.message : error);
+    });
+  }
   if (!player?.online) {
     rememberEventId(irc, event.id);
     return;
