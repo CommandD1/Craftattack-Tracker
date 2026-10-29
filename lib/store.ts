@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { getDb, type Db } from "./db";
 import { playtimeOf } from "./playtime";
 import { createSwrCache } from "./swrCache";
+import { getEarningsSeries } from "./earnings";
 import { runsTracker } from "./mode";
 import { EXTRA_HISTORY_KEYS, EXTRA_KEY_OF_METRIC, EXTRA_METRICS, extraStatSql, type ExtraMetric } from "./playerStats";
 import type { BoardKey, DeathFeedItem, FeedItem, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind, AfkCheck } from "./types";
@@ -142,6 +143,7 @@ interface PlayerRow {
   followers_on_server: number;
   followers_on_live_stream: number;
   followers_live_at_sample: string | null;
+  followers_at_live_start: number | null;
   first_seen: Date;
   last_seen: Date;
   session_start: Date | null;
@@ -205,6 +207,7 @@ function rowToPlayer(r: PlayerRow): PlayerState {
     followersOnServer: r.followers_on_server,
     followersOnLiveStream: r.followers_on_live_stream,
     followersLiveAtSample: r.followers_live_at_sample,
+    followersAtLiveStart: r.followers_at_live_start ?? null,
     firstSeen: iso(r.first_seen)!,
     lastSeen: iso(r.last_seen)!,
     sessionStart: iso(r.session_start),
@@ -402,6 +405,7 @@ export async function getState(): Promise<TrackerState> {
     p.followersOnServer ??= 0;
     p.followersOnLiveStream ??= 0;
     p.followersLiveAtSample ??= null;
+    p.followersAtLiveStart ??= null;
     p.livePeakViewers ??= 0;
   }
   return state;
@@ -468,7 +472,7 @@ export async function saveState(state: TrackerState, { savePlayers = true }: { s
         "peak_viewers_on_server", "stream_on_server_seconds", "stream_off_server_seconds", "last_move_at", "afk_since",
         "afk_seconds", "afk_farm", "afk_mobs_at", "afk_blocks_at", "playtime_tracked", "afk_check", "followers",
         "followers_at", "followers_online_at_sample", "followers_on_server", "followers_on_live_stream",
-        "followers_live_at_sample", "live_peak_viewers", "detail",
+        "followers_live_at_sample", "followers_at_live_start", "live_peak_viewers", "detail",
       ],
       players.map((p) => [
         p.id,
@@ -504,6 +508,7 @@ export async function saveState(state: TrackerState, { savePlayers = true }: { s
         p.followersOnServer,
         p.followersOnLiveStream,
         p.followersLiveAtSample,
+        p.followersAtLiveStart ?? null,
         p.livePeakViewers,
         p.detail ? JSON.stringify(p.detail) : null,
       ]),
@@ -521,7 +526,7 @@ export async function saveState(state: TrackerState, { savePlayers = true }: { s
        followers = EXCLUDED.followers, followers_at = EXCLUDED.followers_at,
        followers_online_at_sample = EXCLUDED.followers_online_at_sample, followers_on_server = EXCLUDED.followers_on_server,
        followers_on_live_stream = EXCLUDED.followers_on_live_stream, followers_live_at_sample = EXCLUDED.followers_live_at_sample,
-       live_peak_viewers = EXCLUDED.live_peak_viewers, detail = EXCLUDED.detail`,
+       followers_at_live_start = EXCLUDED.followers_at_live_start, live_peak_viewers = EXCLUDED.live_peak_viewers, detail = EXCLUDED.detail`,
     );
   }
 
@@ -1163,31 +1168,6 @@ export async function getTwitchSubscriptionProfile(
   return { total, currentStream: Number(stream.rows[0]?.count ?? 0), history };
 }
 
-export async function getTwitchLiveSubscriptionCounts(
-  streams: { player: string; startedAt: string | null }[],
-): Promise<Map<string, number>> {
-  const wanted = streams.filter((stream): stream is { player: string; startedAt: string } => Boolean(stream.startedAt));
-  const counts = new Map<string, number>();
-  if (wanted.length === 0) return counts;
-  await ensureLoaded();
-  const db = await getDb();
-  const values = wanted.map((_, index) => `($${index * 2 + 1}, $${index * 2 + 2})`).join(", ");
-  const params = wanted.flatMap((stream) => [stream.player, stream.startedAt]);
-  const rows = await db.query<{ player: string; count: number | string }>(
-    // Alle Abos seit dem Beginn des laufenden Streams – nicht über den in jedem Abo gespeicherten Startwert,
-    // der bei einem vom Tracker verpassten Stream-Ende noch auf einen alten Stream zeigen kann
-    `SELECT e.player, SUM(e.delta) AS count
-       FROM events e
-       JOIN (VALUES ${values}) AS active(player, stream_started_at)
-         ON e.player = active.player AND e.at >= active.stream_started_at::timestamptz
-      WHERE e.type IN ('subscription', 'subscription_gift') AND e.meta->>'serverOnline' = 'true'
-      GROUP BY e.player`,
-    params,
-  );
-  for (const row of rows.rows) counts.set(row.player, Number(row.count));
-  return counts;
-}
-
 export async function getTwitchSubscriptionBoard(): Promise<FullBoardEntry[]> {
   await ensureLoaded();
   const db = await getDb();
@@ -1808,6 +1788,7 @@ const BASE_SERIES_METRICS = [
   "foodEaten",
   "followers",
   "twitchSubs",
+  "twitchEarnings",
   "online",
   "afkSeconds",
   "afkMobsSeconds",
@@ -1870,11 +1851,11 @@ export async function getSeries(q: SeriesQuery): Promise<{ series: SeriesLine[];
   await ensureLoaded();
   const db = await getDb();
   const players = g().state?.players ?? {};
-  const perPlayer = q.players.length > 0 && (PLAYER_COL[q.metric] !== undefined || q.metric === "twitchSubs");
-  const table = q.metric === "twitchSubs" ? "events" : perPlayer || HISTORY_COL[q.metric] === undefined ? "player_history" : "history";
+  const perPlayer = q.players.length > 0 && (PLAYER_COL[q.metric] !== undefined || q.metric === "twitchSubs" || q.metric === "twitchEarnings");
+  const table = q.metric === "twitchSubs" || q.metric === "twitchEarnings" ? "events" : perPlayer || HISTORY_COL[q.metric] === undefined ? "player_history" : "history";
 
   const firstRow = (await db.query<{ at: Date | null }>(
-    q.metric === "twitchSubs"
+    q.metric === "twitchSubs" || q.metric === "twitchEarnings"
       ? `SELECT min(at) AS at FROM events WHERE type IN ('subscription', 'subscription_gift') AND meta->>'serverOnline' = 'true'`
       : `SELECT min(at) AS at FROM ${table}`,
   )).rows[0];
@@ -1887,6 +1868,11 @@ export async function getSeries(q: SeriesQuery): Promise<{ series: SeriesLine[];
     series: q.mode === "zuwachs" ? series.map((s) => ({ ...s, points: toDelta(s.points) })) : series,
     bucketMinutes: minutes,
   });
+
+  if (q.metric === "twitchEarnings") {
+    const lines = await getEarningsSeries(q.players, from.getTime(), to.getTime(), minutes);
+    return finish(lines.map((l) => ({ id: l.id, name: l.id === "alle" ? "Alle Spieler" : (players[l.id]?.name ?? l.id), points: l.points })));
+  }
 
   if (q.metric === "twitchSubs") {
     if (perPlayer) {

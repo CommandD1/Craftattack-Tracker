@@ -238,6 +238,8 @@ export interface PlayerState {
   followersOnLiveStream: number;
   /** Stream, zu dem die letzte Follower-Messung gehörte */
   followersLiveAtSample: string | null;
+  /** Follower-Gesamtzahl zu Beginn des aktuellen Streams (letzte Messung davor); Zuwachs im Stream = jetzt − diese */
+  followersAtLiveStart?: number | null;
   firstSeen: string;
   lastSeen: string;
   /** Beginn der aktuellen Online-Session */
@@ -312,6 +314,8 @@ export interface PlayerPoint {
   extra?: Record<string, number>;
   /** Vom Tracker gezählte Twitch-Abos; separate Ereignis-Zeitreihe kann dieses Feld ergänzen */
   twitchSubs?: number | null;
+  /** Geschätzte Twitch-Einnahmen auf dem Server, aufsummiert (Euro) */
+  twitchEarnings?: number | null;
 }
 
 export interface TotalsPoint {
