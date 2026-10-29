@@ -1,8 +1,10 @@
+import { webBotAuthHeaders } from "./webBotAuth";
+
 /**
  * User-Agent aller Anfragen nach außen: nennt Projekt und Kontakt, damit Betreiber (craftattack.one, mc-heads.net)
  * den Tracker in ihren Logs zuordnen und sich melden können, statt ihn nur als unbekannten Bot zu sperren.
  */
-export const USER_AGENT = "actracker/1.0 (+https://craftattack.hiorcraft.tv; hello@hxo.dev)";
+export const USER_AGENT = "actracker/1.0 (+https://craftattack.hiorcraft.tv/bot; hello@hxo.dev)";
 
 const BASE_COOLDOWN_MS = 5 * 60_000;
 const MAX_COOLDOWN_MS = 6 * 60 * 60_000;
@@ -57,7 +59,10 @@ export async function fetchCraftAttack(
     throw new Error(`Requests to ${origin} paused until ${new Date(state.pausedUntil).toISOString()}`);
   }
 
-  const response = await fetch(input, init);
+  // Signiert (Web Bot Auth), sobald ein Schlüssel eingerichtet ist; Cloudflare erkennt den Tracker dann als Bot
+  const headers = new Headers(init?.headers);
+  for (const [name, value] of Object.entries(webBotAuthHeaders(input))) headers.set(name, value);
+  const response = await fetch(input, { ...init, headers });
   const challenged = response.headers.get("cf-mitigated")?.toLowerCase() === "challenge";
   const cloudflareError =
     response.status === 403 ||
