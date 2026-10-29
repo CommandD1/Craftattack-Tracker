@@ -48,6 +48,27 @@ export function craftAttackPausedResponse(input: string | URL): Response | null 
   });
 }
 
+/**
+ * Optionaler Proxy nur für craftattack.one, z. B. ein SOCKS5-Rückkanal über die eigene Internetleitung
+ * (`ssh -R 127.0.0.1:1080 …` vom Heimrechner, siehe README): `CA_PROXY=socks5://127.0.0.1:1080`.
+ * Ist der Proxy nicht erreichbar, schlägt die Anfrage fehl (kein direkter Ersatzweg, der nur gesperrt würde).
+ */
+const PROXY = process.env.CA_PROXY;
+let proxied: Promise<(input: string | URL, init: RequestInit) => Promise<Response>> | undefined;
+
+function send(input: string | URL, init: RequestInit): Promise<Response> {
+  if (!PROXY) return fetch(input, init);
+  proxied ??= (async () => {
+    const url = new URL(PROXY);
+    if (!url.protocol.startsWith("socks")) throw new Error(`CA_PROXY muss eine socks5://-URL sein, nicht ${url.protocol}`);
+    const [{ socksDispatcher }, { fetch: undiciFetch }] = await Promise.all([import("fetch-socks"), import("undici")]);
+    const dispatcher = socksDispatcher({ type: 5, host: url.hostname, port: Number(url.port || 1080) });
+    console.log(`[tracker] Anfragen an craftattack.one über Proxy ${url.host}`);
+    return (i, options) => undiciFetch(i, { ...(options as object), dispatcher }) as unknown as Promise<Response>;
+  })();
+  return proxied.then((f) => f(input, init));
+}
+
 export async function fetchCraftAttack(
   input: string | URL,
   init?: RequestInit & { next?: { revalidate?: number } },
@@ -62,7 +83,7 @@ export async function fetchCraftAttack(
   // Signiert (Web Bot Auth), sobald ein Schlüssel eingerichtet ist; Cloudflare erkennt den Tracker dann als Bot
   const headers = new Headers(init?.headers);
   for (const [name, value] of Object.entries(webBotAuthHeaders(input))) headers.set(name, value);
-  const response = await fetch(input, { ...init, headers });
+  const response = await send(input, { ...init, headers });
   const challenged = response.headers.get("cf-mitigated")?.toLowerCase() === "challenge";
   const cloudflareError =
     response.status === 403 ||
