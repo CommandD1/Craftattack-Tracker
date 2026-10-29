@@ -1,7 +1,7 @@
 "use client";
 
 import type { PlayerPoint } from "@/lib/types";
-import { boardValue, num } from "@/lib/format";
+import { boardValue, eur, num } from "@/lib/format";
 import Link from "next/link";
 import { Sparkline } from "./Sparkline";
 
@@ -17,7 +17,8 @@ type SparkKey =
   | "totemsUsed"
   | "foodEaten"
   | "followersOnServer"
-  | "twitchSubs";
+  | "twitchSubs"
+  | "twitchEarnings";
 
 const FORMAT: Record<SparkKey, (v: number) => string> = {
   viewers: num,
@@ -32,6 +33,7 @@ const FORMAT: Record<SparkKey, (v: number) => string> = {
   foodEaten: num,
   followersOnServer: num,
   twitchSubs: num,
+  twitchEarnings: eur,
 };
 
 const tf = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
@@ -61,7 +63,7 @@ export function StatSpark({ points, k, label, height = 56, href }: { points: Pla
       : points.filter((p) => p[k] !== null).map((p) => ({ at: p.at, v: p[k] as number }));
   // Noch keine (oder nur eine) API-Spielzeit im Verlauf: die Tracker-Online-Zeit zeigen
   if (k === "playtimeSeconds" && data.length < 2 && points.length >= 2) data = trackedSeries(points);
-  if (k === "twitchSubs" && data.length === 1) {
+  if ((k === "twitchSubs" || k === "twitchEarnings") && data.length === 1) {
     data = [{ at: new Date(Date.parse(data[0].at) - 24 * 60 * 60_000).toISOString(), v: 0 }, data[0]];
   }
   if (data.length < 2) {

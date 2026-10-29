@@ -135,6 +135,7 @@ async function migrate(db: Db) {
   await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS followers_on_server integer NOT NULL DEFAULT 0`);
   await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS followers_on_live_stream integer NOT NULL DEFAULT 0`);
   await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS followers_live_at_sample text`);
+  await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS followers_at_live_start integer`);
   await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS live_peak_viewers integer NOT NULL DEFAULT 0`);
   // Zusatzwerte aus /api/player/<id> (platzierte Blöcke, Sprünge, Top-Blöcke, …)
   await db.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS detail jsonb`);

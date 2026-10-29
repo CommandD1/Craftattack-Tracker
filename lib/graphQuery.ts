@@ -1,4 +1,4 @@
-import { boardValue, num } from "./format";
+import { boardValue, eur, num } from "./format";
 import { GROUP_TONE, METRIC_TONE } from "./statTone";
 import { EXTRA_STATS, EXTRA_STAT_KEYS, FORMATTERS, type ExtraMetric, type ExtraStatKey, type StatGroup } from "./playerStats";
 import { BOARD_KEYS, type BoardKey } from "./types";
@@ -6,7 +6,7 @@ import { LEADERBOARDS, isTopCategory, topCategoryLabel, type TopCategory } from 
 
 /* ---------- Konfiguration ---------- */
 
-type BaseMetric = "onlineCount" | "liveCount" | "viewers" | "playtimeSeconds" | "afkSeconds" | "afkMobsSeconds" | "afkBlocksSeconds" | "deaths" | "diamonds" | "blocksBroken" | "mobsKilled" | "distance" | "damageDealt" | "totemsUsed" | "foodEaten" | "followers" | "twitchSubs" | "online";
+type BaseMetric = "onlineCount" | "liveCount" | "viewers" | "playtimeSeconds" | "afkSeconds" | "afkMobsSeconds" | "afkBlocksSeconds" | "deaths" | "diamonds" | "blocksBroken" | "mobsKilled" | "distance" | "damageDealt" | "totemsUsed" | "foodEaten" | "followers" | "twitchSubs" | "twitchEarnings" | "online";
 /** Liste, deren Rang-Verlauf es gibt (Hauptlisten und Zusatzwerte) */
 export type RankKey = BoardKey | ExtraStatKey;
 /** Platz eines Spielers in einer Bestenliste über die Zeit */
@@ -20,7 +20,7 @@ export type Metric = BaseMetric | ExtraMetric | RankMetric | ItemMetric;
  * Stunden mit Stunden …); bei verschiedenen Einheiten wird jede Linie auf ihr Maximum skaliert (%).
  */
 export type Unit =
-  | "spieler" | "streams" | "zuschauer" | "follower" | "subs" | "online" | "zeit" | "bloecke" | "kills" | "herzen" | "strecke"
+  | "spieler" | "streams" | "zuschauer" | "follower" | "subs" | "euro" | "online" | "zeit" | "bloecke" | "kills" | "herzen" | "strecke"
   | "items" | "diamanten" | "tode" | "totems" | "raids" | "spruenge" | "truhen" | "handel" | "zucht" | "fische" | "glocken" | "platz";
 
 export type MetricGroup = StatGroup | "server" | "rang" | "einzeln";
@@ -57,6 +57,7 @@ const BASE_METRICS: Record<BaseMetric, MetricMeta> = {
   viewers: { label: "Zuschauer", perPlayer: true, counter: false, format: num, hint: "Ohne Spieler: Summe aller Streams", tone: METRIC_TONE.viewers, icon: "eye", group: "allgemein", unit: "zuschauer" },
   followers: { label: "Follower", perPlayer: true, counter: true, format: num, hint: "Kumulierte neue Twitch-Follower während aufeinanderfolgender Messungen auf dem Server", tone: METRIC_TONE.followers, icon: "users", group: "allgemein", unit: "follower" },
   twitchSubs: { label: "Twitch Subs", perPlayer: true, counter: true, format: num, hint: "Abos, die eingegangen sind, während der Streamer auf dem Server online war", tone: METRIC_TONE.twitchSubs, icon: "gift", group: "allgemein", unit: "subs" },
+  twitchEarnings: { label: "Twitch-Einnahmen", perPlayer: true, counter: true, format: eur, hint: "Geschätzt aus Abos (Stufe, Prime, Anteil je Kanal) und Bits, während der Streamer auf dem Server war; ohne Werbung", tone: METRIC_TONE.twitchEarnings, icon: "coin", group: "allgemein", unit: "euro" },
   diamonds: { label: "Diamanten", perPlayer: true, counter: true, format: num, tone: METRIC_TONE.diamonds, icon: "diamond", group: "abbau", unit: "diamanten" },
   blocksBroken: { label: "Blöcke abgebaut", perPlayer: true, counter: true, format: num, tone: METRIC_TONE.blocksBroken, icon: "pickaxe", group: "abbau", unit: "bloecke" },
   deaths: { label: "Tode", perPlayer: true, counter: true, format: num, tone: METRIC_TONE.deaths, icon: "skull", group: "kampf", unit: "tode" },

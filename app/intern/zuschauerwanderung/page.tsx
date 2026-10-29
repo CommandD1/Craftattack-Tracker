@@ -11,7 +11,7 @@ import { DayStackChart, OverlayChart, PlayerViewerChart, RetentionChart, type Ov
 import { loadTracker } from "@/lib/data";
 import { ALL_STREAMS, dayBounds, getDays, getDayStack, getOverlay, getPlayerDay, getStreamers, getViewerMigration, type ChartMarker, type Migration } from "@/lib/viewerMigration";
 import { num } from "@/lib/format";
-import { parseShare } from "@/lib/earnings";
+import { parseShareMode } from "@/lib/earnings";
 import { EarningsView } from "./EarningsView";
 
 /** Interne Auswertung: nirgends verlinkt und nicht für Suchmaschinen */
@@ -145,7 +145,7 @@ async function Analysis({ searchParams }: { searchParams: PageProps<"/intern/zus
             <EarningsView
               names={names}
               id={typeof sp.spieler === "string" ? sp.spieler : undefined}
-              share={parseShare(sp.anteil)}
+              share={parseShareMode(sp.anteil)}
               hidden={{ key, ansicht: "einnahmen" }}
               playerHref={(id) => href({ ansicht: "einnahmen", spieler: id, anteil: typeof sp.anteil === "string" ? sp.anteil : undefined })}
             />

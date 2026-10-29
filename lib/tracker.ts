@@ -527,6 +527,7 @@ function ensurePlayer(
       followersOnServer: 0,
       followersOnLiveStream: 0,
       followersLiveAtSample: null,
+      followersAtLiveStart: null,
       livePeakViewers: 0,
       detail: null,
     };
@@ -799,7 +800,11 @@ function diffFollowers(ctx: DiffContext, followerCounts: Map<string, number>, on
     const delta = previous === null ? 0 : value - previous;
     const gainedOnServer = delta > 0 && ps.followersOnlineAtSample && onlineBeforePoll.get(id) === true && isOnlineNow ? delta : 0;
     const currentStream = ps.live ? ps.liveSince : null;
-    if (ps.followersLiveAtSample !== currentStream) ps.followersOnLiveStream = 0;
+    if (ps.followersLiveAtSample !== currentStream) {
+      ps.followersOnLiveStream = 0;
+      // Basis für den Zuwachs im ganzen Stream: die Messung vor dem Start (höchstens ein Poll-Abstand alt), sonst diese
+      ps.followersAtLiveStart = currentStream ? (previous ?? value) : null;
+    }
     if (currentStream && ps.followersLiveAtSample === currentStream) ps.followersOnLiveStream += gainedOnServer;
     ps.followersLiveAtSample = currentStream;
     ps.followersOnServer = (ps.followersOnServer ?? 0) + gainedOnServer;

@@ -1,7 +1,7 @@
 import { FigValue } from "@/components/FigValue";
 import { EarningsDailyChart, EarningsGrowthChart } from "@/components/ViewerCharts";
 import { Person } from "@/components/ViewerMigration";
-import { BIT_EUR, getEarnings, getEarningStreams, SHARES, SUB_PRICE_EUR, VAT, type Share } from "@/lib/earnings";
+import { BIT_EUR, getEarnings, getEarningStreams, PLUS_POINTS, SHARES, SUB_PRICE_EUR, VAT, type ShareMode } from "@/lib/earnings";
 import { num } from "@/lib/format";
 
 /**
@@ -58,7 +58,7 @@ export async function EarningsView({
 }: {
   names: Names;
   id?: string;
-  share: Share;
+  share: ShareMode;
   hidden: Record<string, string>;
   playerHref: (id: string) => string;
 }) {
@@ -110,9 +110,10 @@ export async function EarningsView({
         <label className="gb__select">
           <span className="eyebrow">Anteil des Streamers</span>
           <select name="anteil" defaultValue={String(share)}>
+            <option value="auto">je Kanal (geschätzt)</option>
             {SHARES.map((s) => (
               <option key={s} value={s}>
-                {s} %{s === 50 ? " (Standard)" : s === 70 ? " (Partner Plus / Sonderdeal)" : ""}
+                alle {s} %
               </option>
             ))}
           </select>
@@ -238,6 +239,7 @@ export async function EarningsView({
                 <th className="num">Bits</th>
                 <th className="num">Streams</th>
                 <th className="num">Stunden</th>
+                <th className="num" title="Geschätzte Plus Points im Monat (Untergrenze) und verwendeter Anteil">Anteil</th>
                 <th className="num">Geschätzt</th>
                 <th className="num">je Stream</th>
                 <th className="num">je Stunde</th>
@@ -256,12 +258,58 @@ export async function EarningsView({
                   <td className="num">{num(p.bits)}</td>
                   <td className="num">{num(p.streams)}</td>
                   <td className="num">{hrs.format(p.hours)}</td>
+                  <td className="num" title={`ca. ${num(p.points)} Plus Points im Monat`}>
+                    {p.share} %
+                  </td>
                   <td className="num">{eur.format(p.eur)}</td>
                   <td className="num">{eur.format(p.perStream)}</td>
                   <td className="num">{eur.format(p.perHour)}</td>
                   <td className="num">{p.trend === null ? "–" : `${pct.format(p.trend * 100)} %`}</td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="box" data-tone="white">
+        <h3 className="t-3">Anteil je Kanal</h3>
+        <p className="muted">
+          Twitch zahlt bezahlte Abos zu 50 %, mit mindestens {PLUS_POINTS[60]} Plus Points im Monat (drei Monate in Folge) zu 60 % und ab{" "}
+          {PLUS_POINTS[70]} zu 70 %, ohne Obergrenze. Punkte geben nur selbst bezahlte Abos: Stufe 1 = 1, Stufe 2 = 2, Stufe 3 = 6; Prime
+          und Geschenke zählen nicht. Geschenke werden zum erhöhten Satz bezahlt, Prime immer zu 50 %. Gemessen werden nur Abos, die im
+          Chat gemeldet werden – die Punkte sind eine Untergrenze, ein Kanal liegt also eher höher. Sonderverträge sind nicht sichtbar.
+        </p>
+        <dl className="grid st-figs">
+          {([70, 60, 50] as const).map((s) => (
+            <div key={s} className="box st-fig" data-tone="white">
+              <dt>{s === 70 ? `70 % (ab ${PLUS_POINTS[70]} Punkten)` : s === 60 ? `60 % (ab ${PLUS_POINTS[60]} Punkten)` : "50 % (Standard)"}</dt>
+              <FigValue>{`${num(e.shareCounts[s])} Kanäle`}</FigValue>
+            </div>
+          ))}
+        </dl>
+        <div className="tbl-wrap">
+          <table className="tbl mig__tbl">
+            <caption className="sr-only">Geschätzte Plus Points und Anteil je Kanal</caption>
+            <thead>
+              <tr>
+                <th>Streamer</th>
+                <th className="num">Plus Points im Monat (mind.)</th>
+                <th className="num">Anteil</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...e.players]
+                .sort((a, b) => b.points - a.points)
+                .map((p) => (
+                  <tr key={p.id}>
+                    <td>
+                      <Person id={p.id} names={names} />
+                    </td>
+                    <td className="num">{num(p.points)}</td>
+                    <td className="num">{p.points >= PLUS_POINTS[70] ? "70 %" : p.points >= PLUS_POINTS[60] ? "60 %" : "50 %"}</td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
@@ -320,17 +368,18 @@ export async function EarningsView({
         <ul className="muted">
           <li>
             Preise in Deutschland: Stufe 1 {eur2.format(SUB_PRICE_EUR.t1)}, Stufe 2 {eur2.format(SUB_PRICE_EUR.t2)}, Stufe 3{" "}
-            {eur2.format(SUB_PRICE_EUR.t3)}, davon {Math.round(VAT * 100)} % Umsatzsteuer ab. Vom Rest bekommt der Streamer {share} %: Stufe
-            1 also ca. {eur2.format(net1 * (share / 100))}.
+            {eur2.format(SUB_PRICE_EUR.t3)}, davon {Math.round(VAT * 100)} % Umsatzsteuer ab. Vom Rest bekommt der Streamer{" "}
+            {share === "auto" ? "seinen geschätzten Anteil (siehe oben)" : `${share} %`}: Stufe 1 also ca. {eur2.format(net1 * 0.5)} bei 50 %,{" "}
+            {eur2.format(net1 * 0.6)} bei 60 % und {eur2.format(net1 * 0.7)} bei 70 %.
           </li>
-          <li>Prime zählt wie Stufe 1. Geschenkte Abos zählen wie gekaufte (der Schenkende zahlt).</li>
+          <li>Prime bringt so viel wie Stufe 1 bei 50 %. Geschenkte Abos zählen wie gekaufte (der Schenkende zahlt).</li>
           <li>1 Bit = 1 US-Cent für den Streamer, hier {eur2.format(BIT_EUR * 100).replace(/\s?€/, "")} Cent.</li>
           <li>
             Ein Community-Geschenk zählt einmal, auch wenn Twitch zusätzlich jede einzelne Übergabe meldet. In der älteren Zählung
             (Abo-Ereignisse) fehlt diese Unterscheidung und die Stufe;{" "}
             {e.calibration
-              ? `dort wird mit dem gemessenen Wert je Eintrag gerechnet: ca. ${eur2.format(e.legacyEur)} und ${hrs.format(e.legacyUnits)} Abos je Eintrag (aus ${num(e.calibration.entries)} Einträgen mit genauer Gegenprobe).`
-              : `bis eine Gegenprobe mit genug Daten vorliegt, zählt dort jeder Eintrag als ein Abo der Stufe 1 (${eur2.format(e.legacyEur)}).`}
+              ? `dort wird mit dem gemessenen Mix je Eintrag gerechnet: ${hrs.format(e.perEntry.units)} Abos, ${eur2.format(e.perEntry.paid)} bezahlt und ${eur2.format(e.perEntry.prime)} Prime (netto vor Aufteilung), ${hrs.format(e.perEntry.points)} Plus Points (aus ${num(e.calibration.entries)} Einträgen mit genauer Gegenprobe).`
+              : `bis eine Gegenprobe mit genug Daten vorliegt, zählt dort jeder Eintrag als ein bezahltes Abo der Stufe 1 und als ${hrs.format(e.perEntry.points)} Plus Points (Wert aus den ersten Stunden der Einzelerfassung).`}
           </li>
           <li>
             Gezählt werden Streams ab 10 Minuten auf dem Server; Abos und Stunden nur während der Streamer auf dem Server war. Lücken im

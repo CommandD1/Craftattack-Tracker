@@ -102,6 +102,12 @@ export const Icon = {
       <path d="M5 13h14M12 3v18" />
     </svg>
   ),
+  coin: (p: P) => (
+    <svg {...base} {...p}>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M15 8.5a4 4 0 1 0 0 7M7.5 11h5M7.5 13.5h5" />
+    </svg>
+  ),
   raid: (p: P) => (
     <svg {...base} {...p}>
       <circle cx="7" cy="8" r="3" />

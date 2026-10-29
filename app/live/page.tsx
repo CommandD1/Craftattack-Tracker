@@ -4,8 +4,10 @@ import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { getHistoryRange } from "@/lib/analytics";
-import { getActiveSharedChatSessions, getHistoryAll, getTwitchLiveSubscriptionCounts } from "@/lib/store";
-import { ago, num } from "@/lib/format";
+import { getActiveSharedChatSessions, getHistoryAll } from "@/lib/store";
+import { getStreamTotals } from "@/lib/earnings";
+import { getStreamFollowerGains } from "@/lib/streamFollowers";
+import { ago, eur, num } from "@/lib/format";
 import { Sparkline } from "@/components/Sparkline";
 import { EventFeed } from "@/components/EventFeed";
 import { FigValue } from "@/components/FigValue";
@@ -49,19 +51,18 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
   const since = range.hours === null ? 0 : now - range.hours * 3600_000;
   const players = Object.values(state.players);
   const live = players.filter((p) => p.live).sort((a, b) => (b.live!.viewers ?? 0) - (a.live!.viewers ?? 0));
-  const streamSubs = await getTwitchLiveSubscriptionCounts(
-    live.map((p) => ({ player: p.id, startedAt: p.live?.startedAt ?? p.liveSince ?? null })),
-  );
-  const liveStreamSubs = live.reduce((total, player) => total + (streamSubs.get(player.id) ?? 0), 0);
+  const [streamTotals, followerGains] = await Promise.all([
+    getStreamTotals(live.map((p) => ({ player: p.id, startedAt: p.live?.startedAt ?? p.liveSince ?? null }))),
+    getStreamFollowerGains(live),
+  ]);
+  const liveStreamSubs = live.reduce((total, player) => total + (streamTotals.get(player.id)?.subs ?? 0), 0);
+  const liveStreamEur = live.reduce((total, player) => total + (streamTotals.get(player.id)?.eur ?? 0), 0);
   // Geteilter Chat (Stream Together): Partner je live streamendem Spieler
   const sharedOf = new Map<string, { partners: string[]; others: number }>();
   for (const s of await getActiveSharedChatSessions()) {
     for (const id of s.participants) sharedOf.set(id, { partners: s.participants.filter((x) => x !== id), others: s.otherCount });
   }
-  const liveStreamFollowers = live.reduce(
-    (total, player) => total + (player.followersLiveAtSample === player.liveSince ? (player.followersOnLiveStream ?? 0) : 0),
-    0,
-  );
+  const liveStreamFollowers = live.reduce((total, player) => total + (followerGains.get(player.id) ?? 0), 0);
   const viewersAll = live.reduce((s, p) => s + (p.live?.viewers ?? 0), 0);
   // Zählt global nur, wer dabei auch auf dem Server ist
   const viewers = live.filter((p) => p.online).reduce((s, p) => s + (p.live?.viewers ?? 0), 0);
@@ -115,12 +116,16 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
               <FigValue>{num(live.filter((p) => p.online).length)}</FigValue>
             </div>
             <div className="box st-fig" data-tone={METRIC_TONE.twitchSubs}>
-              <dt title="Gesammelte Subs in den aktuell laufenden Streams">Subs in aktuellen Livestreams</dt>
+              <dt title="Abos seit Beginn der laufenden Streams (Community-Geschenke einmal gezählt)">Subs in aktuellen Livestreams</dt>
               <FigValue>{num(liveStreamSubs)}</FigValue>
             </div>
             <div className="box st-fig" data-tone={METRIC_TONE.followers}>
-              <dt title="Follower, die während der aktuellen Streams bei Serveranwesenheit dazugekommen sind">Follower-Zuwachs in aktuellen Streams</dt>
+              <dt title="Follower jetzt minus Follower beim Start, über alle laufenden Streams">Follower-Zuwachs in aktuellen Streams</dt>
               <FigValue>{num(liveStreamFollowers)}</FigValue>
+            </div>
+            <div className="box st-fig" data-tone={METRIC_TONE.twitchEarnings}>
+              <dt title="Geschätzt aus Abos und Bits seit Beginn der laufenden Streams, ohne Werbung">Einnahmen in aktuellen Livestreams</dt>
+              <FigValue>{eur(liveStreamEur)}</FigValue>
             </div>
           </dl>
           <Link
@@ -194,14 +199,24 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
                       )}
                       <div className="stream__stats">
                         <span className="stream__stat" data-tone={METRIC_TONE.followers}>
-                          <strong className="num">
-                            {p.followersLiveAtSample === p.liveSince ? num(p.followersOnLiveStream ?? 0) : "–"}
-                          </strong>
+                          <strong className="num">{followerGains.has(p.id) ? num(followerGains.get(p.id)!) : "–"}</strong>
                           <small>Follower in diesem Stream</small>
                         </span>
-                        <span className="stream__stat" data-tone={METRIC_TONE.twitchSubs}>
-                          <strong className="num">{num(streamSubs.get(p.id) ?? 0)}</strong>
+                        <span
+                          className="stream__stat"
+                          data-tone={METRIC_TONE.twitchSubs}
+                          title={
+                            streamTotals.get(p.id)?.precise
+                              ? `davon auf dem Server: ${num(streamTotals.get(p.id)!.subsOnServer)}`
+                              : "Stream begann vor der genauen Erfassung: nur Abos auf dem Server"
+                          }
+                        >
+                          <strong className="num">{num(streamTotals.get(p.id)?.subs ?? 0)}</strong>
                           <small>Subs in diesem Stream</small>
+                        </span>
+                        <span className="stream__stat" data-tone={METRIC_TONE.twitchEarnings} title="Geschätzt aus Abos und Bits, ohne Werbung">
+                          <strong className="num">{eur(streamTotals.get(p.id)?.eur ?? 0)}</strong>
+                          <small>Einnahmen (geschätzt)</small>
                         </span>
                       </div>
                     </div>

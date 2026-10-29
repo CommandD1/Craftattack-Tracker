@@ -14,6 +14,9 @@ const tf = new Intl.DateTimeFormat("de-DE", {
 });
 
 export const num = (n: number) => nf.format(Math.round(n));
+const ef = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+/** Euro ohne Cent, z. B. „1.234 €“ */
+export const eur = (n: number) => ef.format(n);
 export const hearts = (damage: number) => new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 }).format(damage / 20);
 
 export function duration(sec: number) {

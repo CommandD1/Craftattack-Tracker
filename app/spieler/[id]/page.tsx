@@ -7,7 +7,10 @@ import { loadTracker } from "@/lib/data";
 import { chatVodLinks, eventPlayers, isShownEvent, sharedChatPlayers } from "@/lib/events";
 import { thinHistory } from "@/lib/thinHistory";
 import { BOARD_KEYS, type BoardKey, type TrackerEvent } from "@/lib/types";
-import { ago, boardParts, dateTime, duration, num, skinUrl } from "@/lib/format";
+import { ago, boardParts, dateTime, duration, eur, num, skinUrl } from "@/lib/format";
+import { getPlayerEarnings, getStreamTotals } from "@/lib/earnings";
+import { getStreamFollowerGains } from "@/lib/streamFollowers";
+import type { PlayerPoint } from "@/lib/types";
 import { EventFeed } from "@/components/EventFeed";
 import { BOARD_ICON, Icon } from "@/components/Icons";
 import { FigValue } from "@/components/FigValue";
@@ -107,6 +110,30 @@ interface Phase extends Session {
 }
 
 /** Baut aus Stream-an/aus-Ereignissen eine Stream-Liste (laufender Stream: end = null). */
+/** Einzelner Verlauf als Messpunkte für StatSpark */
+function sparkPoints(rows: { at: string; value: number }[], key: "twitchSubs" | "twitchEarnings"): PlayerPoint[] {
+  return rows.map((point) => ({
+    at: point.at,
+    online: false,
+    viewers: null,
+    playtimeSeconds: null,
+    deaths: null,
+    diamonds: null,
+    blocksBroken: null,
+    mobsKilled: null,
+    distance: null,
+    damageDealt: null,
+    totemsUsed: null,
+    foodEaten: null,
+    followersOnServer: null,
+    followersTotal: null,
+    ranks: {},
+    streamGameId: null,
+    streamGameName: null,
+    [key]: point.value,
+  }));
+}
+
 function streams(events: TrackerEvent[], live: boolean, liveSince: string | null, now: number, liveLogin?: string): (Session & { peak?: number; login?: string })[] {
   const out: (Session & { peak?: number; login?: string })[] = [];
   let open: string | null = null;
@@ -257,13 +284,18 @@ async function StatsSection({ params }: { params: Params }) {
   const { id, state, now, p } = await ctxFor(params);
   if (!p) return null;
   const streamStartedAt = p.live ? p.live.startedAt ?? p.liveSince ?? null : null;
-  const [history, subscriptions, subscriptionBoard, followerBoard, cheers] = await Promise.all([
+  const [history, subscriptions, subscriptionBoard, followerBoard, cheers, earnings, streamTotals, followerGains] = await Promise.all([
     getPlayerHistory(id),
     getTwitchSubscriptionProfile(id, streamStartedAt),
     getTwitchSubscriptionBoard(),
     getFullBoard("followers"),
     getTwitchCheerProfile(id, streamStartedAt),
+    getPlayerEarnings(id),
+    getStreamTotals([{ player: id, startedAt: streamStartedAt }]),
+    getStreamFollowerGains([p]),
   ]);
+  const thisStream = streamTotals.get(id);
+  const followerGain = followerGains.get(id) ?? null;
   // Für die Sparklines im Browser reichen ~300 Punkte; der volle Verlauf bleibt auf dem Server
   const sparkHistory = thinHistory(history);
   const playtime = playtimeOf(p, now);
@@ -279,7 +311,7 @@ async function StatsSection({ params }: { params: Params }) {
   ) as Record<BoardKey, { rank: number; of: number | null } | null>;
   const subscriptionRankIndex = subscriptionBoard.findIndex((entry) => entry.id === id);
   const followerRankIndex = followerBoard.findIndex((entry) => entry.id === id);
-  const profileStatKeys = [...BOARD_KEYS, "followers", "twitchSubs", "twitchBits"] as const;
+  const profileStatKeys = [...BOARD_KEYS, "followers", "twitchSubs", "twitchBits", "twitchEarnings"] as const;
   return (
     <section className="block block--tight" data-tone="ink">
       <div className="wrap">
@@ -308,6 +340,12 @@ async function StatsSection({ params }: { params: Params }) {
                     <FigValue>{p.followersAt ? num(p.followersOnServer) : "–"}</FigValue>
                   </Link>
                   <StatSpark points={sparkHistory} k="followersOnServer" label="Follower" href={graphHref(k)} />
+                  {p.live && followerGain !== null && (
+                    <p className="muted" style={{ fontSize: ".75rem", marginTop: 4 }} title="Follower jetzt minus Follower beim Streamstart">
+                      Dieser Stream: {followerGain > 0 ? "+" : ""}
+                      {num(followerGain)}
+                    </p>
+                  )}
                 </div>
               );
             }
@@ -358,36 +396,51 @@ async function StatsSection({ params }: { params: Params }) {
                   <Link className="pstat__val" href={graphHref(k)} tabIndex={-1} aria-hidden="true">
                     <FigValue>{num(subscriptions.total)}</FigValue>
                   </Link>
-                  <StatSpark
-                    points={subscriptions.history.map((point) => ({
-                      at: point.at,
-                      online: false,
-                      viewers: null,
-                      playtimeSeconds: null,
-                      deaths: null,
-                      diamonds: null,
-                      blocksBroken: null,
-                      mobsKilled: null,
-                      distance: null,
-                      damageDealt: null,
-                      totemsUsed: null,
-                      foodEaten: null,
-                      followersOnServer: null,
-                      followersTotal: null,
-                      ranks: {},
-                      streamGameId: null,
-                      streamGameName: null,
-                      twitchSubs: point.value,
-                    }))}
-                    k="twitchSubs"
-                    label="Twitch Subs"
-                    href={graphHref(k)}
-                  />
-                  {p.live && (
-                    <p className="muted" style={{ fontSize: ".75rem", marginTop: 4 }}>
-                      Dieser Stream: {num(subscriptions.currentStream)}
+                  <StatSpark points={sparkPoints(subscriptions.history, "twitchSubs")} k="twitchSubs" label="Twitch Subs" href={graphHref(k)} />
+                  {p.live && thisStream && (
+                    <p
+                      className="muted"
+                      style={{ fontSize: ".75rem", marginTop: 4 }}
+                      title={thisStream.precise ? "Seit Streamstart, Community-Geschenke einmal gezählt" : "Stream begann vor der genauen Erfassung: nur Abos auf dem Server"}
+                    >
+                      Dieser Stream: {num(thisStream.subs)}
+                      {thisStream.precise && thisStream.subsOnServer !== thisStream.subs ? ` (auf dem Server ${num(thisStream.subsOnServer)})` : ""}
                     </p>
                   )}
+                </div>
+              );
+            }
+            if (k === "twitchEarnings") {
+              return (
+                <div key={k} className="box st-fig st-fig--spark" data-tone={METRIC_TONE.twitchEarnings}>
+                  <dt className="pstat">
+                    <Link
+                      className="pstat__label pstat__link"
+                      href={graphHref(k)}
+                      title="Geschätzt aus Abos und Bits, während der Streamer auf dem Server war; ohne Werbung. Im Graphen öffnen"
+                    >
+                      <Icon.coin width={18} height={18} aria-hidden="true" />
+                      <span>Twitch-Einnahmen</span>
+                      <span className="pstat__go" aria-hidden="true">↗</span>
+                    </Link>
+                    <span className="pstat__meta">
+                      <span
+                        className="tag"
+                        data-tone="ink"
+                        title={`Anteil des Streamers an bezahlten Abos, geschätzt aus ca. ${num(earnings.points)} Plus Points im Monat (Untergrenze). Prime zählt immer 50 %.`}
+                      >
+                        {earnings.share} %
+                      </span>
+                    </span>
+                  </dt>
+                  <Link className="pstat__val" href={graphHref(k)} tabIndex={-1} aria-hidden="true">
+                    <FigValue>{eur(earnings.total)}</FigValue>
+                  </Link>
+                  <StatSpark points={sparkPoints(earnings.history, "twitchEarnings")} k="twitchEarnings" label="Twitch-Einnahmen" href={graphHref(k)} />
+                  <p className="muted" style={{ fontSize: ".75rem", marginTop: 4 }}>
+                    {earnings.perHour !== null ? `ca. ${eur(earnings.perHour)} je Stunde auf dem Server` : "Geschätzt, ohne Werbung"}
+                    {p.live && thisStream ? ` · Dieser Stream: ${eur(thisStream.eur)}` : ""}
+                  </p>
                 </div>
               );
             }

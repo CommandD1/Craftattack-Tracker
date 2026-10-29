@@ -5,7 +5,8 @@ import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { getBiggestEvents, getBoardTotalsOverTime, getHistoryAll, getSeries, getTwitchSubscriptionBoard, getTwitchSubscriptionMinuteRecord } from "@/lib/store";
-import { boardValue, dateTime, duration, num } from "@/lib/format";
+import { boardValue, dateTime, duration, eur, num } from "@/lib/format";
+import { getEarningsTotals } from "@/lib/earnings";
 import { Sparkline, type SparkPoint } from "@/components/Sparkline";
 import { dayKey, getStatsExtras } from "@/lib/analytics";
 import { StatsExtras } from "@/components/StatsExtras";
@@ -20,10 +21,10 @@ export const metadata: Metadata = { title: "Statistik" };
 const dayLabel = (day: string) => new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "numeric", month: "short", timeZone: "Europe/Berlin" }).format(new Date(`${day}T12:00:00+02:00`));
 const dtf = new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 
-type Kind = "num" | "playtimeSeconds" | "distance" | "damageDealt";
+type Kind = "num" | "eur" | "playtimeSeconds" | "distance" | "damageDealt";
 /** Graph-Einstellung der „pro Tag“-Charts: Zuwachs je Tag */
 const DAILY = { modus: "zuwachs", raster: "1440" } as const;
-const fmt = (kind: Kind, v: number) => (kind === "num" ? num(v) : boardValue(kind, v));
+const fmt = (kind: Kind, v: number) => (kind === "num" ? num(v) : kind === "eur" ? eur(v) : boardValue(kind, v));
 
 function Chart({
   label,
@@ -131,7 +132,7 @@ async function Stats(props: PageProps<"/statistik">) {
     redirect(`/graph?${q}`);
   }
   const { state, now } = await loadTracker();
-  const [extras, hist, totals, bigDiamonds, bigDistance, bigBlocks, bigMobs, bigDamage, bigTotems, bigFood, subscriptionBoard, subscriptionSeries, subscriptionMinuteRecord] = await Promise.all([
+  const [extras, hist, totals, bigDiamonds, bigDistance, bigBlocks, bigMobs, bigDamage, bigTotems, bigFood, subscriptionBoard, subscriptionSeries, subscriptionMinuteRecord, earningsSeries, earningsTotals] = await Promise.all([
     getStatsExtras(),
     getHistoryAll(),
     getBoardTotalsOverTime(),
@@ -145,6 +146,8 @@ async function Stats(props: PageProps<"/statistik">) {
     getTwitchSubscriptionBoard(),
     getSeries({ metric: "twitchSubs", players: [], from: null, to: now, bucketMinutes: null, mode: "wert" }),
     getTwitchSubscriptionMinuteRecord(),
+    getSeries({ metric: "twitchEarnings", players: [], from: null, to: now, bucketMinutes: null, mode: "wert" }),
+    getEarningsTotals(),
   ]);
 
   const players = Object.values(state.players);
@@ -157,6 +160,8 @@ async function Stats(props: PageProps<"/statistik">) {
   const topViewers = top(players.filter((p) => p.peakViewers > 0), (p) => p.peakViewers);
   const mostDeaths = top(players.filter((p) => p.stats.deaths !== undefined), (p) => p.stats.deaths ?? 0);
   const mostSubscriptions = subscriptionBoard[0] ?? null;
+  const topEarner = [...earningsTotals].sort((a, b) => b[1] - a[1])[0];
+  const topEarnerPlayer = topEarner ? state.players[topEarner[0]] : undefined;
   const busiestDay = top(extras.days, (d) => d.playerHours);
   const mostAfk = extras.afk.perPlayer[0] ?? null;
 
@@ -240,6 +245,13 @@ async function Stats(props: PageProps<"/statistik">) {
                   uuid={mostSubscriptions?.uuid}
                 />
                 <Record
+                  label="Höchste Twitch-Einnahmen (geschätzt)"
+                  tone={METRIC_TONE.twitchEarnings}
+                  value={topEarner ? eur(topEarner[1]) : "–"}
+                  who={topEarner ? { id: topEarner[0], name: topEarnerPlayer?.name ?? topEarner[0] } : null}
+                  uuid={topEarnerPlayer?.uuid}
+                />
+                <Record
                   label="Meiste Subs in einer Minute"
                   tone={METRIC_TONE.twitchSubs}
                   value={subscriptionMinuteRecord ? num(subscriptionMinuteRecord.value) : "–"}
@@ -315,6 +327,15 @@ async function Stats(props: PageProps<"/statistik">) {
             <Chart label="Totems benutzt" href={graphHref("totemsUsed")} tone={BOARD_TONE.totemsUsed} points={tseries("totemsUsed")} step />
             <Chart label="Essen gegessen" href={graphHref("foodEaten")} tone={BOARD_TONE.foodEaten} points={tseries("foodEaten")} step />
             <Chart label="Twitch Subs" href={graphHref("twitchSubs")} tone={METRIC_TONE.twitchSubs} points={subscriptionSeries.series[0]?.points ?? []} step sub="während Spieler online waren" />
+            <Chart
+              label="Twitch-Einnahmen"
+              href={graphHref("twitchEarnings")}
+              tone={METRIC_TONE.twitchEarnings}
+              points={earningsSeries.series[0]?.points ?? []}
+              kind="eur"
+              step
+              sub="geschätzt aus Abos und Bits auf dem Server"
+            />
           </div>
           <HowLink section="zeitstrahl" />
         </div>
