@@ -17,7 +17,7 @@ const signed = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0, signDi
 /** Unsicher: wenige Starts oder kaum vom Zufall zu unterscheiden */
 const unsure = (r: { n: number; t: number }) => r.n < 20 || Math.abs(r.t) < 2;
 
-function Person({ id, names }: { id: string; names: Names }) {
+export function Person({ id, names }: { id: string; names: Names }) {
   const p = names[id];
   return (
     <Link href={`/spieler/${encodeURIComponent(id)}`} className="conn__person">
