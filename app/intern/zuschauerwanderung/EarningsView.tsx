@@ -3,6 +3,7 @@ import { EarningsDailyChart, EarningsGrowthChart } from "@/components/ViewerChar
 import { Person } from "@/components/ViewerMigration";
 import { BIT_EUR, getEarnings, getEarningStreams, PLUS_POINTS, SHARES, SUB_PRICE_EUR, VAT, type ShareMode } from "@/lib/earnings";
 import { num } from "@/lib/format";
+import { PlayerSearch } from "@/components/PlayerSearch";
 
 /**
  * Experimentell: geschätzte Twitch-Einnahmen aus Abos und Bits (lib/earnings.ts). Alles bezieht sich auf die Zeit
@@ -96,16 +97,13 @@ export async function EarningsView({
         ))}
         <label className="gb__select">
           <span className="eyebrow">Streamer</span>
-          <select name="spieler" defaultValue={selected ?? ""}>
-            <option value="">Alle</option>
-            {[...e.players]
-              .sort((a, b) => name(a.id).localeCompare(name(b.id), "de"))
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {name(p.id)}
-                </option>
-              ))}
-          </select>
+          <PlayerSearch
+            name="spieler"
+            defaultValue={selected ?? ""}
+            label="Streamer"
+            empty={{ label: "Alle" }}
+            players={[...e.players].sort((a, b) => name(a.id).localeCompare(name(b.id), "de")).map((p) => ({ id: p.id, name: name(p.id), uuid: names[p.id]?.uuid }))}
+          />
         </label>
         <label className="gb__select">
           <span className="eyebrow">Anteil des Streamers</span>

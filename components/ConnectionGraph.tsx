@@ -66,7 +66,18 @@ const REPEL_RANGE = 420;
  * des anderen. Je mehr Punkte, desto dicker die Linie und desto stärker ziehen sich die beiden an.
  * Die Simulation läuft ohne Wände; danach wird das ganze Netz ins Canvas eingepasst, so nutzt es die Fläche aus.
  */
-export function ConnectionGraph({ nodes, edges, focus = null }: { nodes: GraphNode[]; edges: GraphEdge[]; focus?: string | null }) {
+export function ConnectionGraph({
+  nodes,
+  edges,
+  focus = null,
+  colorOf = null,
+}: {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  focus?: string | null;
+  /** Rahmenfarbe je Spieler als CSS-Variable (z. B. Gruppe); ersetzt dann die Live-Farbe */
+  colorOf?: ((id: string) => string | null) | null;
+}) {
   const ref = useRef<HTMLCanvasElement>(null);
   /** Positionen über Änderungen der Einstellungen hinweg: Das Netz ordnet sich nur neu, statt neu zu beginnen */
   const positions = useRef(new Map<string, { x: number; y: number }>());
@@ -75,6 +86,10 @@ export function ConnectionGraph({ nodes, edges, focus = null }: { nodes: GraphNo
   useEffect(() => {
     focusRef.current = focus;
   }, [focus]);
+  const colorRef = useRef(colorOf);
+  useEffect(() => {
+    colorRef.current = colorOf;
+  }, [colorOf]);
   const router = useRouter();
   const [tip, setTip] = useState<Tip | null>(null);
 
@@ -265,11 +280,14 @@ export function ConnectionGraph({ nodes, edges, focus = null }: { nodes: GraphNo
         const r = sr(n);
         ctx.globalAlpha = dim ? 0.2 : 1;
         // Rahmen: lila, wenn gerade live
-        ctx.fillStyle = n.live ? color("--twitch") : paper;
-        ctx.fillRect(x - r - 3, y - r - 3, r * 2 + 6, r * 2 + 6);
+        const own = colorRef.current?.(n.id);
+        ctx.fillStyle = own ? color(own) : n.live ? color("--twitch") : paper;
+        // Gruppenfarbe als breiterer Rahmen, damit sie auch bei kleinen Köpfen erkennbar ist
+        const f = own ? 5 : 3;
+        ctx.fillRect(x - r - f, y - r - f, r * 2 + f * 2, r * 2 + f * 2);
         ctx.strokeStyle = line;
         ctx.lineWidth = 2;
-        ctx.strokeRect(x - r - 3, y - r - 3, r * 2 + 6, r * 2 + 6);
+        ctx.strokeRect(x - r - f, y - r - f, r * 2 + f * 2, r * 2 + f * 2);
         ctx.imageSmoothingEnabled = false;
         if (n.img.complete && n.img.naturalWidth) ctx.drawImage(n.img, x - r, y - r, r * 2, r * 2);
         else {

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { fuzzyFilter } from "@/lib/fuzzy";
 import { useState } from "react";
 import { TOP_CATEGORIES, topCategoryLabel, type ItemOptions, type TopCategory } from "@/lib/leaderboards";
 
@@ -30,7 +31,7 @@ export function ItemPicker({
   const [search, setSearch] = useState("");
   const needle = search.trim().toLowerCase();
   const all = options[category] ?? [];
-  const items = needle ? all.filter((o) => o.name.toLowerCase().includes(needle) || o.key.includes(needle)).slice(0, 60) : all.slice(0, SHOWN);
+  const items = needle ? fuzzyFilter(all, needle, (o) => [o.name, o.key]).slice(0, 60) : all.slice(0, SHOWN);
 
   return (
     <div className="itempick">

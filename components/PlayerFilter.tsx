@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Head } from "./Head";
+import { fuzzyFilter } from "@/lib/fuzzy";
 
 export interface FilterPlayer {
   id: string;
@@ -29,11 +30,12 @@ export function PlayerFilter({ players, selected, path, query }: { players: Filt
     return s ? `${path}?${s}` : path;
   };
   const suggestions = useMemo(() => {
-    const s = search.trim().toLowerCase();
-    return players
-      .filter((p) => !selected.includes(p.id) && (!s || p.name.toLowerCase().includes(s) || p.id.includes(s)))
-      .sort((a, b) => (s ? Number(b.name.toLowerCase().startsWith(s)) - Number(a.name.toLowerCase().startsWith(s)) : 0) || Number(b.online) - Number(a.online) || a.name.localeCompare(b.name, "de"))
-      .slice(0, 12);
+    return fuzzyFilter(
+      players.filter((p) => !selected.includes(p.id)),
+      search,
+      (p) => [p.name, p.id],
+      (a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name, "de"),
+    ).slice(0, 12);
   }, [players, selected, search]);
   const add = (id: string) => {
     setSearch("");

@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ConnectionGraph, type GraphEdge, type GraphNode } from "./ConnectionGraph";
 import { Head } from "./Head";
+import { PlayerSearch } from "./PlayerSearch";
 import { BASE_POINTS, DEFAULT_WEIGHTS, LINK_KINDS, weigh, type LinkCounts, type LinkKind, type Weights } from "@/lib/connectionWeights";
+import { adjacency, closeness, distancesFrom, type Direction } from "@/lib/network";
 import { duration, num } from "@/lib/format";
 
 /** Punkte und Faktoren mit höchstens zwei Nachkommastellen */
@@ -25,6 +27,12 @@ const PRESETS: { label: string; w: Weights }[] = [
   { label: "Nur Chat", w: { raid: 0, shared: 0, msgs: 1 } },
 ];
 
+export const DIRECTIONS: { key: Direction; label: string; hint: string }[] = [
+  { key: "von", label: "Von ihm aus", hint: "Wen er raidet, bei wem er schreibt, und weiter über deren Verbindungen" },
+  { key: "zu", label: "Zu ihm hin", hint: "Wer ihn raidet oder bei ihm schreibt, und wer wiederum zu denen" },
+  { key: "gegenseitig", label: "Gegenseitig", hint: "Nur Verbindungen, die in beide Richtungen gehen" },
+];
+
 type Show = "alle" | "online" | "live";
 const SHOW: { key: Show; label: string }[] = [
   { key: "alle", label: "Alle" },
@@ -39,8 +47,10 @@ interface Settings {
   show: Show;
   /** Hervorgehobener Spieler (ID) oder leer */
   focus: string;
+  /** Richtung für die Abstände vom hervorgehobenen Spieler */
+  dir: Direction;
 }
-const DEFAULTS: Settings = { weights: DEFAULT_WEIGHTS, min: 0, show: "alle", focus: "" };
+const DEFAULTS: Settings = { weights: DEFAULT_WEIGHTS, min: 0, show: "alle", focus: "", dir: "von" };
 const STORAGE_KEY = "ac.verbindungen.v1";
 
 /** Gespeicherte Einstellungen des Besuchers; alles Unbekannte fällt auf die Standardwerte zurück */
@@ -58,6 +68,7 @@ function loadSettings(): Settings | null {
       min: typeof raw.min === "number" && raw.min >= 0 && raw.min <= 20 ? raw.min : 0,
       show: SHOW.some((s) => s.key === raw.show) ? (raw.show as Show) : "alle",
       focus: "",
+      dir: DIRECTIONS.some((d) => d.key === raw.dir) ? (raw.dir as Direction) : "von",
     };
   } catch {
     return null;
@@ -86,11 +97,11 @@ export function ConnectionExplorer({ nodes, edges }: { nodes: GraphNode[]; edges
   useEffect(() => {
     if (!loaded) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ weights: s.weights, min: s.min, show: s.show }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ weights: s.weights, min: s.min, show: s.show, dir: s.dir }));
     } catch {
       /* Speicher gesperrt: Einstellungen gelten nur bis zum Neuladen */
     }
-  }, [s.weights, s.min, s.show, loaded]);
+  }, [s.weights, s.min, s.show, s.dir, loaded]);
 
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const shownEdges: GraphEdge[] = useMemo(() => {
@@ -117,7 +128,12 @@ export function ConnectionExplorer({ nodes, edges }: { nodes: GraphNode[]; edges
         .slice(0, 25),
     [shownEdges, focus],
   );
-  const byName = useMemo(() => [...shownNodes].sort((a, b) => a.name.localeCompare(b.name, "de")), [shownNodes]);
+  // Abstände vom hervorgehobenen Spieler: gerichtet, über die gerade gezeigten Verbindungen
+  const reach = useMemo(() => {
+    if (!focus) return [];
+    const out = adjacency(shownEdges, s.weights);
+    return [...distancesFrom(focus, out, s.dir).values()].filter((r) => r.id !== focus).sort((a, b) => a.dist - b.dist);
+  }, [focus, shownEdges, s.weights, s.dir]);
   const name = (id: string) => nodeById.get(id)?.name ?? id;
   const changed = !sameWeights(s.weights, DEFAULTS.weights) || s.min !== DEFAULTS.min || s.show !== DEFAULTS.show || s.focus !== "";
 
@@ -181,17 +197,10 @@ export function ConnectionExplorer({ nodes, edges }: { nodes: GraphNode[]; edges
               ))}
             </div>
           </div>
-          <label className="conn__row gb__select">
-            <span className="conn__weight-name">Hervorheben</span>
-            <select value={focus ?? ""} onChange={(e) => set({ focus: e.target.value })}>
-              <option value="">Niemand</option>
-              {byName.map((n) => (
-                <option key={n.id} value={n.id}>
-                  {n.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="conn__row">
+            <span className="conn__weight-name">Fokus</span>
+            <PlayerSearch players={shownNodes} value={focus ?? ""} onChange={(id) => set({ focus: id })} label="Spieler hervorheben" empty={{ label: "Niemand" }} />
+          </div>
           <div className="conn__row">
             <span className="muted">
               {num(shownNodes.length)} Spieler · {num(shownEdges.length)} Verbindungen
@@ -223,6 +232,60 @@ export function ConnectionExplorer({ nodes, edges }: { nodes: GraphNode[]; edges
           <li>Lila Rahmen: live · grünes Kästchen: auf dem Server · Kopf ziehen zum Verschieben, anklicken fürs Profil</li>
         </ul>
       </div>
+
+      {focus && (
+        <>
+          <div className="section-head" style={{ marginTop: 48 }}>
+            <h2 className="t-2">Wie nah steht {name(focus)} den anderen?</h2>
+            <p className="muted">
+              Über den kürzesten Weg im Netz. Raids und Chat-Nachrichten zählen nur in ihre Richtung, geteilter Chat in beide. Nähe 50 % = direkt mit
+              1 Punkt verbunden; über Umwege sinkt sie.
+            </p>
+          </div>
+          <div className="gb__seg" role="group" aria-label="Richtung" style={{ marginBottom: 16 }}>
+            {DIRECTIONS.map((d) => (
+              <button key={d.key} type="button" aria-pressed={s.dir === d.key} title={d.hint} onClick={() => set({ dir: d.key })}>
+                {d.label}
+              </button>
+            ))}
+          </div>
+          {reach.length === 0 ? (
+            <p className="muted">In dieser Richtung ist niemand verbunden.</p>
+          ) : (
+            <div className="box" data-tone="white">
+              <div className="tbl-wrap">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>Spieler</th>
+                      <th className="num">Nähe</th>
+                      <th className="num">Schritte</th>
+                      <th>Weg</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reach.slice(0, 40).map((r) => (
+                      <tr key={r.id}>
+                        <td>
+                          <Person id={r.id} />
+                        </td>
+                        <td className="num">
+                          <span className="conn__near" style={{ "--near": closeness(r.dist) } as React.CSSProperties}>
+                            {Math.round(closeness(r.dist) * 100)} %
+                          </span>
+                        </td>
+                        <td className="num">{r.hops === 1 ? "direkt" : num(r.hops)}</td>
+                        <td className="muted conn__path">{(s.dir === "zu" ? [...r.path].reverse() : r.path).map(name).join(s.dir === "gegenseitig" ? " ↔ " : " → ")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {reach.length > 40 && <p className="muted">… und {num(reach.length - 40)} weitere, weiter entfernt.</p>}
+            </div>
+          )}
+        </>
+      )}
 
       <div className="section-head" style={{ marginTop: 48 }}>
         <h2 className="t-2">{focus ? `Verbindungen von ${name(focus)}` : "Stärkste Verbindungen"}</h2>

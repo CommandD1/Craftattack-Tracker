@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { timingSafeEqual } from "node:crypto";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
@@ -13,6 +12,8 @@ import { ALL_STREAMS, dayBounds, getDays, getDayStack, getOverlay, getPlayerDay,
 import { num } from "@/lib/format";
 import { parseShareMode } from "@/lib/earnings";
 import { EarningsView } from "./EarningsView";
+import { PlayerSearch } from "@/components/PlayerSearch";
+import { internAllowed } from "@/lib/intern";
 
 /** Interne Auswertung: nirgends verlinkt und nicht für Suchmaschinen */
 export const metadata: Metadata = { title: "Zuschauerwanderung", robots: { index: false, follow: false } };
@@ -32,17 +33,7 @@ const span = (a: number, b: number) => {
   return month(x) === month(y) ? `${d(x)}.–${d(y)}. ${month(y)}` : `${day.format(a)} – ${day.format(b)}`;
 };
 
-/**
- * Zugang nur mit `?key=` gleich INTERN_KEY (Server-Umgebung). Der Code ist öffentlich, der Pfad also bekannt; ohne
- * passenden Schlüssel (oder ohne gesetzten INTERN_KEY) gibt es eine gewöhnliche 404.
- */
-function allowed(key: unknown): key is string {
-  const secret = process.env.INTERN_KEY ?? "";
-  if (secret.length < 16 || typeof key !== "string") return false;
-  const a = Buffer.from(key);
-  const b = Buffer.from(secret);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
+const allowed = internAllowed;
 
 const VIEWS = [
   { key: "uebersicht", label: "Starts" },
@@ -328,14 +319,13 @@ async function OverlayView({
         ))}
         <label className="gb__select">
           <span className="eyebrow">Streams</span>
-          <select name="spieler" defaultValue={id}>
-            <option value={ALL_STREAMS}>Alle Streams zusammen</option>
-            {sorted.map((s) => (
-              <option key={s} value={s}>
-                {names[s]?.name ?? s}
-              </option>
-            ))}
-          </select>
+          <PlayerSearch
+            name="spieler"
+            defaultValue={id}
+            label="Streams"
+            empty={{ label: "Alle Streams zusammen", value: ALL_STREAMS }}
+            players={sorted.map((s) => ({ id: s, name: names[s]?.name ?? s, uuid: names[s]?.uuid }))}
+          />
         </label>
         <label className="gb__select">
           <span className="eyebrow">Von</span>
@@ -526,13 +516,7 @@ async function PlayerView({
         extra={
           <label className="gb__select">
             <span className="eyebrow">Spieler</span>
-            <select name="spieler" defaultValue={id}>
-              {sorted.map((s) => (
-                <option key={s} value={s}>
-                  {names[s]?.name ?? s}
-                </option>
-              ))}
-            </select>
+            <PlayerSearch name="spieler" defaultValue={id} label="Spieler" players={sorted.map((s) => ({ id: s, name: names[s]?.name ?? s, uuid: names[s]?.uuid }))} />
           </label>
         }
       />

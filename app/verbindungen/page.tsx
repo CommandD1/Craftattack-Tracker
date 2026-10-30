@@ -2,21 +2,14 @@ import Link from "next/link";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { PageSkeleton } from "@/components/Skeletons";
-import type { GraphNode } from "@/components/ConnectionGraph";
 import { ConnectionExplorer } from "@/components/ConnectionExplorer";
 import { FigValue } from "@/components/FigValue";
-import { loadTracker } from "@/lib/data";
-import { getConnections } from "@/lib/connections";
-import type { LinkCounts } from "@/lib/connectionWeights";
+import { NETWORK_RANGES, getNetwork } from "@/lib/connections";
 import { num } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Verbindungen" };
 
-const RANGES: { key: string; label: string; hours: number | null }[] = [
-  { key: "24h", label: "24 Std", hours: 24 },
-  { key: "7d", label: "7 Tage", hours: 7 * 24 },
-  { key: "alle", label: "Staffel", hours: null },
-];
+const RANGES = NETWORK_RANGES;
 
 /** Öffnet sofort mit Überschrift und Platzhaltern; die Daten werden nachgestreamt. */
 export default function Page(props: PageProps<"/verbindungen">) {
@@ -30,16 +23,7 @@ export default function Page(props: PageProps<"/verbindungen">) {
 async function Connections({ searchParams }: { searchParams: PageProps<"/verbindungen">["searchParams"] }) {
   const sp = await searchParams;
   const range = RANGES.find((r) => r.key === sp.zeit) ?? RANGES[2];
-  const [{ state }, all] = await Promise.all([loadTracker(), getConnections(range.hours)]);
-  // Nur erfasste Spieler; an den Browser gehen nur die Zählwerte, gewichtet wird dort
-  const edges: LinkCounts[] = all
-    .filter((e) => state.players[e.a] && state.players[e.b])
-    .map(({ a, b, raidsAB, raidsBA, chats, chatSeconds, msgsAB, msgsBA, now }) => ({ a, b, raidsAB, raidsBA, chats, chatSeconds, msgsAB, msgsBA, now }));
-  const ids = [...new Set(edges.flatMap((e) => [e.a, e.b]))];
-  const nodes: GraphNode[] = ids.map((id) => {
-    const p = state.players[id];
-    return { id, name: p.name, uuid: p.uuid, online: p.online, live: Boolean(p.live) };
-  });
+  const { nodes, edges } = await getNetwork(range.hours);
 
   const raids = edges.reduce((s, e) => s + e.raidsAB + e.raidsBA, 0);
   const chats = edges.reduce((s, e) => s + e.chats, 0);
