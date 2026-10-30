@@ -4,6 +4,10 @@ import type { PlayerPoint } from "@/lib/types";
 import { boardValue, eur, num } from "@/lib/format";
 import Link from "next/link";
 import { Sparkline } from "./Sparkline";
+import { usePlayerZones } from "./Estimates";
+
+/** Kennzahl in den Schätzungs-Nachträgen (scripts/estimate.mjs) */
+const ESTIMATE_STAT: Partial<Record<SparkKey, string>> = { viewers: "viewers", twitchSubs: "subs" };
 
 type SparkKey =
   | "viewers"
@@ -56,6 +60,7 @@ function trackedSeries(points: PlayerPoint[]) {
  */
 export function StatSpark({ points, k, label, height = 56, href }: { points: PlayerPoint[]; k: SparkKey; label: string; height?: number; href?: string }) {
   const format = FORMAT[k];
+  const zones = usePlayerZones(k === "twitchEarnings" ? null : (ESTIMATE_STAT[k] ?? k));
   // Zuschauer: Messpunkt ohne Stream = 0, sonst verbindet die Kurve zwei Streams mit einer schrägen Linie
   let data =
     k === "viewers"
@@ -77,7 +82,7 @@ export function StatSpark({ points, k, label, height = 56, href }: { points: Pla
   const t1 = Date.parse(data[data.length - 1].at);
   const body = (
     <>
-      <Sparkline points={data} width={320} height={height} format={format} step={k !== "viewers"} label={label} />
+      <Sparkline points={data} width={320} height={height} format={format} step={k !== "viewers"} label={label} zones={zones} />
       <div className="chart__axis">
         <span>{t1 - t0 > 36e5 * 20 ? df.format(t0) : tf.format(t0)}</span>
         <span>{tf.format(t1)}</span>

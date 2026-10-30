@@ -11,6 +11,7 @@
  * - Ältere Kopien (bis STALE_MS) werden sofort ausgeliefert und im Hintergrund erneuert.
  * - Höchstens MAX_RENDERS Seiten werden gleichzeitig gerendert (2 CPUs), der Rest wartet in einer Schlange.
  * - Endet Next.js, endet auch dieser Prozess (systemd startet beide neu).
+ * - `/schaetzung/…` geht an die Schätzungs-Ausgabe (eigener Dienst auf ESTIMATE_PORT, siehe README), mit demselben Cache.
  */
 import http from "node:http";
 import { spawn } from "node:child_process";
@@ -25,8 +26,12 @@ const MAX_BYTES = 120 * 1024 * 1024;
 const MAX_RENDERS = 3;
 const MAX_QUEUE = 400;
 const UPSTREAM_TIMEOUT_MS = 90_000;
+/** Schätzungs-Ausgabe (eigener Next.js-Dienst mit basePath /schaetzung) */
+const ESTIMATE_PORT = Number(process.env.ESTIMATE_PORT ?? 3030);
+const ESTIMATE_PREFIX = /^\/schaetzung(\/|\?|$)/;
+const portFor = (url) => (ESTIMATE_PREFIX.test(url) ? ESTIMATE_PORT : INNER_PORT);
 /** Nie zwischenspeichern: Cron/Poll, Vorwärmen, Status */
-const BYPASS = [/^\/api\/cron\//, /^\/api\/tracker(\/|$|\?)/, /^\/api\/warm/];
+const BYPASS = [/^(\/schaetzung)?\/api\/cron\//, /^(\/schaetzung)?\/api\/tracker(\/|$|\?)/, /^(\/schaetzung)?\/api\/warm/];
 /** Diese Anfrage-Header ändern die Antwort von Next.js (siehe dessen `Vary`) und gehören in den Schlüssel */
 const VARY = ["rsc", "next-router-state-tree", "next-router-prefetch", "next-router-segment-prefetch", "next-url"];
 /** Nicht an den Besucher weiterreichen; Länge und Kodierung setzt dieser Prozess selbst */
@@ -93,7 +98,7 @@ function release() {
 function fetchUpstream(req) {
   return new Promise((resolve, reject) => {
     const headers = { ...req.headers, "accept-encoding": "gzip" };
-    const up = http.request({ host: "127.0.0.1", port: INNER_PORT, method: "GET", path: req.url, headers, timeout: UPSTREAM_TIMEOUT_MS }, (res) => {
+    const up = http.request({ host: "127.0.0.1", port: portFor(req.url ?? "/"), method: "GET", path: req.url, headers, timeout: UPSTREAM_TIMEOUT_MS }, (res) => {
       const chunks = [];
       res.on("data", (c) => chunks.push(c));
       res.on("end", () => resolve({ at: Date.now(), status: res.statusCode ?? 502, headers: res.headers, body: Buffer.concat(chunks), gzip: res.headers["content-encoding"] === "gzip" }));
@@ -144,7 +149,7 @@ function send(req, res, entry, state) {
 
 /** Alles, was nicht zwischengespeichert wird, unverändert durchreichen (inkl. Streaming) */
 function pass(req, res) {
-  const up = http.request({ host: "127.0.0.1", port: INNER_PORT, method: req.method, path: req.url, headers: req.headers }, (r) => {
+  const up = http.request({ host: "127.0.0.1", port: portFor(req.url ?? "/"), method: req.method, path: req.url, headers: req.headers }, (r) => {
     res.writeHead(r.statusCode ?? 502, r.headers);
     r.pipe(res);
   });

@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DayProfileChart, daysBetween, type DayLine } from "./DayProfileChart";
+import { EstimateRects, EstimateTip, useEstimateGaps } from "./Estimates";
+import { BASE_PATH } from "@/lib/estimateMode";
 import {
   COLORS,
   MAX_METRICS,
@@ -68,7 +70,7 @@ function apiUrl(q: GraphQuery, metric: Metric, players: string[], now: number) {
   p.set("metric", metric);
   if (players.length) p.set("spieler", players.join(","));
   rangeParams(q, now, p);
-  return `/api/series?${p}`;
+  return `${BASE_PATH}/api/series?${p}`;
 }
 
 /** So lange gilt eine geladene Zeitreihe als frisch; danach wird sie bei der nächsten Änderung neu geholt */
@@ -107,7 +109,7 @@ function suggestionsUrl(q: GraphQuery, metric: Metric, now: number) {
   p.set("metric", metric);
   rangeParams(q, now, p);
   if (q.modus === "zuwachs" && metaOf(metric).counter) p.set("modus", "zuwachs");
-  return `/api/series/suggestions?${p}`;
+  return `${BASE_PATH}/api/series/suggestions?${p}`;
 }
 
 interface ApiLine {
@@ -228,6 +230,7 @@ function MultiChart({ lines, hidden, dataKey, percent }: { lines: Line[]; hidden
   const H = 300;
   const ref = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null); // Zeitpunkt (ms)
+  const zones = useEstimateGaps();
 
   const visible = lines.filter((l) => !hidden.has(l.id) && l.points.length > 0);
   const all = visible.flatMap((l) => l.points);
@@ -320,6 +323,7 @@ function MultiChart({ lines, hidden, dataKey, percent }: { lines: Line[]; hidden
           onPointerMove={onMove}
           onPointerLeave={() => setHover(null)}
         >
+          <EstimateRects zones={zones} x={x} t0={t0} t1={t1} height={H} />
           {yTicks.map((v) => (
             <line key={v} x1={0} x2={W} y1={yOf(v)} y2={yOf(v)} className="gb-chart__grid" vectorEffect="non-scaling-stroke" />
           ))}
@@ -353,6 +357,7 @@ function MultiChart({ lines, hidden, dataKey, percent }: { lines: Line[]; hidden
         {tip && tipT !== null && (
           <div className="gb-chart__tip" style={{ left: `${tipLeft * 100}%`, transform: `translateX(${tipLeft > 0.7 ? "-100%" : tipLeft < 0.3 ? "0" : "-50%"})` }} role="status">
             <span className="gb-chart__tip-time">{dtf.format(tipT)} Uhr</span>
+            <EstimateTip zones={zones} t={tipT} />
             {tip.map((t) => (
               <span key={t.line.id} className="gb-chart__tip-row">
                 <i style={{ background: t.line.color }} />

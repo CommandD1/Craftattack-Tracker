@@ -293,6 +293,8 @@ export async function attachVods(
   liveNow: { player: string; since: string; login: string }[] = [],
 ): Promise<void> {
   if (!TWITCH_ENABLED) return;
+  // Geschätzte Ereignisse (Schätzung) haben keinen echten Zeitpunkt, ein VOD-Link wäre irreführend
+  events = events.filter((e) => e.meta?.estimated !== true);
   // `noVod` = Twitch hatte zu einem abgeschlossenen Stream kein VOD; das alte Feld `vod:false` wurde zu großzügig gesetzt und wird ignoriert
   const todo = events.filter((e) => e.type === "death" && e.player && !e.meta?.unknown && e.meta?.vodUrl === undefined && e.meta?.noVod !== true);
   // Stream-an/aus: das VOD des Streams verlinken. Läuft der Stream noch, gibt es stattdessen den Live-Link (siehe `withLiveLinks`).

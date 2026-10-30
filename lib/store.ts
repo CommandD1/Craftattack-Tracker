@@ -5,6 +5,7 @@ import { playtimeOf } from "./playtime";
 import { createSwrCache } from "./swrCache";
 import { getEarningsSeries } from "./earnings";
 import { runsTracker } from "./mode";
+import { ESTIMATE } from "./estimateMode";
 import { EXTRA_HISTORY_KEYS, EXTRA_KEY_OF_METRIC, EXTRA_METRICS, extraStatSql, type ExtraMetric } from "./playerStats";
 import type { BoardKey, DeathFeedItem, FeedItem, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind, AfkCheck } from "./types";
 
@@ -291,10 +292,12 @@ async function loadFromDb() {
 
   // Altes Sammel-Ereignis „afk_farm“ (bis 11.10.2026) in die heutigen Start-Ereignisse je Art überführen;
   // das passende Ende trägt der Nachtrag (lib/backfill.ts) aus dem Spielerverlauf nach.
-  await db.query(
-    `UPDATE events SET type = CASE WHEN meta->>'kind' = 'blocks' THEN 'afk_blocks_start' ELSE 'afk_mobs_start' END
-      WHERE type = 'afk_farm'`,
-  );
+  if (!ESTIMATE) {
+    await db.query(
+      `UPDATE events SET type = CASE WHEN meta->>'kind' = 'blocks' THEN 'afk_blocks_start' ELSE 'afk_mobs_start' END
+        WHERE type = 'afk_farm'`,
+    );
+  }
 
   // Die letzten MAX_EVENTS_IN_MEMORY Ereignisse plus alle älteren der seltenen Arten
   const events = (
@@ -1331,6 +1334,8 @@ export async function assignEventPlayer(id: string, p: { id: string; name: strin
 /** Ergänzt `meta` eines Ereignisses (im Speicher und in der DB), z. B. um einen VOD-Link. */
 export async function updateEventMeta(e: TrackerEvent, patch: NonNullable<TrackerEvent["meta"]>) {
   e.meta = { ...(e.meta ?? {}), ...patch };
+  // Schätzung liest nur Sichten; der Link bleibt dort nur im Speicher
+  if (ESTIMATE) return;
   const db = await getDb();
   await db.query(`UPDATE events SET meta = COALESCE(meta, '{}'::jsonb) || $2::jsonb WHERE id = $1`, [e.id, JSON.stringify(patch)]);
 }
