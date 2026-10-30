@@ -4918,3 +4918,180 @@ button.conn__person {
   cursor: pointer;
   text-align: left;
 }
+
+/* ---------- Gruppen (/intern/gruppen) ---------- */
+.grp__find {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-block: 0 20px;
+}
+.grp__cards {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
+}
+.grp__card {
+  border-top: 8px solid var(--grp);
+  padding: 14px 16px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.grp__card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+.grp__card-head > span {
+  display: grid;
+}
+.grp__card-head:hover b {
+  text-decoration: underline;
+}
+.grp__line {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.grp__heads {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.grp__bar {
+  display: flex;
+  height: 10px;
+  min-width: 80px;
+  flex: 1;
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  box-shadow: 0 0 0 2px var(--line);
+}
+.grp__bar i {
+  display: block;
+  height: 100%;
+}
+.grp__hero {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  border-left: 10px solid var(--grp);
+  padding-left: 18px;
+  margin-bottom: 24px;
+}
+.grp__hero h2 {
+  margin: 4px 0 12px;
+}
+.grp__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin: 0 0 8px;
+}
+.grp__facts dt {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+.grp__facts dd {
+  margin: 0;
+  font-weight: 700;
+  font-size: 1.3rem;
+}
+.grp__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 16px;
+  margin-block: 20px;
+}
+.grp__leader,
+.grp__roles {
+  padding: 14px 18px;
+}
+.grp__leader ul {
+  margin: 8px 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 6px;
+}
+.grp__roles p {
+  margin: 0 0 8px;
+}
+.grp__members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.grp__member {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) auto minmax(120px, 200px) 1fr;
+  gap: 6px 14px;
+  align-items: center;
+  padding: 8px 12px;
+}
+.grp__member[data-active] {
+  box-shadow: 0 0 0 3px var(--gold), 4px 4px 0 0 var(--line);
+}
+.grp__belong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.grp__why {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.grp__edge {
+  color: var(--redstone);
+  font-weight: 600;
+}
+@media (max-width: 760px) {
+  .grp__member {
+    grid-template-columns: 1fr auto;
+  }
+  .grp__belong,
+  .grp__why {
+    grid-column: 1 / -1;
+  }
+  .grp__hero {
+    flex-direction: column;
+  }
+}
+.grp__matrix-box {
+  overflow-x: auto;
+  padding: 12px;
+}
+.grp__matrix {
+  display: grid;
+  grid-template-columns: 22px repeat(var(--n), minmax(14px, 22px));
+  gap: 2px;
+  width: max-content;
+}
+.grp__mhead {
+  display: grid;
+  place-items: center;
+}
+.grp__cell {
+  aspect-ratio: 1;
+  background: color-mix(in srgb, var(--amethyst) calc(var(--v) * 100%), color-mix(in srgb, var(--ink) 6%, transparent));
+}
+.grp__cell[data-self] {
+  background: color-mix(in srgb, var(--ink) 25%, transparent);
+}
+.grp__cell[data-on] {
+  outline: 1px solid var(--line);
+}
+.grp__matrix-tip {
+  min-height: 1.5em;
+  margin: 10px 0 0;
+}
