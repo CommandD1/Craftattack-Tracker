@@ -229,7 +229,7 @@ export function ConnectionExplorer({ nodes, edges }: { nodes: GraphNode[]; edges
           <li>
             <i style={{ background: "var(--grass)" }} /> gerade im geteilten Chat
           </li>
-          <li>Lila Rahmen: live · grünes Kästchen: auf dem Server · Kopf ziehen zum Verschieben, anklicken fürs Profil</li>
+          <li>Lila Rahmen: live · grünes Kästchen: auf dem Server · Name beim Überfahren (Touch: einmal antippen, zweimal fürs Profil) · Kopf ziehen zum Verschieben, anklicken fürs Profil</li>
         </ul>
       </div>
 

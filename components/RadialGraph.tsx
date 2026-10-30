@@ -79,24 +79,15 @@ export function RadialGraph({
       }
     };
     place(root.id, -Math.PI / 2, (Math.PI * 3) / 2, 0);
-    // Namen nur, wo Platz ist: die Nähesten zuerst, ein Name, der einen gesetzten überdecken würde, entfällt
-    const label = new Set<string>();
-    const boxes: { x: number; y: number }[] = [];
-    for (const r of list) {
-      const p = pos.get(r.id)!;
-      if (boxes.some((b) => Math.abs(b.x - p.x) < 78 && Math.abs(b.y - p.y) < 34)) continue;
-      boxes.push(p);
-      label.add(r.id);
-    }
     const rings =
       scale === "schritte"
         ? Array.from({ length: maxHops }, (_, i) => ({ r: ((i + 1) / maxHops) * R, text: i === 0 ? "direkt" : `${i + 1} Schritte` }))
         : [0.75, 0.5, 0.25].map((c) => ({ r: (1 - c) * R * 1.15, text: `Nähe ${Math.round(c * 100)} %` }));
-    return { list, pos, label, rings, root: root.id };
+    return { list, pos, rings, root: root.id };
   }, [reach, maxNodes, scale]);
 
   if (!layout) return <p className="muted">Niemand gewählt.</p>;
-  const { list, pos, label, rings, root } = layout;
+  const { list, pos, rings, root } = layout;
   const maxS = Math.max(1, ...list.filter((r) => r.parent).map((r) => strengthOf(r.parent!, r.id)));
   const h = hover ? reach.get(hover) : null;
   const name = (id: string) => byId.get(id)?.name ?? id;
@@ -165,7 +156,8 @@ export function RadialGraph({
             >
               <rect x={-size / 2 - 4} y={-size / 2 - 4} width={size + 8} height={size + 8} className="radial__frame" style={own ? { fill: `var(${own})` } : n.live ? { fill: "var(--twitch)" } : undefined} />
               <image href={headUrl(n.uuid, 64, n.id)} x={-size / 2} y={-size / 2} width={size} height={size} style={{ imageRendering: "pixelated" }} />
-              {(label.has(r.id) || r.id === hover || r.id === root) && (
+              {/* Name nur beim überfahrenen Kopf und in der Mitte, sonst verdecken die Namen das Bild */}
+              {(r.id === hover || r.id === root) && (
                 <text y={size / 2 + 18} className="radial__label">
                   {n.name}
                 </text>

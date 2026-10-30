@@ -34,7 +34,7 @@ interface Group {
  * Versuchsfläche fürs Netz (intern): Nähe als Ringe um einen Spieler und automatisch erkannte Gruppen.
  * Gerichtet ausgewertet: Raids und Chat-Nachrichten gelten nur in ihre Richtung.
  */
-export function NetworkLab({ nodes, edges }: { nodes: GraphNode[]; edges: LinkCounts[] }) {
+export function NetworkLab({ nodes, edges, internKey }: { nodes: GraphNode[]; edges: LinkCounts[]; internKey: string }) {
   const [tab, setTab] = useState<"naehe" | "gruppen">("naehe");
   const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
   const [dir, setDir] = useState<Direction>("von");
@@ -186,7 +186,10 @@ export function NetworkLab({ nodes, edges }: { nodes: GraphNode[]; edges: LinkCo
             {groups.map((g) => (
               <li key={g.index} className="box netlab__group" data-tone="white" style={{ borderLeftColor: `var(${g.color})` }}>
                 <p className="netlab__group-head">
-                  <i style={{ background: `var(${g.color})` }} aria-hidden="true" /> <b>Gruppe {g.index + 1}</b>
+                  <i style={{ background: `var(${g.color})` }} aria-hidden="true" />{" "}
+                  <Link href={`/intern/gruppen/${encodeURIComponent(g.members[0].id)}?key=${encodeURIComponent(internKey)}`}>
+                    <b>Gruppe {g.index + 1}</b> → eigene Seite
+                  </Link>
                   <span className="muted">
                     {" "}
                     · {num(g.members.length)} Spieler · {pct(g.cohesion)} der Verbindungen bleiben in der Gruppe

@@ -71,12 +71,15 @@ export function ConnectionGraph({
   edges,
   focus = null,
   colorOf = null,
+  hrefOf = null,
 }: {
   nodes: GraphNode[];
   edges: GraphEdge[];
   focus?: string | null;
   /** Rahmenfarbe je Spieler als CSS-Variable (z. B. Gruppe); ersetzt dann die Live-Farbe */
   colorOf?: ((id: string) => string | null) | null;
+  /** Ziel beim Anklicken (Standard: Profil des Spielers) */
+  hrefOf?: ((id: string) => string) | null;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   /** Positionen über Änderungen der Einstellungen hinweg: Das Netz ordnet sich nur neu, statt neu zu beginnen */
@@ -87,9 +90,11 @@ export function ConnectionGraph({
     focusRef.current = focus;
   }, [focus]);
   const colorRef = useRef(colorOf);
+  const hrefRef = useRef(hrefOf);
   useEffect(() => {
     colorRef.current = colorOf;
-  }, [colorOf]);
+    hrefRef.current = hrefOf;
+  }, [colorOf, hrefOf]);
   const router = useRouter();
   const [tip, setTip] = useState<Tip | null>(null);
 
@@ -178,6 +183,8 @@ export function ConnectionGraph({
 
     let drag: Node | null = null;
     let hover: Node | null = null;
+    /** Zuletzt angetippter Kopf (Touch) */
+    let tapped: Node | null = null;
     let running = true;
     // Mit bekannten Positionen nur sanft nachordnen
     let alpha = known ? 0.5 : 1;
@@ -299,19 +306,13 @@ export function ConnectionGraph({
           ctx.fillRect(x + r - 3, y + r - 3, 8, 8);
           ctx.strokeRect(x + r - 3, y + r - 3, 8, 8);
         }
-        if (!dim) labels.push(n);
+        // Namen nur beim überfahrenen bzw. hervorgehobenen Kopf, sonst verdecken sie das Netz (Name steht im Tooltip)
+        if (n === hl) labels.push(n);
       }
-      // Namen zuletzt, damit keine Linie oder kein Kopf darüber liegt. Größte Knoten (und der überfahrene) zuerst;
-      // ein Name, der einen schon gesetzten überdecken würde, entfällt. So passen so viele Namen hin wie Platz ist.
+      // Name zuletzt, damit keine Linie oder kein Kopf darüber liegt
       ctx.globalAlpha = 1;
-      labels.sort((a, b) => Number(b === hl) - Number(a === hl) || b.r - a.r);
-      const placed: [number, number, number, number][] = [];
       for (const n of labels) {
         const y = sy(n) - sr(n) - 8;
-        const w = ctx.measureText(n.name).width / 2 + 3;
-        const box: [number, number, number, number] = [sx(n) - w, y - 12, sx(n) + w, y + 3];
-        if (placed.some((p) => box[0] < p[2] && box[2] > p[0] && box[1] < p[3] && box[3] > p[1])) continue;
-        placed.push(box);
         ctx.fillStyle = ink;
         ctx.strokeStyle = paper;
         ctx.lineWidth = 3;
@@ -379,7 +380,15 @@ export function ConnectionGraph({
     const onUp = (ev: PointerEvent) => {
       const was = drag;
       drag = null;
-      if (was && !moved && find(point(ev)) === was) router.push(`/spieler/${encodeURIComponent(was.id)}`);
+      if (!was || moved || find(point(ev)) !== was) return;
+      // Touch hat kein Überfahren: erstes Tippen zeigt Name und Verbindungen, zweites öffnet das Profil
+      if (ev.pointerType !== "mouse" && tapped !== was) {
+        tapped = was;
+        hover = was;
+        showTip(was);
+        return;
+      }
+      router.push(hrefRef.current?.(was.id) ?? `/spieler/${encodeURIComponent(was.id)}`);
     };
     const onLeave = () => {
       if (drag) return;

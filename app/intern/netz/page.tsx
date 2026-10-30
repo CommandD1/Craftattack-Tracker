@@ -35,7 +35,7 @@ async function Lab({ searchParams }: { searchParams: PageProps<"/intern/netz">["
           <h1 className="t-1">Netz: Nähe und Gruppen</h1>
           <p>
             Zwei Ideen zum Ausprobieren, bevor sie auf <Link href="/verbindungen">Verbindungen</Link> kommen: ein Spieler in der Mitte und alle anderen
-            nach ihrer Nähe zu ihm, und automatisch erkannte Gruppen. Raids und Chat-Nachrichten zählen nur in ihre Richtung.
+            nach ihrer Nähe zu ihm, und automatisch erkannte Gruppen (mit eigenen <Link href={`/intern/gruppen?key=${encodeURIComponent(key)}`}>Gruppen-Seiten</Link>). Raids und Chat-Nachrichten zählen nur in ihre Richtung.
           </p>
         </div>
       </section>
@@ -54,7 +54,7 @@ async function Lab({ searchParams }: { searchParams: PageProps<"/intern/netz">["
             <b>Feedback gesucht:</b> Ist „Ringe nach Nähe“ oder „nach Schritten“ verständlicher? Sollen die Gruppen als eigene Ansicht bleiben oder
             als Farben im normalen Netz auf /verbindungen? Passen die erkannten Gruppen zu dem, was du aus den Streams kennst?
           </div>
-          <NetworkLab nodes={nodes} edges={edges} />
+          <NetworkLab nodes={nodes} edges={edges} internKey={key} />
         </div>
       </section>
     </>

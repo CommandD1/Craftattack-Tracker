@@ -1,0 +1,533 @@
+"use client";
+
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import { ConnectionGraph, type GraphEdge, type GraphNode } from "./ConnectionGraph";
+import { Head } from "./Head";
+import { PlayerSearch } from "./PlayerSearch";
+import { DEFAULT_WEIGHTS, weigh, type LinkCounts, type Weights } from "@/lib/connectionWeights";
+import { analyzeGroups, reasonText, ROLE_LABEL, ROLE_TONE, type Group, type GroupAnalysis, type Member, type Role } from "@/lib/groups";
+import { GROUP_COLORS } from "@/lib/network";
+import { num } from "@/lib/format";
+
+const PRESETS: { label: string; w: Weights }[] = [
+  { label: "Ausgewogen", w: DEFAULT_WEIGHTS },
+  { label: "Nur Raids", w: { raid: 1, shared: 0, msgs: 0 } },
+  { label: "Nur geteilter Chat", w: { raid: 0, shared: 1, msgs: 0 } },
+  { label: "Nur Chat", w: { raid: 0, shared: 0, msgs: 1 } },
+];
+const same = (a: Weights, b: Weights) => a.raid === b.raid && a.shared === b.shared && a.msgs === b.msgs;
+const pct = (v: number) => `${Math.round(v * 100)} %`;
+const ROLE_COLOR: Record<Role, string> = { anfuehrer: "--gold", kern: "--grass", mitglied: "--sky", rand: "--paper" };
+const ROLE_ORDER: Role[] = ["anfuehrer", "kern", "mitglied", "rand"];
+
+/** Gemeinsame Einstellungen: Gewichtung und Feinheit der Gruppen */
+function useAnalysis(edges: LinkCounts[]) {
+  const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
+  const [resolution, setResolution] = useState(1);
+  const analysis = useMemo(() => analyzeGroups(edges, weights, resolution), [edges, weights, resolution]);
+  const controls = (
+    <div className="box conn__controls" data-tone="white">
+      <fieldset className="conn__group">
+        <legend className="eyebrow">Was zählt</legend>
+        <div className="gb__seg" role="group" aria-label="Gewichtung">
+          {PRESETS.map((p) => (
+            <button key={p.label} type="button" aria-pressed={same(weights, p.w)} onClick={() => setWeights(p.w)}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset className="conn__group">
+        <legend className="eyebrow">Gruppen</legend>
+        <label className="conn__weight">
+          <span className="conn__weight-name">Feinheit</span>
+          <input type="range" min={0.5} max={2.5} step={0.25} value={resolution} onChange={(e) => setResolution(Number(e.target.value))} />
+          <b className="num conn__weight-val">{resolution.toLocaleString("de-DE")}</b>
+          <span className="muted conn__weight-unit">höher = mehr, kleinere Gruppen ({num(analysis.groups.length)})</span>
+        </label>
+      </fieldset>
+    </div>
+  );
+  return { analysis, weights, controls };
+}
+
+function groupName(g: Group, name: (id: string) => string) {
+  return `Gruppe um ${name(g.leader)}`;
+}
+
+/** Übersicht aller Gruppen: Karte der Gruppen (Anführer-Köpfe) und eine Karte je Gruppe */
+export function GroupsOverview({ nodes, edges, base }: { nodes: GraphNode[]; edges: LinkCounts[]; base: { path: string; key: string } }) {
+  const { analysis, weights, controls } = useAnalysis(edges);
+  const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  const name = (id: string) => byId.get(id)?.name ?? id;
+  const href = (id: string) => `${base.path}/${encodeURIComponent(id)}?key=${encodeURIComponent(base.key)}`;
+  const [find, setFind] = useState("");
+
+  // Karte: je Gruppe ein Knoten (Kopf des Anführers), Linien = Verbindungen zwischen Gruppen
+  const { mapNodes, mapEdges, leaderGroup } = useMemo(() => groupMap(analysis, byId, weights, edges), [analysis, byId, weights, edges]);
+  const colorOf = useMemo(() => (id: string) => GROUP_COLORS[(leaderGroup.get(id) ?? 0) % GROUP_COLORS.length], [leaderGroup]);
+  const hrefOf = useMemo(() => (id: string) => href(id), [base.key]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const found = find ? analysis.groupOf.get(find) : undefined;
+
+  return (
+    <>
+      {controls}
+      <div className="grp__find">
+        <span className="eyebrow">In welcher Gruppe ist …</span>
+        <PlayerSearch players={nodes} value={find} onChange={setFind} label="Spieler finden" empty={{ label: "Spieler wählen" }} />
+        {found !== undefined && (
+          <Link className="tag" data-tone="gold" href={href(find)}>
+            {name(find)} → {groupName(analysis.groups[found], name)}
+          </Link>
+        )}
+      </div>
+      <div className="box conn__box" data-tone="white">
+        <ConnectionGraph nodes={mapNodes} edges={mapEdges} colorOf={colorOf} hrefOf={hrefOf} />
+        <p className="muted conn__legend">Ein Kopf je Gruppe (ihr Anführer), Größe = Stärke der Gruppe, Linien = Verbindungen zwischen den Gruppen (Raids, Nachrichten, geteilte Chats aller Mitglieder). Name beim Überfahren, anklicken öffnet die Gruppe.</p>
+      </div>
+      <ul className="grp__cards">
+        {analysis.groups.map((g) => {
+          const byRole = (r: Role) => g.members.filter((m) => m.role === r);
+          return (
+            <li key={g.index} className="box grp__card" data-tone="white" style={{ "--grp": `var(${g.color})` } as React.CSSProperties}>
+              <Link href={href(g.leader)} className="grp__card-head">
+                <Head id={g.leader} uuid={byId.get(g.leader)?.uuid} name={name(g.leader)} size={40} decorative />
+                <span>
+                  <b>{groupName(g, name)}</b>
+                  <span className="muted">
+                    {num(g.members.length)} Spieler · {pct(g.cohesion)} bleibt in der Gruppe
+                  </span>
+                </span>
+              </Link>
+              <Bar parts={[{ v: g.cohesion, color: g.color, label: "bleibt in der Gruppe" }]} />
+              <p className="grp__line">
+                <span className="eyebrow">Kern</span>
+                <Heads ids={byRole("kern").map((m) => m.id)} byId={byId} max={8} />
+              </p>
+              <p className="grp__line">
+                <span className="eyebrow">Rand</span>
+                <Heads ids={byRole("rand").map((m) => m.id)} byId={byId} max={8} />
+              </p>
+              {g.neighbours[0] && (
+                <p className="muted grp__line">
+                  Am engsten mit{" "}
+                  <Link href={href(analysis.groups[g.neighbours[0].group].leader)}>{groupName(analysis.groups[g.neighbours[0].group], name)}</Link>
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
+/** Karte der Gruppen: Anführer-Köpfe, Linien mit den summierten echten Zählwerten zwischen den Gruppen */
+function groupMap(analysis: GroupAnalysis, byId: Map<string, GraphNode>, weights: Weights, edges: LinkCounts[]) {
+  const leaderGroup = new Map(analysis.groups.map((g) => [g.leader, g.index]));
+  const mapNodes: GraphNode[] = analysis.groups.map((g) => {
+    const n = byId.get(g.leader)!;
+    return { ...n, name: `Gruppe um ${n.name}`, online: g.members.some((m) => byId.get(m.id)?.online), live: false };
+  });
+  const sums = new Map<string, LinkCounts>();
+  for (const e of edges) {
+    const ga = analysis.groupOf.get(e.a);
+    const gb = analysis.groupOf.get(e.b);
+    if (ga === undefined || gb === undefined || ga === gb) continue;
+    const la = analysis.groups[ga].leader;
+    const lb = analysis.groups[gb].leader;
+    const [a, b, flip] = la < lb ? [la, lb, false] : [lb, la, true];
+    const k = `${a}|${b}`;
+    const t = sums.get(k) ?? sums.set(k, { a, b, raidsAB: 0, raidsBA: 0, chats: 0, chatSeconds: 0, msgsAB: 0, msgsBA: 0, now: false }).get(k)!;
+    t.raidsAB += flip ? e.raidsBA : e.raidsAB;
+    t.raidsBA += flip ? e.raidsAB : e.raidsBA;
+    t.msgsAB += flip ? e.msgsBA : e.msgsAB;
+    t.msgsBA += flip ? e.msgsAB : e.msgsBA;
+    t.chats += e.chats;
+    t.chatSeconds += e.chatSeconds;
+    t.now ||= e.now;
+  }
+  const mapEdges: GraphEdge[] = [...sums.values()].map((e) => ({ ...e, ...weigh(e, weights) })).filter((e) => e.weight > 0);
+  return { mapNodes, mapEdges, leaderGroup };
+}
+
+function Heads({ ids, byId, max }: { ids: string[]; byId: Map<string, GraphNode>; max: number }) {
+  if (!ids.length) return <span className="muted">–</span>;
+  return (
+    <span className="grp__heads">
+      {ids.slice(0, max).map((id) => (
+        <Link key={id} href={`/spieler/${encodeURIComponent(id)}`} title={byId.get(id)?.name ?? id}>
+          <Head id={id} uuid={byId.get(id)?.uuid} name={byId.get(id)?.name ?? id} size={24} src={32} decorative />
+        </Link>
+      ))}
+      {ids.length > max && <span className="muted"> +{ids.length - max}</span>}
+    </span>
+  );
+}
+
+/** Gestapelter Balken (Anteile 0–1), Rest bleibt leer */
+function Bar({ parts }: { parts: { v: number; color: string; label: string }[] }) {
+  return (
+    <span className="grp__bar" aria-hidden="true">
+      {parts
+        .filter((p) => p.v > 0.005)
+        .map((p, i) => (
+          <i key={i} style={{ width: `${p.v * 100}%`, background: `var(${p.color})` }} title={`${p.label}: ${pct(p.v)}`} />
+        ))}
+    </span>
+  );
+}
+
+/** Seite einer Gruppe: Anführer und warum, Netz der Mitglieder, Rollen, Zugehörigkeit, Matrix, Nachbargruppen */
+export function GroupView({ nodes, edges, member, base }: { nodes: GraphNode[]; edges: LinkCounts[]; member: string; base: { path: string; key: string } }) {
+  const { analysis, weights, controls } = useAnalysis(edges);
+  const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  const name = (id: string) => byId.get(id)?.name ?? id;
+  const href = (id: string) => `${base.path}/${encodeURIComponent(id)}?key=${encodeURIComponent(base.key)}`;
+  const [hover, setHover] = useState<string | null>(null);
+  const [sort, setSort] = useState<"rolle" | "zugehoerigkeit" | "rang">("rolle");
+
+  const gi = analysis.groupOf.get(member);
+  const g = gi === undefined ? null : analysis.groups[gi];
+  const ids = useMemo(() => new Set(g?.members.map((m) => m.id) ?? []), [g]);
+  const memberOf = useMemo(() => new Map(g?.members.map((m) => [m.id, m]) ?? []), [g]);
+  const gNodes = useMemo(() => nodes.filter((n) => ids.has(n.id)), [nodes, ids]);
+  const gEdges: GraphEdge[] = useMemo(() => edges.filter((e) => ids.has(e.a) && ids.has(e.b)).map((e) => ({ ...e, ...weigh(e, weights) })).filter((e) => e.weight > 0), [edges, ids, weights]);
+  const colorOf = useMemo(() => (id: string) => ROLE_COLOR[memberOf.get(id)?.role ?? "mitglied"], [memberOf]);
+
+  if (!g) return <p className="muted">{name(member)} ist in diesem Zeitraum mit niemandem verbunden.</p>;
+  const leader = memberOf.get(g.leader)!;
+  const receivedTotal = g.members.reduce((s, m) => s + m.received, 0);
+  const supporters = g.members
+    .filter((m) => m.id !== g.leader)
+    .map((m) => ({ id: m.id, w: analysis.pairs.get(`${m.id}|${g.leader}`)?.weight ?? 0 }))
+    .filter((x) => x.w > 0)
+    .sort((a, b) => b.w - a.w);
+  const runnerUp = g.members[1];
+  const sorted = [...g.members].sort((a, b) =>
+    sort === "rolle" ? ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role) || b.rank - a.rank : sort === "rang" ? b.rank - a.rank : b.belonging - a.belonging,
+  );
+  const counts = Object.fromEntries(ROLE_ORDER.map((r) => [r, g.members.filter((m) => m.role === r).length])) as Record<Role, number>;
+
+  return (
+    <>
+      <section className="grp__hero" style={{ "--grp": `var(${g.color})` } as React.CSSProperties}>
+        <Head id={g.leader} uuid={byId.get(g.leader)?.uuid} name={name(g.leader)} size={72} decorative />
+        <div>
+          <p className="eyebrow">Gruppe {g.index + 1} von {analysis.groups.length}</p>
+          <h2 className="t-2">{groupName(g, name)}</h2>
+          <dl className="grp__facts">
+            <div>
+              <dt>Spieler</dt>
+              <dd className="num">{num(g.members.length)}</dd>
+            </div>
+            <div>
+              <dt title="Anteil der Verbindungsstärke der Mitglieder, der innerhalb der Gruppe bleibt">Zusammenhalt</dt>
+              <dd className="num">{pct(g.cohesion)}</dd>
+            </div>
+            <div>
+              <dt title="Anteil der möglichen Paare, die direkt verbunden sind">Dichte</dt>
+              <dd className="num">{pct(g.density)}</dd>
+            </div>
+            <div>
+              <dt>Raids innen</dt>
+              <dd className="num">{num(g.inside.raids)}</dd>
+            </div>
+            <div>
+              <dt>Nachrichten innen</dt>
+              <dd className="num">{num(g.inside.msgs)}</dd>
+            </div>
+            <div>
+              <dt>Geteilte Chats</dt>
+              <dd className="num">{num(g.inside.chats)}</dd>
+            </div>
+          </dl>
+          {member !== g.leader && (
+            <p className="muted">
+              Geöffnet über {name(member)} ({ROLE_LABEL[memberOf.get(member)!.role]}).
+            </p>
+          )}
+        </div>
+      </section>
+
+      {controls}
+
+      <div className="grp__grid">
+        <section className="box grp__leader" data-tone="white" aria-labelledby="anf-h">
+          <h3 className="t-3" id="anf-h">
+            Warum {name(g.leader)} der Anführer ist
+          </h3>
+          <ul>
+            <li>
+              Bekommt <b>{pct(receivedTotal ? leader.received / receivedTotal : 0)}</b> der Aufmerksamkeit in der Gruppe: Raids, Nachrichten im eigenen Chat,
+              geteilte Chats.
+            </li>
+            <li>
+              Direkt verbunden mit <b>{num(leader.links)}</b> von {num(g.members.length - 1)} Mitgliedern.
+            </li>
+            {supporters.length > 0 && (
+              <li>
+                Am meisten von <Names ids={supporters.slice(0, 3).map((s) => s.id)} name={name} />.
+              </li>
+            )}
+            {runnerUp && (
+              <li className="muted">
+                Dahinter: {name(runnerUp.id)} ({pct(runnerUp.rank / Math.max(1e-9, leader.rank))} von {name(g.leader)}s Wert).
+              </li>
+            )}
+          </ul>
+          <p className="muted">Gemessen wie PageRank: Aufmerksamkeit von gut vernetzten Mitgliedern zählt mehr als von Randfiguren.</p>
+        </section>
+        <section className="box grp__roles" data-tone="white" aria-label="Rollen">
+          {ROLE_ORDER.map((r) => (
+            <p key={r}>
+              <span className="tag" data-tone={ROLE_TONE[r]}>
+                {ROLE_LABEL[r]}
+              </span>{" "}
+              <b className="num">{num(counts[r])}</b>{" "}
+              <span className="muted">
+                {r === "anfuehrer"
+                  ? "die meiste Aufmerksamkeit"
+                  : r === "kern"
+                    ? "stark verbunden, fast nur hier"
+                    : r === "mitglied"
+                      ? "klar dabei"
+                      : "kaum verbunden oder fast genauso mit einer anderen Gruppe"}
+              </span>
+            </p>
+          ))}
+        </section>
+      </div>
+
+      <div className="box conn__box" data-tone="white">
+        <ConnectionGraph nodes={gNodes} edges={gEdges} focus={hover} colorOf={colorOf} />
+        <ul className="conn__legend muted">
+          {ROLE_ORDER.map((r) => (
+            <li key={r}>
+              <i style={{ background: `var(${ROLE_COLOR[r]})` }} /> {ROLE_LABEL[r]}
+            </li>
+          ))}
+          <li>Nur Verbindungen innerhalb der Gruppe · Name beim Überfahren</li>
+        </ul>
+      </div>
+
+      <div className="section-head" style={{ marginTop: 40 }}>
+        <h3 className="t-2">Mitglieder</h3>
+        <div className="gb__seg" role="group" aria-label="Sortierung">
+          {(
+            [
+              ["rolle", "Rolle"],
+              ["zugehoerigkeit", "Zugehörigkeit"],
+              ["rang", "Einfluss"],
+            ] as const
+          ).map(([k, l]) => (
+            <button key={k} type="button" aria-pressed={sort === k} onClick={() => setSort(k)}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+      <ul className="grp__members">
+        {sorted.map((m) => (
+          <MemberRow key={m.id} m={m} g={g} analysis={analysis} name={name} byId={byId} hrefGroup={href} onHover={setHover} active={hover === m.id} />
+        ))}
+      </ul>
+
+      <div className="section-head" style={{ marginTop: 40 }}>
+        <h3 className="t-2">Wer mit wem</h3>
+        <p className="muted">Zeile → Spalte: was der Spieler links dem oben tut (Raids, Nachrichten, geteilter Chat). Je dunkler, desto mehr. Feld überfahren für Details.</p>
+      </div>
+      <Matrix g={g} analysis={analysis} name={name} byId={byId} onHover={setHover} />
+
+      {g.neighbours.length > 0 && (
+        <>
+          <div className="section-head" style={{ marginTop: 40 }}>
+            <h3 className="t-2">Verbindungen zu anderen Gruppen</h3>
+          </div>
+          <ul className="grp__cards">
+            {g.neighbours.slice(0, 6).map((nb) => {
+              const other = analysis.groups[nb.group];
+              return (
+                <li key={nb.group} className="box grp__card" data-tone="white" style={{ "--grp": `var(${other.color})` } as React.CSSProperties}>
+                  <Link href={href(other.leader)} className="grp__card-head">
+                    <Head id={other.leader} uuid={byId.get(other.leader)?.uuid} name={name(other.leader)} size={32} decorative />
+                    <span>
+                      <b>{groupName(other, name)}</b>
+                      <span className="muted">{num(Math.round(nb.weight))} Punkte</span>
+                    </span>
+                  </Link>
+                  <p className="muted grp__line">
+                    Brücken:{" "}
+                    {nb.bridges
+                      .slice(0, 3)
+                      .map((b) => `${name(b.a)} – ${name(b.b)}`)
+                      .join(", ")}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
+    </>
+  );
+}
+
+function Names({ ids, name }: { ids: string[]; name: (id: string) => string }) {
+  return (
+    <>
+      {ids.map((id, i) => (
+        <span key={id}>
+          {i > 0 && (i === ids.length - 1 ? " und " : ", ")}
+          <Link href={`/spieler/${encodeURIComponent(id)}`}>{name(id)}</Link>
+        </span>
+      ))}
+    </>
+  );
+}
+
+function MemberRow({
+  m,
+  g,
+  analysis,
+  name,
+  byId,
+  hrefGroup,
+  onHover,
+  active,
+}: {
+  m: Member;
+  g: Group;
+  analysis: GroupAnalysis;
+  name: (id: string) => string;
+  byId: Map<string, GraphNode>;
+  hrefGroup: (id: string) => string;
+  onHover: (id: string | null) => void;
+  active: boolean;
+}) {
+  const parts = [{ v: m.belonging, color: g.color, label: "in dieser Gruppe" }, ...[...m.shares].filter(([k]) => k !== g.index).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ v, color: GROUP_COLORS[k % GROUP_COLORS.length], label: groupName(analysis.groups[k], name) }))];
+  const why =
+    m.role === "rand"
+      ? m.edge === "zwischen" && m.alt
+        ? `Fast genauso mit der ${groupName(analysis.groups[m.alt.group], name)} verbunden (${pct(m.alt.share)} dort, ${pct(m.belonging)} hier).`
+        : "Kaum mit der Gruppe verbunden, nur über wenige schwache Verbindungen."
+      : null;
+  return (
+    <li className="box grp__member" data-tone="white" data-active={active || undefined} onMouseEnter={() => onHover(m.id)} onMouseLeave={() => onHover(null)}>
+      <Link href={`/spieler/${encodeURIComponent(m.id)}`} className="conn__person">
+        <Head id={m.id} uuid={byId.get(m.id)?.uuid} name={name(m.id)} size={32} decorative /> <b>{name(m.id)}</b>
+      </Link>
+      <span className="tag" data-tone={ROLE_TONE[m.role]}>
+        {ROLE_LABEL[m.role]}
+      </span>
+      <span className="grp__belong" title={`Zugehörigkeit ${pct(m.belonging)}`}>
+        <Bar parts={parts} />
+        <span className="num muted">{pct(m.belonging)}</span>
+      </span>
+      <p className="grp__why">
+        {why && <span className="grp__edge">{why} </span>}
+        {m.reasons.length ? (
+          <>
+            <span className="muted">Dabei durch </span>
+            {m.reasons.slice(0, 3).map((r, i) => (
+              <span key={r.other}>
+                {i > 0 && "; "}
+                <b>{name(r.other)}</b> <span className="muted">({reasonText(r)})</span>
+              </span>
+            ))}
+          </>
+        ) : (
+          <span className="muted">Keine direkte Verbindung in der Gruppe.</span>
+        )}
+        {m.alt && m.role !== "rand" && m.alt.share > 0.15 && (
+          <>
+            {" "}
+            <Link className="muted" href={hrefGroup(analysis.groups[m.alt.group].leader)}>
+              · auch {pct(m.alt.share)} zur {groupName(analysis.groups[m.alt.group], name)}
+            </Link>
+          </>
+        )}
+      </p>
+    </li>
+  );
+}
+
+function Matrix({ g, analysis, name, byId, onHover }: { g: Group; analysis: GroupAnalysis; name: (id: string) => string; byId: Map<string, GraphNode>; onHover: (id: string | null) => void }) {
+  const [cell, setCell] = useState<{ a: string; b: string } | null>(null);
+  const order = [...g.members].sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role) || b.rank - a.rank).map((m) => m.id);
+  const max = Math.max(1, ...order.flatMap((a) => order.map((b) => analysis.pairs.get(`${a}|${b}`)?.weight ?? 0)));
+  const info = cell ? analysis.pairs.get(`${cell.a}|${cell.b}`) : null;
+  return (
+    <div className="box grp__matrix-box" data-tone="white">
+      <div className="grp__matrix" style={{ "--n": order.length } as React.CSSProperties} onMouseLeave={() => (setCell(null), onHover(null))}>
+        <span />
+        {order.map((id) => (
+          <span key={id} className="grp__mhead" title={name(id)}>
+            <Head id={id} uuid={byId.get(id)?.uuid} name={name(id)} size={18} src={32} decorative />
+          </span>
+        ))}
+        {order.map((a) => (
+          <MatrixRow key={a} a={a} order={order} analysis={analysis} max={max} name={name} byId={byId} cell={cell} setCell={(c) => (setCell(c), onHover(c?.a ?? null))} />
+        ))}
+      </div>
+      <p className="muted grp__matrix-tip" role="status">
+        {cell ? (
+          info && info.weight > 0 ? (
+            <>
+              <b>{name(cell.a)}</b> → <b>{name(cell.b)}</b>: {reasonText({ ...info, raidsIn: 0, msgsIn: 0 }) || "geteilter Chat"}
+            </>
+          ) : (
+            `${name(cell.a)} → ${name(cell.b)}: keine Verbindung`
+          )
+        ) : (
+          "Feld überfahren für Details."
+        )}
+      </p>
+    </div>
+  );
+}
+
+function MatrixRow({
+  a,
+  order,
+  analysis,
+  max,
+  name,
+  byId,
+  cell,
+  setCell,
+}: {
+  a: string;
+  order: string[];
+  analysis: GroupAnalysis;
+  max: number;
+  name: (id: string) => string;
+  byId: Map<string, GraphNode>;
+  cell: { a: string; b: string } | null;
+  setCell: (c: { a: string; b: string } | null) => void;
+}) {
+  return (
+    <>
+      <span className="grp__mhead" title={name(a)}>
+        <Head id={a} uuid={byId.get(a)?.uuid} name={name(a)} size={18} src={32} decorative />
+      </span>
+      {order.map((b) => {
+        const w = a === b ? 0 : (analysis.pairs.get(`${a}|${b}`)?.weight ?? 0);
+        const v = w > 0 ? 0.15 + 0.85 * (Math.log1p(w) / Math.log1p(max)) : 0;
+        return (
+          <span
+            key={b}
+            className="grp__cell"
+            data-self={a === b || undefined}
+            data-on={(cell && (cell.a === a || cell.b === b)) || undefined}
+            style={{ "--v": v } as React.CSSProperties}
+            onMouseEnter={() => setCell({ a, b })}
+            title={`${name(a)} → ${name(b)}`}
+          />
+        );
+      })}
+    </>
+  );
+}
