@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ListSearch } from "@/components/ListSearch";
 import { Suspense } from "react";
 import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
@@ -79,13 +80,14 @@ async function Players({ searchParams }: { searchParams: PageProps<"/spieler">["
             </ul>
             <p className="muted num">{num(players.length)} Spieler</p>
           </div>
+          <ListSearch targetId="spieler-liste" label="Spieler suchen" placeholder="Spieler suchen …" />
 
           {players.length === 0 ? (
             <p className="st-online__empty">Noch niemand erfasst. Gib dem Tracker eine Minute.</p>
           ) : (
-            <ul className="grid" style={{ "--min": "240px", "--gap": "16px", listStyle: "none", padding: 0, margin: 0 } as React.CSSProperties}>
+            <ul id="spieler-liste" className="grid" style={{ "--min": "240px", "--gap": "16px", listStyle: "none", padding: 0, margin: 0 } as React.CSSProperties}>
               {players.map((p) => (
-                <li key={p.id}>
+                <li key={p.id} data-search={[p.name, p.id, p.twitchLogin].filter(Boolean).join("|")}>
                   <Link className="box player-card" data-tone="white" href={`/spieler/${encodeURIComponent(p.id)}`}>
                     <div className="player-card__top">
                       <span className={p.online && p.afkSince ? "head-afk" : undefined} title={p.online && p.afkSince ? "AFK" : undefined}>

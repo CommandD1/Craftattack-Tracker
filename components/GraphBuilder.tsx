@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DayProfileChart, daysBetween, type DayLine } from "./DayProfileChart";
 import { EstimateRects, EstimateTip, useEstimateGaps } from "./Estimates";
 import { BASE_PATH } from "@/lib/estimateMode";
+import { fuzzyFilter } from "@/lib/fuzzy";
 import {
   COLORS,
   MAX_METRICS,
@@ -546,11 +547,12 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
     set({ spieler: q.spieler.includes(id) ? q.spieler.filter((x) => x !== id) : q.spieler.length >= 12 ? q.spieler : [...q.spieler, id] });
 
   const suggestions = useMemo(() => {
-    const s = search.trim().toLowerCase();
-    return players
-      .filter((p) => !q.spieler.includes(p.id) && (!s || p.name.toLowerCase().includes(s) || p.id.includes(s)))
-      .sort((a, b) => (currentScores ? (currentScores[b.id] ?? 0) - (currentScores[a.id] ?? 0) : 0) || a.name.localeCompare(b.name, "de"))
-      .slice(0, 10);
+    return fuzzyFilter(
+      players.filter((p) => !q.spieler.includes(p.id)),
+      search,
+      (p) => [p.name, p.id],
+      (a, b) => (currentScores ? (currentScores[b.id] ?? 0) - (currentScores[a.id] ?? 0) : 0) || a.name.localeCompare(b.name, "de"),
+    ).slice(0, 10);
   }, [players, q.spieler, search, currentScores]);
 
   // Kennzahl-Auswahl: Suche über alle Reiter (außer Einzeln), sonst der gewählte Reiter
@@ -558,9 +560,8 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
   const pickable: { m: Metric; label: string; tone: string; hint?: string }[] = useMemo(() => {
     const base = METRIC_KEYS.map((k) => ({ m: k as Metric, label: METRICS[k].label, tone: METRICS[k].tone, hint: METRICS[k].hint, group: METRICS[k].group as string }));
     const ranks = RANK_KEYS.map((k) => ({ m: rankMetric(k) as Metric, label: LEADERBOARDS[k].title, tone: LEADERBOARDS[k].tone, hint: `Platz in „${LEADERBOARDS[k].title}“ (${LEADERBOARDS[k].sub})`, group: "rang" }));
-    return [...base, ...ranks]
-      .filter((x) => (needle ? x.label.toLowerCase().includes(needle) || (x.hint ?? "").toLowerCase().includes(needle) : x.group === picker))
-      .map(({ m, label, tone, hint }) => ({ m, label, tone, hint }));
+    const all = [...base, ...ranks];
+    return (needle ? fuzzyFilter(all, needle, (x) => [x.label, x.hint]) : all.filter((x) => x.group === picker)).map(({ m, label, tone, hint }) => ({ m, label, tone, hint }));
   }, [needle, picker]);
 
   const latest = (l: Line) => (l.points.length ? l.format(l.points[l.points.length - 1].v) : "–");

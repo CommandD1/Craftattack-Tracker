@@ -1,6 +1,22 @@
 import "server-only";
 import { getDb } from "./db";
 import type { LinkCounts } from "./connectionWeights";
+import { loadTracker } from "./data";
+
+/** Zeiträume für die Netz-Seiten */
+export const NETWORK_RANGES: { key: string; label: string; hours: number | null }[] = [
+  { key: "24h", label: "24 Std", hours: 24 },
+  { key: "7d", label: "7 Tage", hours: 7 * 24 },
+  { key: "alle", label: "Staffel", hours: null },
+];
+
+export interface NetworkNode {
+  id: string;
+  name: string;
+  uuid: string;
+  online: boolean;
+  live: boolean;
+}
 
 /** Verbindung zweier Spieler über Twitch: Raids, geteilte Chats und Nachrichten im Chat des anderen. */
 export interface ConnectionEdge extends LinkCounts {
@@ -79,4 +95,18 @@ export async function getConnections(hours: number | null): Promise<ConnectionEd
     touch(e, m.last);
   }
   return [...pairs.values()];
+}
+
+/** Netz für die Seiten: nur erfasste Spieler, an den Browser gehen nur die Zählwerte (gewichtet wird dort) */
+export async function getNetwork(hours: number | null): Promise<{ nodes: NetworkNode[]; edges: LinkCounts[] }> {
+  const [{ state }, all] = await Promise.all([loadTracker(), getConnections(hours)]);
+  const edges: LinkCounts[] = all
+    .filter((e) => state.players[e.a] && state.players[e.b])
+    .map(({ a, b, raidsAB, raidsBA, chats, chatSeconds, msgsAB, msgsBA, now }) => ({ a, b, raidsAB, raidsBA, chats, chatSeconds, msgsAB, msgsBA, now }));
+  const ids = [...new Set(edges.flatMap((e) => [e.a, e.b]))];
+  const nodes = ids.map((id) => {
+    const p = state.players[id];
+    return { id, name: p.name, uuid: p.uuid, online: p.online, live: Boolean(p.live) };
+  });
+  return { nodes, edges };
 }
