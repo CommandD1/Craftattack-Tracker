@@ -25,9 +25,9 @@ export function trackerMode(): TrackerMode {
   return cached;
 }
 
-/** Soll dieser Prozess den Poller, Twitch-IRC und die Nachträge betreiben? */
+/** Soll dieser Prozess den Poller, Twitch-IRC und die Nachträge betreiben? Die Schätzungs-Ausgabe nie. */
 export function runsTracker(): boolean {
-  return trackerMode() !== "web";
+  return trackerMode() !== "web" && process.env.NEXT_PUBLIC_CA_ESTIMATE !== "1";
 }
 
 /** Soll dieser Prozess die Website ausliefern? */

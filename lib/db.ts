@@ -1,5 +1,6 @@
 import "server-only";
 import { runsTracker } from "./mode";
+import { ESTIMATE } from "./estimateMode";
 
 /**
  * Datenbank-Anbindung.
@@ -31,6 +32,8 @@ async function connect(): Promise<Db> {
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 30_000,
     keepAlive: true,
+    // Schätzung: zuerst die Sichten mit gefüllten Lücken (scripts/estimate.mjs), alles andere aus den echten Tabellen
+    ...(ESTIMATE ? { options: "-c search_path=approx,public" } : {}),
   });
   // Bricht eine ungenutzte Verbindung ab (z. B. Neustart der DB), meldet pg das als "error" am Pool.
   // Ohne Handler beendet Node.js deshalb den ganzen Prozess. Der Pool baut bei der nächsten Abfrage neu auf.
@@ -42,8 +45,9 @@ async function connect(): Promise<Db> {
       return { rows: r.rows as never[] };
     },
   };
-  await migrate(db);
-  console.log(`[tracker] Datenbank: ${db.kind}`);
+  // Die Schätzung liest nur; das Schema pflegt die normale Website bzw. der Tracker
+  if (!ESTIMATE) await migrate(db);
+  console.log(`[tracker] Datenbank: ${db.kind}${ESTIMATE ? " (Schätzung)" : ""}`);
   return db;
 }
 

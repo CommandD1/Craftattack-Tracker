@@ -6,6 +6,8 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { HeadTip } from "@/components/HeadTip";
 import { ThemeScript } from "@/components/ThemeToggle";
+import { EstimateBanner, EstimateProvider } from "@/components/Estimates";
+import { ESTIMATE } from "@/lib/estimateMode";
 
 const monocraft = localFont({
   src: "../public/fonts/monocraft-bold.woff2",
@@ -23,10 +25,14 @@ const bricolage = localFont({
 });
 
 export const metadata: Metadata = {
-  title: {
-    default: "CraftAttack 14 Tracker",
-    template: "%s · CraftAttack 14 Tracker",
-  },
+  title: ESTIMATE
+    ? { default: "CraftAttack 14 Tracker (Schätzung)", template: "%s · CraftAttack 14 Tracker (Schätzung)" }
+    : {
+        default: "CraftAttack 14 Tracker",
+        template: "%s · CraftAttack 14 Tracker",
+      },
+  // Geschätzte Zahlen sollen nicht als echte in Suchmaschinen landen
+  ...(ESTIMATE ? { robots: { index: false, follow: false } } : {}),
   description:
     "Inoffizieller Tracker für CraftAttack 14: Wer ist online, wer streamt, wer stirbt – und wann genau es passiert ist.",
   icons: { icon: "/img/favicon.png", apple: "/img/favicon.png" },
@@ -46,9 +52,20 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <a className="skip" href="#inhalt">
           Zum Inhalt
         </a>
-        <SiteHeader />
-        <main id="inhalt">{children}</main>
-        <SiteFooter />
+        {ESTIMATE ? (
+          <EstimateProvider>
+            <SiteHeader />
+            <EstimateBanner />
+            <main id="inhalt">{children}</main>
+            <SiteFooter />
+          </EstimateProvider>
+        ) : (
+          <>
+            <SiteHeader />
+            <main id="inhalt">{children}</main>
+            <SiteFooter />
+          </>
+        )}
         <AutoRefresh intervalMs={60_000} />
         <HeadTip />
       </body>

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { EstimateExplainer } from "@/components/Estimates";
+import { ESTIMATE } from "@/lib/estimateMode";
 
 export const metadata: Metadata = { title: "So funktioniert’s" };
 
@@ -41,6 +43,8 @@ export default function HowItWorks() {
               ))}
             </ul>
           </nav>
+
+          {ESTIMATE && <EstimateExplainer />}
 
           <section className="box how__section" data-tone="white" id="quellen" aria-labelledby="quellen-h">
             <h2 className="t-3" id="quellen-h">

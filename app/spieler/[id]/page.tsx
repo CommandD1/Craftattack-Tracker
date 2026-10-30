@@ -15,6 +15,7 @@ import { EventFeed } from "@/components/EventFeed";
 import { BOARD_ICON, Icon } from "@/components/Icons";
 import { FigValue } from "@/components/FigValue";
 import { StatSpark } from "@/components/StatSpark";
+import { EstimatePlayer, PlayerEstimateSummary } from "@/components/Estimates";
 import { getAllSessions, getFullBoard, getPlayerHistory, getPlayerSharedChatSessions, getPlayerTopHistory, getPlayerTwitchChat, getTwitchCheerProfile, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
 import { SharedChatList } from "@/components/SharedChatList";
 import { ChatFeed, ChatPartners } from "@/components/ChatFeed";
@@ -313,9 +314,11 @@ async function StatsSection({ params }: { params: Params }) {
   const followerRankIndex = followerBoard.findIndex((entry) => entry.id === id);
   const profileStatKeys = [...BOARD_KEYS, "followers", "twitchSubs", "twitchBits", "twitchEarnings"] as const;
   return (
+    <EstimatePlayer id={id}>
     <section className="block block--tight" data-tone="ink">
       <div className="wrap">
         <h2 className="sr-only">Statistiken</h2>
+        <PlayerEstimateSummary />
         <dl className="grid st-figs">
           {profileStatKeys.map((k) => {
             if (k === "followers") {
@@ -488,6 +491,7 @@ async function StatsSection({ params }: { params: Params }) {
         <HowLink section="profil" />
       </div>
     </section>
+    </EstimatePlayer>
   );
 }
 
@@ -598,6 +602,7 @@ async function TimelineSection({ params }: { params: Params }) {
   });
   const deaths = mine.filter((e) => e.type === "death").reduce((s, e) => s + (e.delta ?? 0), 0);
   return (
+    <EstimatePlayer id={id}>
     <section className="block" data-tone="paper">
       <div className="wrap">
         <div className="grid" style={{ "--min": "300px", "--gap": "24px" } as React.CSSProperties}>
@@ -748,6 +753,7 @@ async function TimelineSection({ params }: { params: Params }) {
         </div>
       </div>
     </section>
+    </EstimatePlayer>
   );
 }
 

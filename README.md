@@ -99,6 +99,23 @@ Verlauf, Chat und Feed werden vereinigt, Ereignisse mit kollidierender ID bekomm
 Epochengrenzen werden fehlende Leave/Join-Ereignisse ergänzt. Spieler-Summen (Online-Zeit, Sessions, AFK,
 Stream-Zeit, Follower) werden addiert, Spitzenwerte als Maximum übernommen, aktuelle Felder aus der neuesten Epoche.
 
+## Schätzung (`/schaetzung`)
+
+Dieselbe Website noch einmal unter `/schaetzung`, aber mit gefüllten Datenlücken: Zeiten, in denen der Tracker aus
+war, und Werte, die erst später erfasst wurden, sind aus dem Verhalten der Spieler hochgerechnet (Sessions nach
+Tagesprofil, Zähler schubweise auf die Online-Minuten verteilt, Streams, Zuschauer, Abos, Follower). Geschätzte
+Bereiche sind in den Diagrammen schattiert und nennen ihre Konfidenz; Details unter „So funktioniert’s“.
+
+- `node scripts/estimate.mjs` rechnet die Schätzung und legt sie in die Schemas `approx_fill` (Daten) und `approx`
+  (Sichten mit den Namen der echten Tabellen) derselben Datenbank. Die echten Tabellen bleiben unangetastet.
+  `--if-changed` rechnet nur bei neuen Lücken (spätestens alle 12 Stunden), `--dry-run` schaltet nicht um.
+  Exit-Code 3 = Lücken haben sich geändert, die Schätzungs-Website sollte neu starten.
+- `npm run build:schaetzung` baut die Ausgabe mit `basePath` `/schaetzung` nach `.next-schaetzung/`,
+  `npm run start:schaetzung -- -p 3030` startet sie. Sie liest mit `search_path=approx,public`, schreibt nichts und
+  betreibt nie den Tracker.
+- `scripts/cached-server.mjs` leitet `/schaetzung/…` an `ESTIMATE_PORT` (Standard 3030) weiter.
+- Feste Annahmen stehen oben in `scripts/estimate.mjs`: Start am 10.10.2026 um 12 Uhr, Offtag Montag 26.10.
+
 ## Datenbank (PostgreSQL)
 
 - `DATABASE_URL` muss gesetzt sein (siehe `.env.example`), damit die App über `pg` direkt auf PostgreSQL zugreift. Für Render den Internal Database URL verwenden; bei lokaler Entwicklung mit einer Render-Datenbank den External Database URL. Tabellen werden beim Start angelegt.

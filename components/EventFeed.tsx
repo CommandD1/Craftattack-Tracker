@@ -121,7 +121,8 @@ function EventTile({ e, focus, highlight }: { e: TrackerEvent; focus?: string; h
   const IconCmp = Icon[EVENT_ICON[e.type]];
   const sub = meta.sub?.(e);
   const text = meta.text(e);
-  const sentence = [e.player ? `${e.playerName ?? e.player} ${text}` : text, sub].filter(Boolean).join(" · ");
+  const estimated = e.meta?.estimated === true;
+  const sentence = [e.player ? `${e.playerName ?? e.player} ${text}` : text, sub, estimated ? "Geschätzt (Datenlücke)" : null].filter(Boolean).join(" · ");
   const badge = e.type === "stream_title" ? null : eventBadge(e);
   const info = detail(e);
   const vod = typeof e.meta?.vodUrl === "string" ? e.meta.vodUrl : null;
@@ -219,6 +220,11 @@ function EventTile({ e, focus, highlight }: { e: TrackerEvent; focus?: string; h
         <IconCmp />
       </span>
       {badge && <span className="tile__val num">{badge}</span>}
+      {estimated && (
+        <span className="tile__est" title="Geschätzt (Datenlücke)" aria-label="geschätzt">
+          ≈
+        </span>
+      )}
       {killer && (
         <>
           <span className="tile__raid-arrow tile__killed-by" aria-hidden="true">
