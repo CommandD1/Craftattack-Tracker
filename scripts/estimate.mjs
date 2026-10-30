@@ -302,6 +302,70 @@ const players = (await q(`SELECT id, name, uuid, first_seen, twitch_login FROM p
 const phCols = (await q(`SELECT column_name, data_type, udt_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'player_history' ORDER BY ordinal_position`)).rows;
 log(`${players.length} Spieler, Abos erfasst ab ${iso(SUB_START)}`);
 
+/* ---------- Sessions und Pausen aus echten Daten (Vorrat zum Ziehen) ---------- */
+
+const overlapsGap = (x, y) => gaps.some((g) => g.a < y && g.b > x);
+/**
+ * Echte Sessions und Pausen eines Spielers: Join → Leave bzw. Leave → Join, nur vollständig erfasste (keine
+ * Tracker-Lücke dazwischen, keine künstlichen Epochen-Grenzen). Kurze Unterbrechungen (unter 5 Min, z. B.
+ * Verbindungsabbruch) zählen als eine Session weiter. Je Eintrag die Startstunde (deutsche Zeit) und die Länge.
+ */
+function buildPools(list) {
+  const raw = [];
+  let open = null;
+  for (const e of list) {
+    if (e.id.startsWith("merge-")) {
+      open = null;
+      continue;
+    }
+    if (e.type === "join" || e.type === "first_join") open = e.t;
+    else if (e.type === "leave" && open !== null) {
+      raw.push([open, e.t]);
+      open = null;
+    }
+  }
+  const merged = [];
+  for (const x of raw) {
+    const last = merged[merged.length - 1];
+    if (last && x[0] - last[1] < 5 * MIN && !overlapsGap(last[1], x[0])) last[1] = x[1];
+    else merged.push([...x]);
+  }
+  const sessions = [];
+  const breaks = [];
+  for (let i = 0; i < merged.length; i++) {
+    const [a, b] = merged[i];
+    if (!overlapsGap(a, b) && b - a < 36 * HOUR) sessions.push({ h: berlin(a).hour, len: b - a });
+    const next = merged[i + 1];
+    if (next && !overlapsGap(b, next[0]) && !OFFDAYS.some(([x, y]) => x < next[0] && y > b) && next[0] - b < 72 * HOUR) breaks.push({ h: berlin(b).hour, len: next[0] - b });
+  }
+  return { sessions, breaks };
+}
+const globalPools = await (async () => {
+  const rows = (await q(`SELECT id, player, at, type FROM events WHERE type IN ('join','first_join','leave') AND player IS NOT NULL AND at <= $1 ORDER BY player, at, id`, [new Date(CUTOFF)])).rows;
+  const by = new Map();
+  for (const r of rows) (by.get(r.player) ?? by.set(r.player, []).get(r.player)).push({ ...r, t: ms(r.at) });
+  const all = { sessions: [], breaks: [] };
+  for (const list of by.values()) {
+    const p = buildPools(list);
+    all.sessions.push(...p.sessions.filter((x) => x.len >= 20 * MIN));
+    all.breaks.push(...p.breaks.filter((x) => x.len >= 10 * MIN));
+  }
+  return all;
+})();
+const hourDist = (a, b) => Math.min(Math.abs(a - b), 24 - Math.abs(a - b));
+/** Eintrag mit ähnlicher Startstunde ziehen, Länge leicht gestreut */
+function drawLen(pool, hour, rng, minLen = 0) {
+  let cand = [];
+  for (const w of [2, 4, 12]) {
+    cand = pool.filter((e) => hourDist(e.h, hour) <= w && e.len > minLen);
+    if (cand.length >= 4) break;
+  }
+  if (!cand.length) cand = pool.filter((e) => e.len > minLen);
+  if (!cand.length) return Math.max(minLen + 10 * MIN, minLen * (1.1 + rng() * 0.4));
+  const e = cand[Math.floor(rng() * cand.length)];
+  return Math.max(minLen + MIN, e.len * Math.exp(rng.normal() * 0.18));
+}
+
 /** Globale Online-Wahrscheinlichkeit je Stunde (Rückfall für Spieler mit wenig Daten) */
 const globalPi = (() => {
   const on = new Array(24).fill(0);
@@ -478,6 +542,12 @@ async function estimatePlayer(p) {
     }
   }
   const meanOn = clamp(sessionLens.length >= 3 ? sessionLens.reduce((s, v) => s + v, 0) / sessionLens.length / MIN : 110, 15, 900);
+  // Vorrat für die Lücken: eigene Sessions und Pausen (ohne Mini-Sessions), sonst die aller Spieler
+  const own = buildPools(evs.filter((e) => e.type === "join" || e.type === "first_join" || e.type === "leave"));
+  const ownSessions = own.sessions.filter((x) => x.len >= 20 * MIN);
+  const ownBreaks = own.breaks.filter((x) => x.len >= 10 * MIN);
+  const sessPool = ownSessions.length >= 6 ? ownSessions : [...ownSessions, ...globalPools.sessions];
+  const breakPool = ownBreaks.length >= 6 ? ownBreaks : [...ownBreaks, ...globalPools.breaks];
   const streamLens = evs.filter((e) => e.type === "stream_end" && Number(e.meta?.streamSeconds) > 600).map((e) => Number(e.meta.streamSeconds) / 60);
   const meanStream = clamp(streamLens.length ? streamLens.reduce((s, v) => s + v, 0) / streamLens.length : 240, 40, 1200);
   const afkShare = onMs > HOUR ? clamp(afkMs / onMs, 0, 0.9) : 0.2;
@@ -534,6 +604,15 @@ async function estimatePlayer(p) {
         endLive: Boolean(after?.live),
         before,
         after,
+        sessionStart: (() => {
+          let j = null;
+          for (const e of evs) {
+            if (e.t > g.a) break;
+            if (e.type === "join" || e.type === "first_join") j = e.t;
+            else if (e.type === "leave") j = null;
+          }
+          return j;
+        })(),
         expected: polls.reduce((s, t, i) => s + (forcedOff(t) ? 0 : piAt(t) * ((polls[i + 1] ?? g.b) - t)), 0),
       };
     })
@@ -585,101 +664,83 @@ async function estimatePlayer(p) {
     const n = polls.length;
     const dur = polls.map((t, i) => (polls[i + 1] ?? g.b) - t);
     const forced = polls.map(forcedOff);
-    const pis = polls.map(piAt);
-    const runChain = (rng) => {
-      const st = new Uint8Array(n);
-      let cur = s.startOn ? 1 : 0;
-      for (let i = 0; i < n; i++) {
-        if (forced[i]) {
-          cur = 0;
+    /**
+     * Ganze Sessions und Pausen ziehen (aus dem Vorrat des Spielers, passend zur Uhrzeit), statt Minute für Minute
+     * zu würfeln: So entstehen Sessions, wie der Spieler sie wirklich spielt, und keine 10-Minuten-Schnipsel.
+     * Liefert Sessions [Beginn, Ende] (das Ende kann hinter der Lücke liegen = bei Lückenende noch online).
+     */
+    const close = OFFDAYS.map(([x, y]) => [x - closeJitter, y]);
+    const sampleSchedule = (rng) => {
+      const out = [];
+      let t = g.a;
+      if (s.startOn) {
+        const since = s.sessionStart ?? g.a;
+        const end = since + drawLen(sessPool, berlin(since).hour, rng, g.a - since + 2 * MIN);
+        out.push([g.a, end]);
+        t = end;
+      }
+      for (let guard = 0; guard < 400 && t < g.b; guard++) {
+        // Pause
+        let next = t + drawLen(breakPool, berlin(t).hour, rng);
+        for (const [x, y] of close) if (next >= x && t < y) next = Math.max(next, y + drawLen(breakPool, berlin(y).hour, rng) * rng());
+        next = Math.max(next, pStart);
+        if (next >= g.b) break;
+        let end = next + drawLen(sessPool, berlin(next).hour, rng);
+        for (const [x] of close) if (next < x && end > x) end = x;
+        if (end - next < 10 * MIN) {
+          t = end;
           continue;
         }
-        const dtMin = (i ? polls[i] - polls[i - 1] : polls[0] - g.a) / MIN;
-        const pLeave = Math.min(1, dtMin / meanOn);
-        const pJoin = Math.min(1, (pLeave * pis[i]) / (1 - pis[i]));
-        if (cur ? rng() < pLeave : rng() < pJoin) cur = 1 - cur;
-        st[i] = cur;
+        out.push([next, end]);
+        t = end;
       }
-      fixEnd(st, rng);
-      return st;
+      // Sessions, die über den Offtag-Beginn liefen, enden dort
+      for (const ses of out) for (const [x] of close) if (ses[0] < x && ses[1] > x) ses[1] = Math.max(ses[0] + MIN, x);
+      return out;
     };
-    const fixEnd = (st, rng) => {
-      if (st[n - 1] === (s.endOn ? 1 : 0)) return;
+    const onlineAtB = (sched) => sched.some(([x, y]) => x < g.b && y >= g.b);
+    const onlineIn = (sched) => sched.reduce((sum, [x, y]) => sum + Math.max(0, Math.min(y, g.b) - Math.max(x, g.a)), 0);
+    /** Zustand am Lückenende erzwingen, falls keine Ziehung passt */
+    const fixEnd = (sched, rng) => {
+      if (onlineAtB(sched) === s.endOn) return sched;
       if (s.endOn) {
-        let j = n - 1;
-        while (j >= 0 && !st[j] && !forced[j]) j--;
-        const len = Math.max(1, Math.ceil(rng.exp(meanOn * 0.6)));
-        for (let i = Math.max(j + 1, n - len); i < n; i++) if (!forced[i]) st[i] = 1;
-        if (!st[n - 1]) st[n - 1] = 1;
+        const lastEnd = sched.length ? sched[sched.length - 1][1] : g.a;
+        const len = drawLen(sessPool, berlin(g.b).hour, rng);
+        const start = Math.max(lastEnd + 10 * MIN, g.b - len * (0.2 + 0.6 * rng()), g.a, pStart);
+        if (start < g.b - MIN) sched.push([start, g.b + len]);
+        else if (sched.length) sched[sched.length - 1][1] = g.b + len;
+        else sched.push([g.a, g.b + len]);
       } else {
-        let r = n - 1;
-        while (r > 0 && st[r - 1]) r--;
-        const k = r + Math.floor(rng() * (n - r));
-        for (let i = Math.max(1, k); i < n; i++) st[i] = 0;
-        if (n === 1) st[0] = 0;
+        const last = sched[sched.length - 1];
+        const end = g.b - (2 + rng() * 25) * MIN;
+        if (end - last[0] >= 15 * MIN) last[1] = end;
+        else sched.pop();
       }
+      return sched;
     };
-    const onlineMs = (st) => st.reduce((sum, v, i) => sum + (v ? dur[i] : 0), 0);
     let best = null;
-    let bestErr = Infinity;
-    for (let k = 0; k < 24; k++) {
-      const st = runChain(rngFor("chain", id, g.a, k));
-      const err = Math.abs(onlineMs(st) - s.target);
-      if (err < bestErr) {
-        best = st;
-        bestErr = err;
-      }
-    }
-    // Feinabgleich: Sessions kürzen oder verlängern, bis die Online-Zeit zur Spielzeit passt
-    const rng = rngFor("refine", id, g.a);
-    const tol = Math.max(4 * MIN, 0.04 * s.target);
-    for (let iter = 0; iter < 600; iter++) {
-      const diff = s.target - onlineMs(best);
-      if (Math.abs(diff) <= tol) break;
-      const runs = [];
-      for (let i = 0; i < n; ) {
-        let j = i;
-        while (j < n && best[j] === best[i] && forced[j] === forced[i]) j++;
-        runs.push({ i, j, on: best[i] === 1, forced: forced[i] });
-        i = j;
-      }
-      const stepPolls = Math.max(1, Math.ceil((Math.abs(diff) / MIN) * (0.3 + 0.7 * rng())));
-      if (diff < 0) {
-        const cand = runs.filter((r) => r.on);
-        if (!cand.length) break;
-        const r = cand[Math.floor(rng() * cand.length)];
-        const touchesStart = r.i === 0 && s.startOn;
-        const touchesEnd = r.j === n && s.endOn;
-        if (touchesStart && touchesEnd && r.j - r.i <= 2) break;
-        const k = Math.min(stepPolls, r.j - r.i - (touchesStart || touchesEnd ? 1 : 0));
-        if (k <= 0) continue;
-        if (touchesEnd) for (let i = r.i; i < r.i + k; i++) best[i] = 0;
-        else for (let i = r.j - k; i < r.j; i++) best[i] = 0;
-      } else {
-        const cand = runs.filter((r) => !r.on && !r.forced);
-        if (!cand.length) break;
-        const weights = cand.map((r) => (r.j - r.i) * pis[Math.floor((r.i + r.j) / 2)]);
-        let pick = rng() * weights.reduce((x, y) => x + y, 0);
-        let r = cand[0];
-        for (let c = 0; c < cand.length; c++) {
-          pick -= weights[c];
-          if (pick <= 0) {
-            r = cand[c];
-            break;
-          }
+    {
+      const rng = rngFor("sessions", id, g.a);
+      const stayed = s.target >= dur.reduce((x, y) => x + y, 0) - MIN && s.startOn && s.endOn;
+      if (stayed) best = [[g.a, g.b + HOUR]];
+      else {
+        const cands = [];
+        for (let k = 0; k < 300; k++) {
+          const sched = sampleSchedule(rng);
+          if (onlineAtB(sched) !== s.endOn) continue;
+          cands.push({ sched, err: Math.abs(onlineIn(sched) - s.target) });
+          if (cands.length >= 120) break;
         }
-        const len = r.j - r.i;
-        const k = Math.min(stepPolls, Math.max(1, len - 1));
-        const left = r.i > 0 && best[r.i - 1] === 1;
-        const right = r.j < n && best[r.j] === 1;
-        let from;
-        if (left && (!right || rng() < 0.5)) from = r.i;
-        else if (right) from = r.j - k;
-        else from = r.i + Math.floor(rng() * Math.max(1, len - k));
-        for (let i = from; i < from + k; i++) best[i] = 1;
-        if (r.j === n && !s.endOn) best[n - 1] = 0;
+        if (!cands.length) cands.push({ sched: fixEnd(sampleSchedule(rng), rng), err: 0 });
+        // Bei bekannter Spielzeit zählt die Passung stark, sonst nur als Tendenz; unter den guten Ziehungen zufällig
+        const tol = s.tight ? Math.max(15 * MIN, 0.1 * s.target) : Math.max(45 * MIN, 0.35 * s.target);
+        cands.sort((x, y) => x.err - y.err);
+        const good = cands.filter((c) => c.err <= tol);
+        best = (good.length ? good[Math.floor(rng() * good.length)] : cands[0]).sched;
       }
     }
+    s.sessions = best;
+    best = Uint8Array.from(polls, (t, i) => (!forced[i] && s.sessions.some(([x, y]) => t >= x && t < y) ? 1 : 0));
     s.online = best;
     s.dur = dur;
 
