@@ -30,7 +30,7 @@ interface Group {
  */
 export function NetworkLab({ nodes, edges, internKey }: { nodes: GraphNode[]; edges: LinkCounts[]; internKey: string }) {
   const [tab, setTab] = useState<"naehe" | "gruppen">("naehe");
-  const { analysis, weights, controls, shown: isShown } = useGroupSettings(edges);
+  const { analysis, weights, controls, shown: isShown, groupEdges } = useGroupSettings(edges);
   const [dir, setDir] = useState<Direction>("von");
   const [scale, setScale] = useState<RadialScale>("naehe");
   /** Wie viele der Nähesten (0 = alle erreichbaren, auch weit entfernte) */
@@ -85,7 +85,7 @@ export function NetworkLab({ nodes, edges, internKey }: { nodes: GraphNode[]; ed
     const total = new Map<string, number>();
     const inner = new Map<string, number>();
     const between = new Map<string, number>();
-    for (const e of edges) {
+    for (const e of groupEdges) {
       const { ab, ba } = directed(e, weights);
       const s = ab + ba;
       if (s <= 0) continue;
@@ -109,7 +109,7 @@ export function NetworkLab({ nodes, edges, internKey }: { nodes: GraphNode[]; ed
       }
     }
     return [...list.values()].sort((a, b) => a.index - b.index);
-  }, [edges, weights, groupOf]);
+  }, [groupEdges, weights, groupOf]);
 
   return (
     <>

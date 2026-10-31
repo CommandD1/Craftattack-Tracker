@@ -32,12 +32,10 @@ export interface GroupSettingsValue {
   mode: "feinheit" | "anzahl";
   resolution: number;
   count: number;
-  /** Nur Verbindungen zeigen, die in beide Richtungen gehen */
+  /** Nur Verbindungen, die in beide Richtungen gehen: in den Graphen und in der Gruppenbildung */
   mutual: boolean;
-  /** … und auch die Gruppen nur daraus bilden */
-  mutualGroups: boolean;
 }
-const DEFAULTS: GroupSettingsValue = { weights: DEFAULT_WEIGHTS, mode: "feinheit", resolution: 1, count: 10, mutual: false, mutualGroups: false };
+const DEFAULTS: GroupSettingsValue = { weights: DEFAULT_WEIGHTS, mode: "feinheit", resolution: 1, count: 10, mutual: false };
 const STORAGE_KEY = "ac.gruppen.v1";
 
 function load(): GroupSettingsValue | null {
@@ -55,7 +53,6 @@ function load(): GroupSettingsValue | null {
       resolution: typeof raw.resolution === "number" && raw.resolution >= 0.25 && raw.resolution <= 16 ? raw.resolution : 1,
       count: typeof raw.count === "number" && raw.count >= 2 && raw.count <= 60 ? Math.round(raw.count) : 10,
       mutual: raw.mutual === true,
-      mutualGroups: raw.mutual === true && raw.mutualGroups === true,
     };
   } catch {
     return null;
@@ -85,9 +82,10 @@ export function useGroupSettings(edges: LinkCounts[]) {
     }
   }, [s, loaded]);
   const set = (patch: Partial<GroupSettingsValue>) => setS((prev) => ({ ...prev, ...patch }));
-  // Einseitige Verbindungen (nur Raids oder Nachrichten in eine Richtung) ausblenden, auf Wunsch auch für die Gruppen
+  // Einseitige Verbindungen (nur Raids oder Nachrichten in eine Richtung) fallen ganz weg: aus den Graphen und aus der
+  // Gruppenbildung samt Anführer, Kern, Rand und Begründung
   const mutualEdges = useMemo(() => edges.filter((e) => isMutual(e, s.weights)), [edges, s.weights]);
-  const groupEdges = s.mutual && s.mutualGroups ? mutualEdges : edges;
+  const groupEdges = s.mutual ? mutualEdges : edges;
   const shown = useMemo(() => (s.mutual ? (e: LinkCounts) => isMutual(e, s.weights) : () => true), [s.mutual, s.weights]);
   const resolution = useMemo(() => (s.mode === "anzahl" ? resolutionForCount(groupEdges, s.weights, s.count) : s.resolution), [groupEdges, s.weights, s.mode, s.count, s.resolution]);
   const analysis: GroupAnalysis = useMemo(() => analyzeGroups(groupEdges, s.weights, resolution), [groupEdges, s.weights, resolution]);
@@ -129,7 +127,7 @@ export function useGroupSettings(edges: LinkCounts[]) {
       <fieldset className="conn__group">
         <legend className="eyebrow">Verbindungen</legend>
         <div className="gb__seg" role="group" aria-label="Richtung der Verbindungen">
-          <button type="button" aria-pressed={!s.mutual} onClick={() => set({ mutual: false, mutualGroups: false })}>
+          <button type="button" aria-pressed={!s.mutual} onClick={() => set({ mutual: false })}>
             Alle
           </button>
           <button type="button" aria-pressed={s.mutual} onClick={() => set({ mutual: true })} title="Nur, wenn beide etwas für den anderen tun: z. B. raiden sich gegenseitig, schreiben beieinander oder teilen einen Chat">
@@ -138,12 +136,8 @@ export function useGroupSettings(edges: LinkCounts[]) {
         </div>
         <p className="muted">
           {num(mutualEdges.length)} von {num(activeCount)} Verbindungen gehen in beide Richtungen. Einseitig: nur einer raidet oder schreibt beim anderen.
+          {s.mutual && " Gruppen, Anführer, Kern und Rand werden nur aus den gegenseitigen gebildet."}
         </p>
-        {s.mutual && (
-          <label className="conn__row">
-            <input type="checkbox" checked={s.mutualGroups} onChange={(e) => set({ mutualGroups: e.target.checked })} /> Auch die Gruppen nur aus gegenseitigen Verbindungen bilden
-          </label>
-        )}
       </fieldset>
       <fieldset className="conn__group">
         <legend className="eyebrow">Gruppen</legend>
