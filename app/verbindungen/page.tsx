@@ -73,7 +73,7 @@ async function Connections({ searchParams }: { searchParams: PageProps<"/verbind
             </div>
             <div className="box st-fig" data-tone="sky">
               <dt>Spieler im Netz</dt>
-              <FigValue>{num(nodes.length)}</FigValue>
+              <FigValue>{num(new Set(edges.flatMap((e) => [e.a, e.b])).size)}</FigValue>
             </div>
           </dl>
         </div>

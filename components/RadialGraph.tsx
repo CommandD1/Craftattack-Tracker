@@ -14,7 +14,8 @@ const HEAD = 30;
  * Ein Spieler in der Mitte, alle anderen auf Ringen nach ihrem Abstand zu ihm. Gezeichnet werden nur die Wege der
  * kürzesten Verbindungen vom Mittelpunkt aus (ein Baum): Wie nah die anderen untereinander stehen, zeigt das Bild
  * bewusst nicht. Wer über denselben direkten Kontakt erreicht wird, liegt im selben Winkelbereich wie dieser.
- * Klick auf einen Kopf stellt ihn in die Mitte.
+ * Klick auf einen Kopf stellt ihn in die Mitte. Mit `showAll` stehen alle übrigen Spieler (in dieser Richtung nicht
+ * verbunden) auf einem äußeren Ring. Linien und Köpfe lassen sich überfahren: `explain` sagt, was die Verbindung ausmacht.
  */
 export function RadialGraph({
   nodes,
@@ -25,6 +26,8 @@ export function RadialGraph({
   maxNodes,
   colorOf,
   onFocus,
+  explain,
+  showAll = false,
 }: {
   nodes: GraphNode[];
   reach: Map<string, Reach>;
@@ -35,8 +38,13 @@ export function RadialGraph({
   maxNodes: number;
   colorOf?: ((id: string) => string | null) | null;
   onFocus: (id: string) => void;
+  /** Erklärung einer Verbindung in Richtung der Beziehung (from → to), z. B. „3× geraidet · 120 Nachr.“ */
+  explain: (from: string, to: string) => string;
+  /** Auch nicht verbundene Spieler zeigen (äußerer Ring) */
+  showAll?: boolean;
 }) {
   const [hover, setHover] = useState<string | null>(null);
+  const [edge, setEdge] = useState<{ parent: string; child: string } | null>(null);
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
   const layout = useMemo(() => {
@@ -83,19 +91,30 @@ export function RadialGraph({
       scale === "schritte"
         ? Array.from({ length: maxHops }, (_, i) => ({ r: ((i + 1) / maxHops) * R, text: i === 0 ? "direkt" : `${i + 1} Schritte` }))
         : [0.75, 0.5, 0.25].map((c) => ({ r: (1 - c) * R * 1.15, text: `Nähe ${Math.round(c * 100)} %` }));
-    return { list, pos, rings, root: root.id };
-  }, [reach, maxNodes, scale]);
+    // Nicht verbundene Spieler gleichmäßig auf einem äußeren Ring
+    const outside = showAll ? nodes.filter((n) => !reach.has(n.id)).sort((a, b) => a.name.localeCompare(b.name, "de")) : [];
+    outside.forEach((n, i) => {
+      const a = -Math.PI / 2 + ((i + 0.5) / outside.length) * Math.PI * 2;
+      pos.set(n.id, { x: Math.cos(a) * (R + 40), y: Math.sin(a) * (R + 40), r: R + 40, a });
+    });
+    return { list, pos, rings, root: root.id, outside };
+  }, [reach, maxNodes, scale, showAll, nodes]);
 
   if (!layout) return <p className="muted">Niemand gewählt.</p>;
-  const { list, pos, rings, root } = layout;
+  const { list, pos, rings, root, outside } = layout;
+  const extent = outside.length ? R + 100 : R + 60;
   const maxS = Math.max(1, ...list.filter((r) => r.parent).map((r) => strengthOf(r.parent!, r.id)));
   const h = hover ? reach.get(hover) : null;
   const name = (id: string) => byId.get(id)?.name ?? id;
   const onPath = new Set(h?.path ?? []);
+  /** Richtung der Beziehung eines Baum-Schritts: von = Vorgänger → Spieler, zu = Spieler → Vorgänger */
+  const rel = (parent: string, child: string): [string, string] => (dir === "zu" ? [child, parent] : [parent, child]);
+  const arrow = dir === "gegenseitig" ? " ↔ " : " → ";
+  const steps = (r: Reach) => r.path.slice(1).map((id, i) => rel(r.path[i], id));
 
   return (
     <div className="radial">
-      <svg viewBox={`${-R - 60} ${-R - 50} ${(R + 60) * 2} ${(R + 50) * 2}`} className="radial__svg" role="img" aria-label={`Nähe zu ${name(root)}`}>
+      <svg viewBox={`${-extent} ${-extent + 10} ${extent * 2} ${extent * 2 - 20}`} className="radial__svg" role="img" aria-label={`Nähe zu ${name(root)}`}>
         <defs>
           <marker id="radial-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
@@ -119,19 +138,21 @@ export function RadialGraph({
             const cut = HEAD / 2 + 6;
             const ux = (q.x - p.x) / len;
             const uy = (q.y - p.y) / len;
-            const active = !hover || (onPath.has(r.id) && onPath.has(r.parent!));
+            const isEdge = edge?.child === r.id;
+            const active = isEdge || (!hover && !edge) || (hover && onPath.has(r.id) && onPath.has(r.parent!));
+            const coords = { x1: p.x + ux * cut, y1: p.y + uy * cut, x2: q.x - ux * cut, y2: q.y - uy * cut };
             return (
-              <line
-                key={r.id}
-                x1={p.x + ux * cut}
-                y1={p.y + uy * cut}
-                x2={q.x - ux * cut}
-                y2={q.y - uy * cut}
-                className="radial__edge"
-                data-on={hover && active ? "" : undefined}
-                style={{ strokeWidth: 1.5 + s * 6, opacity: active ? 0.85 : 0.12 }}
-                markerEnd={dir === "gegenseitig" ? undefined : "url(#radial-arrow)"}
-              />
+              <g key={r.id}>
+                <line
+                  {...coords}
+                  className="radial__edge"
+                  data-on={isEdge || undefined}
+                  style={{ strokeWidth: (isEdge ? 3 : 1.5) + s * 6, opacity: active ? 0.85 : 0.12 }}
+                  markerEnd={dir === "gegenseitig" ? undefined : "url(#radial-arrow)"}
+                />
+                {/* Breite, unsichtbare Fläche zum Überfahren */}
+                <line {...coords} className="radial__hit" onMouseEnter={() => setEdge({ parent: r.parent!, child: r.id })} onMouseLeave={() => setEdge(null)} />
+              </g>
             );
           })}
         {list.map((r) => {
@@ -165,17 +186,71 @@ export function RadialGraph({
             </g>
           );
         })}
+        {outside.map((n) => {
+          const p = pos.get(n.id)!;
+          const size = HEAD * 0.75;
+          return (
+            <g
+              key={n.id}
+              className="radial__node radial__node--out"
+              style={{ transform: `translate(${p.x}px, ${p.y}px)` }}
+              onMouseEnter={() => setHover(n.id)}
+              onMouseLeave={() => setHover(null)}
+              onClick={() => onFocus(n.id)}
+              role="button"
+              tabIndex={0}
+              aria-label={`${n.name}: in dieser Richtung nicht verbunden, in die Mitte stellen`}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onFocus(n.id)}
+            >
+              <rect x={-size / 2 - 3} y={-size / 2 - 3} width={size + 6} height={size + 6} className="radial__frame" />
+              <image href={headUrl(n.uuid, 64, n.id)} x={-size / 2} y={-size / 2} width={size} height={size} style={{ imageRendering: "pixelated" }} />
+              {hover === n.id && (
+                <text y={size / 2 + 16} className="radial__label">
+                  {n.name}
+                </text>
+              )}
+            </g>
+          );
+        })}
       </svg>
-      <p className="radial__tip muted" role="status">
-        {h && h.id !== root ? (
+      <div className="radial__tip" role="status">
+        {edge ? (
+          (() => {
+            const [a, b] = rel(edge.parent, edge.child);
+            return (
+              <p>
+                <b>
+                  {name(a)}
+                  {arrow}
+                  {name(b)}
+                </b>
+                : {explain(a, b) || "keine Verbindung in diese Richtung"}
+              </p>
+            );
+          })()
+        ) : h && h.id !== root ? (
           <>
-            <b>{name(h.id)}</b>: Nähe {Math.round(closeness(h.dist) * 100)} %, {h.hops === 1 ? "direkt" : `${h.hops} Schritte`} ·{" "}
-            {(dir === "zu" ? [...h.path].reverse() : h.path).map(name).join(dir === "gegenseitig" ? " ↔ " : " → ")}
+            <p>
+              <b>{name(h.id)}</b>: Nähe {Math.round(closeness(h.dist) * 100)} %, {h.hops === 1 ? "direkt verbunden" : `über ${h.hops - 1} Spieler dazwischen`}
+            </p>
+            <ol className="radial__steps">
+              {(dir === "zu" ? [...steps(h)].reverse() : steps(h)).map(([a, b]) => (
+                <li key={`${a}|${b}`}>
+                  {name(a)}
+                  {arrow}
+                  {name(b)}: <span className="muted">{explain(a, b)}</span>
+                </li>
+              ))}
+            </ol>
           </>
+        ) : hover && !reach.has(hover) ? (
+          <p>
+            <b>{name(hover)}</b>: <span className="muted">in dieser Richtung mit {name(root)} nicht verbunden, auch nicht über andere.</span>
+          </p>
         ) : (
-          "Kopf überfahren für den Weg, anklicken stellt ihn in die Mitte."
+          <p className="muted">Kopf überfahren für den Weg und warum, Linie überfahren für die einzelne Verbindung, Kopf anklicken stellt ihn in die Mitte.</p>
         )}
-      </p>
+      </div>
     </div>
   );
 }

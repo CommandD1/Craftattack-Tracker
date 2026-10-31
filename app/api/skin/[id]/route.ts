@@ -1,10 +1,11 @@
 import { connection } from "next/server";
-import { craftAttackImage, serveImage, webImage } from "@/lib/imageCache";
+import { cachedAny, craftAttackImage, serveImage, webImage } from "@/lib/imageCache";
 
 /**
  * Ganzkörper-Bild eines Spielers.
  * 1. kuratierter Skin von craftattack.one (/skins/<id>.webp) – passt auch bei Zweitaccounts
- * 2. sonst Mojang-Skin über mc-heads.net anhand der UUID
+ * 2. sonst Mojang-Skin über mc-heads.net anhand der UUID, ersatzweise visage.surgeplay.com
+ * 3. zuletzt irgendein gespeichertes Ganzkörper-Bild dieses Spielers (andere Größe)
  * Beides liegt im Bild-Zwischenspeicher der Datenbank (lib/imageCache.ts): Sperrt oder pausiert eine Quelle, kommt
  * das zuletzt gespeicherte Bild.
  */
@@ -19,5 +20,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/skin/[id]">) {
   return serveImage([
     ...(slug ? [craftAttackImage(`ca-skin:${slug}`, `https://craftattack.one/skins/${slug}.webp`)] : []),
     webImage(`mc-body:${target}:${size}`, `https://mc-heads.net/body/${target}/${size}`),
+    webImage(`visage-body:${target}:${size}`, `https://visage.surgeplay.com/full/${size}/${target}`),
+    cachedAny([...(slug ? [`ca-skin:${slug}`] : []), `mc-body:${target}:`, `visage-body:${target}:`]),
   ]);
 }
