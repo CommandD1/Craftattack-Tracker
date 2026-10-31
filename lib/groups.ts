@@ -248,3 +248,22 @@ export function reasonText(r: Reason): string {
   if (r.chats) parts.push(`${n(r.chats)}× geteilter Chat`);
   return parts.join(" · ");
 }
+
+/** Feinheit, bei der die Gruppen-Erkennung möglichst genau `count` Gruppen findet (Suche auf der Log-Skala) */
+export function resolutionForCount(edges: LinkCounts[], w: Weights, count: number): number {
+  const groupsAt = (r: number) => new Set(detectGroups(edges, w, r).values()).size;
+  let lo = Math.log(0.1);
+  let hi = Math.log(40);
+  let best = { r: 1, diff: Infinity };
+  for (let i = 0; i < 18; i++) {
+    const mid = (lo + hi) / 2;
+    const r = Math.exp(mid);
+    const n = groupsAt(r);
+    const diff = Math.abs(n - count);
+    if (diff < best.diff || (diff === best.diff && Math.abs(Math.log(r)) < Math.abs(Math.log(best.r)))) best = { r, diff };
+    if (n === count) break;
+    if (n < count) lo = mid;
+    else hi = mid;
+  }
+  return Math.round(best.r * 100) / 100;
+}
