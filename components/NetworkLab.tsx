@@ -30,7 +30,7 @@ interface Group {
  */
 export function NetworkLab({ nodes, edges, internKey }: { nodes: GraphNode[]; edges: LinkCounts[]; internKey: string }) {
   const [tab, setTab] = useState<"naehe" | "gruppen">("naehe");
-  const { analysis, weights, controls } = useGroupSettings(edges);
+  const { analysis, weights, controls, shown: isShown } = useGroupSettings(edges);
   const [dir, setDir] = useState<Direction>("von");
   const [scale, setScale] = useState<RadialScale>("naehe");
   /** Wie viele der Nähesten (0 = alle erreichbaren, auch weit entfernte) */
@@ -79,7 +79,7 @@ export function NetworkLab({ nodes, edges, internKey }: { nodes: GraphNode[]; ed
 
   const groupNodes = useMemo(() => nodes.filter((n) => groupOf.has(n.id)), [nodes, groupOf]);
   const groupColor = useMemo(() => (id: string) => GROUP_COLORS[(groupOf.get(id) ?? 0) % GROUP_COLORS.length], [groupOf]);
-  const graphEdges: GraphEdge[] = useMemo(() => edges.map((e) => ({ ...e, ...weigh(e, weights) })).filter((e) => e.weight > 0), [edges, weights]);
+  const graphEdges: GraphEdge[] = useMemo(() => edges.filter(isShown).map((e) => ({ ...e, ...weigh(e, weights) })).filter((e) => e.weight > 0), [edges, weights, isShown]);
   const groups: Group[] = useMemo(() => {
     const list = new Map<number, Group>();
     const total = new Map<string, number>();
