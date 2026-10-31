@@ -7,17 +7,11 @@ import { DIRECTIONS } from "./ConnectionExplorer";
 import { Head } from "./Head";
 import { PlayerSearch } from "./PlayerSearch";
 import { RadialGraph, type RadialScale } from "./RadialGraph";
-import { DEFAULT_WEIGHTS, weigh, type LinkCounts, type Weights } from "@/lib/connectionWeights";
-import { adjacency, closeness, detectGroups, directed, distancesFrom, GROUP_COLORS, type Direction } from "@/lib/network";
+import { useGroupSettings } from "./GroupSettings";
+import { weigh, type LinkCounts } from "@/lib/connectionWeights";
+import { adjacency, closeness, directed, distancesFrom, GROUP_COLORS, type Direction } from "@/lib/network";
 import { num } from "@/lib/format";
 
-const PRESETS: { label: string; w: Weights }[] = [
-  { label: "Ausgewogen", w: DEFAULT_WEIGHTS },
-  { label: "Nur Raids", w: { raid: 1, shared: 0, msgs: 0 } },
-  { label: "Nur geteilter Chat", w: { raid: 0, shared: 1, msgs: 0 } },
-  { label: "Nur Chat", w: { raid: 0, shared: 0, msgs: 1 } },
-];
-const same = (a: Weights, b: Weights) => a.raid === b.raid && a.shared === b.shared && a.msgs === b.msgs;
 const pct = (v: number) => `${Math.round(v * 100)} %`;
 
 interface Group {
@@ -36,11 +30,11 @@ interface Group {
  */
 export function NetworkLab({ nodes, edges, internKey }: { nodes: GraphNode[]; edges: LinkCounts[]; internKey: string }) {
   const [tab, setTab] = useState<"naehe" | "gruppen">("naehe");
-  const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
+  const { analysis, weights, controls } = useGroupSettings(edges);
   const [dir, setDir] = useState<Direction>("von");
   const [scale, setScale] = useState<RadialScale>("naehe");
+  /** Wie viele der Nähesten (0 = alle erreichbaren, auch weit entfernte) */
   const [maxNodes, setMaxNodes] = useState(40);
-  const [resolution, setResolution] = useState(1);
   const [colorGroups, setColorGroups] = useState(true);
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   // Startpunkt: der Spieler mit den meisten Verbindungen
@@ -55,7 +49,7 @@ export function NetworkLab({ nodes, edges, internKey }: { nodes: GraphNode[]; ed
 
   const out = useMemo(() => adjacency(edges, weights), [edges, weights]);
   const reach = useMemo(() => (center ? distancesFrom(center, out, dir) : new Map()), [center, out, dir]);
-  const groupOf = useMemo(() => detectGroups(edges, weights, resolution), [edges, weights, resolution]);
+  const groupOf = analysis.groupOf;
   const colorOf = useMemo(() => (colorGroups ? (id: string) => GROUP_COLORS[(groupOf.get(id) ?? 0) % GROUP_COLORS.length] : null), [groupOf, colorGroups]);
   const strengthOf = (parent: string, child: string) => {
     const ab = out.get(parent)?.get(child) ?? 0;
@@ -111,13 +105,6 @@ export function NetworkLab({ nodes, edges, internKey }: { nodes: GraphNode[]; ed
               Gruppen
             </button>
           </div>
-          <div className="gb__seg" role="group" aria-label="Gewichtung">
-            {PRESETS.map((p) => (
-              <button key={p.label} type="button" aria-pressed={same(weights, p.w)} onClick={() => setWeights(p.w)}>
-                {p.label}
-              </button>
-            ))}
-          </div>
           <label className="conn__row">
             <input type="checkbox" checked={colorGroups} onChange={(e) => setColorGroups(e.target.checked)} /> Rahmen in Gruppenfarbe
           </label>
@@ -143,32 +130,39 @@ export function NetworkLab({ nodes, edges, internKey }: { nodes: GraphNode[]; ed
             </div>
             <label className="conn__weight">
               <span className="conn__weight-name">Spieler</span>
-              <input type="range" min={10} max={100} step={5} value={maxNodes} onChange={(e) => setMaxNodes(Number(e.target.value))} />
-              <b className="num conn__weight-val">{maxNodes}</b>
-              <span className="muted conn__weight-unit">die Nähesten</span>
+              <input
+                type="range"
+                min={10}
+                max={Math.max(10, reach.size - 1)}
+                step={1}
+                value={maxNodes === 0 ? Math.max(10, reach.size - 1) : Math.min(maxNodes, Math.max(10, reach.size - 1))}
+                onChange={(e) => setMaxNodes(Number(e.target.value) >= reach.size - 1 ? 0 : Number(e.target.value))}
+              />
+              <b className="num conn__weight-val">{maxNodes === 0 || maxNodes >= reach.size - 1 ? "alle" : maxNodes}</b>
+              <span className="muted conn__weight-unit">
+                die Nähesten von {num(reach.size - 1)} erreichbaren{" "}
+                <button type="button" className="tag" onClick={() => setMaxNodes(maxNodes === 0 ? 40 : 0)}>
+                  {maxNodes === 0 ? "Nur Umgebung" : "Alle, auch weit weg"}
+                </button>
+              </span>
             </label>
           </fieldset>
         ) : (
           <fieldset className="conn__group">
             <legend className="eyebrow">Gruppen</legend>
-            <label className="conn__weight">
-              <span className="conn__weight-name">Feinheit</span>
-              <input type="range" min={0.5} max={2.5} step={0.25} value={resolution} onChange={(e) => setResolution(Number(e.target.value))} />
-              <b className="num conn__weight-val">{resolution.toLocaleString("de-DE")}</b>
-              <span className="muted conn__weight-unit">höher = mehr, kleinere Gruppen</span>
-            </label>
             <p className="muted">
               {num(groups.length)} Gruppen. Erkannt nach Louvain: Spieler, die untereinander deutlich mehr verbunden sind als mit dem Rest (beide
-              Richtungen zusammen).
+              Richtungen zusammen). Feinheit oder Anzahl unten einstellen.
             </p>
           </fieldset>
         )}
       </div>
+      {controls}
 
       {tab === "naehe" ? (
         <>
           <div className="box conn__box" data-tone="white">
-            <RadialGraph nodes={nodes} reach={reach} strengthOf={strengthOf} dir={dir} scale={scale} maxNodes={maxNodes + 1} colorOf={colorOf} onFocus={setFocus} />
+            <RadialGraph nodes={nodes} reach={reach} strengthOf={strengthOf} dir={dir} scale={scale} maxNodes={maxNodes === 0 ? reach.size : maxNodes + 1} colorOf={colorOf} onFocus={setFocus} />
           </div>
           {center && (
             <p className="muted" style={{ marginTop: 12 }}>

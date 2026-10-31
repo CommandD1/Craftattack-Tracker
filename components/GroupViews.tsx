@@ -5,52 +5,18 @@ import { useMemo, useState } from "react";
 import { ConnectionGraph, type GraphEdge, type GraphNode } from "./ConnectionGraph";
 import { Head } from "./Head";
 import { PlayerSearch } from "./PlayerSearch";
-import { DEFAULT_WEIGHTS, weigh, type LinkCounts, type Weights } from "@/lib/connectionWeights";
-import { analyzeGroups, reasonText, ROLE_LABEL, ROLE_TONE, type Group, type GroupAnalysis, type Member, type Role } from "@/lib/groups";
+import { weigh, type LinkCounts, type Weights } from "@/lib/connectionWeights";
+import { useGroupSettings } from "./GroupSettings";
+import { reasonText, ROLE_LABEL, ROLE_TONE, type Group, type GroupAnalysis, type Member, type Role } from "@/lib/groups";
 import { GROUP_COLORS } from "@/lib/network";
 import { num } from "@/lib/format";
 
-const PRESETS: { label: string; w: Weights }[] = [
-  { label: "Ausgewogen", w: DEFAULT_WEIGHTS },
-  { label: "Nur Raids", w: { raid: 1, shared: 0, msgs: 0 } },
-  { label: "Nur geteilter Chat", w: { raid: 0, shared: 1, msgs: 0 } },
-  { label: "Nur Chat", w: { raid: 0, shared: 0, msgs: 1 } },
-];
-const same = (a: Weights, b: Weights) => a.raid === b.raid && a.shared === b.shared && a.msgs === b.msgs;
 const pct = (v: number) => `${Math.round(v * 100)} %`;
 const ROLE_COLOR: Record<Role, string> = { anfuehrer: "--gold", kern: "--grass", mitglied: "--sky", rand: "--paper" };
 const ROLE_ORDER: Role[] = ["anfuehrer", "kern", "mitglied", "rand"];
 
-/** Gemeinsame Einstellungen: Gewichtung und Feinheit der Gruppen */
-function useAnalysis(edges: LinkCounts[]) {
-  const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
-  const [resolution, setResolution] = useState(1);
-  const analysis = useMemo(() => analyzeGroups(edges, weights, resolution), [edges, weights, resolution]);
-  const controls = (
-    <div className="box conn__controls" data-tone="white">
-      <fieldset className="conn__group">
-        <legend className="eyebrow">Was zählt</legend>
-        <div className="gb__seg" role="group" aria-label="Gewichtung">
-          {PRESETS.map((p) => (
-            <button key={p.label} type="button" aria-pressed={same(weights, p.w)} onClick={() => setWeights(p.w)}>
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </fieldset>
-      <fieldset className="conn__group">
-        <legend className="eyebrow">Gruppen</legend>
-        <label className="conn__weight">
-          <span className="conn__weight-name">Feinheit</span>
-          <input type="range" min={0.5} max={2.5} step={0.25} value={resolution} onChange={(e) => setResolution(Number(e.target.value))} />
-          <b className="num conn__weight-val">{resolution.toLocaleString("de-DE")}</b>
-          <span className="muted conn__weight-unit">höher = mehr, kleinere Gruppen ({num(analysis.groups.length)})</span>
-        </label>
-      </fieldset>
-    </div>
-  );
-  return { analysis, weights, controls };
-}
+/** Gemeinsame Einstellungen (Gewichtung, Feinheit oder Anzahl der Gruppen), siehe GroupSettings */
+const useAnalysis = useGroupSettings;
 
 function groupName(g: Group, name: (id: string) => string) {
   return `Gruppe um ${name(g.leader)}`;
@@ -193,9 +159,42 @@ export function GroupView({ nodes, edges, member, base }: { nodes: GraphNode[]; 
   const g = gi === undefined ? null : analysis.groups[gi];
   const ids = useMemo(() => new Set(g?.members.map((m) => m.id) ?? []), [g]);
   const memberOf = useMemo(() => new Map(g?.members.map((m) => [m.id, m]) ?? []), [g]);
-  const gNodes = useMemo(() => nodes.filter((n) => ids.has(n.id)), [nodes, ids]);
-  const gEdges: GraphEdge[] = useMemo(() => edges.filter((e) => ids.has(e.a) && ids.has(e.b)).map((e) => ({ ...e, ...weigh(e, weights) })).filter((e) => e.weight > 0), [edges, ids, weights]);
-  const colorOf = useMemo(() => (id: string) => ROLE_COLOR[memberOf.get(id)?.role ?? "mitglied"], [memberOf]);
+  // Umfeld: auch Spieler außerhalb der Gruppe, bis zu `around` Schritte von einem Mitglied entfernt
+  const [around, setAround] = useState(0);
+  const weighted: GraphEdge[] = useMemo(() => edges.map((e) => ({ ...e, ...weigh(e, weights) })).filter((e) => e.weight > 0), [edges, weights]);
+  const shown = useMemo(() => {
+    const set = new Set(ids);
+    let frontier = [...ids];
+    for (let step = 0; step < around && frontier.length; step++) {
+      const next: string[] = [];
+      for (const e of weighted) {
+        for (const [x, y] of [
+          [e.a, e.b],
+          [e.b, e.a],
+        ]) {
+          if (frontier.includes(x) && !set.has(y)) {
+            set.add(y);
+            next.push(y);
+          }
+        }
+      }
+      frontier = next;
+    }
+    return set;
+  }, [ids, around, weighted]);
+  const gNodes = useMemo(() => nodes.filter((n) => shown.has(n.id)), [nodes, shown]);
+  const gEdges: GraphEdge[] = useMemo(() => weighted.filter((e) => shown.has(e.a) && shown.has(e.b)), [weighted, shown]);
+  const colorOf = useMemo(
+    () => (id: string) => {
+      const m = memberOf.get(id);
+      if (m) return ROLE_COLOR[m.role];
+      const og = analysis.groupOf.get(id);
+      return og === undefined ? null : GROUP_COLORS[og % GROUP_COLORS.length];
+    },
+    [memberOf, analysis.groupOf],
+  );
+  // Außenstehende führen zu ihrer Gruppe, Mitglieder zum Profil
+  const hrefOf = useMemo(() => (id: string) => (memberOf.has(id) ? `/spieler/${encodeURIComponent(id)}` : href(id)), [memberOf]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!g) return <p className="muted">{name(member)} ist in diesem Zeitraum mit niemandem verbunden.</p>;
   const leader = memberOf.get(g.leader)!;
@@ -302,14 +301,33 @@ export function GroupView({ nodes, edges, member, base }: { nodes: GraphNode[]; 
       </div>
 
       <div className="box conn__box" data-tone="white">
-        <ConnectionGraph nodes={gNodes} edges={gEdges} focus={hover} colorOf={colorOf} />
+        <div className="gb__seg" role="group" aria-label="Umfeld" style={{ marginBottom: 12 }}>
+          {(
+            [
+              [0, "Nur die Gruppe"],
+              [1, "+ direkte Nachbarn"],
+              [2, "+ 2 Schritte"],
+              [99, "Ganzes Netz"],
+            ] as const
+          ).map(([k, l]) => (
+            <button key={k} type="button" aria-pressed={around === k} onClick={() => setAround(k)}>
+              {l}
+            </button>
+          ))}
+        </div>
+        <ConnectionGraph nodes={gNodes} edges={gEdges} focus={hover} colorOf={colorOf} hrefOf={hrefOf} />
         <ul className="conn__legend muted">
           {ROLE_ORDER.map((r) => (
             <li key={r}>
               <i style={{ background: `var(${ROLE_COLOR[r]})` }} /> {ROLE_LABEL[r]}
             </li>
           ))}
-          <li>Nur Verbindungen innerhalb der Gruppe · Name beim Überfahren</li>
+          <li>
+            {around === 0
+              ? "Nur Verbindungen innerhalb der Gruppe"
+              : `${num(gNodes.length - g.members.length)} Spieler außerhalb, Rahmen in der Farbe ihrer Gruppe (anklicken öffnet sie)`}{" "}
+            · Name beim Überfahren
+          </li>
         </ul>
       </div>
 
