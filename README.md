@@ -116,6 +116,15 @@ Bereiche sind in den Diagrammen schattiert und nennen ihre Konfidenz; Details un
 - `scripts/cached-server.mjs` leitet `/schaetzung/…` an `ESTIMATE_PORT` (Standard 3030) weiter.
 - Feste Annahmen stehen oben in `scripts/estimate.mjs`: Start am 10.10.2026 um 12 Uhr, Offtag Montag 26.10.
 
+## Twitch-Verlauf nachtragen
+
+- Der Tracker holt alle 3 Stunden Archiv-VODs und Clips über die Helix-API (`lib/twitchHistory.ts`): Stream-Zeiten
+  in Tracker-Lücken werden daraus echte Ereignisse, beliebte Clips werden zum Ereignis „Clip“.
+- `node scripts/vod-chat.mjs` (Dauerdienst) liest langsam die Chat-Wiedergabe der VODs, ältestes zuerst, und trägt
+  Abos, Geschenk-Abos, Cheers, Raids (mit Zuschauerzahl) und Nachrichten zwischen Spielern nach, wo der Live-Chat
+  nichts hat (vor dem 19.10. alles, danach Zeitfenster ohne Live-Aufzeichnung). Tempo nach Frist
+  (`--deadline`, Standard 30.11.2026), mindestens 2,5 s zwischen Anfragen. Fortschritt in `vod_chat_progress`.
+
 ## Datenbank (PostgreSQL)
 
 - `DATABASE_URL` muss gesetzt sein (siehe `.env.example`), damit die App über `pg` direkt auf PostgreSQL zugreift. Für Render den Internal Database URL verwenden; bei lokaler Entwicklung mit einer Render-Datenbank den External Database URL. Tabellen werden beim Start angelegt.

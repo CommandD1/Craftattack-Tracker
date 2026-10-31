@@ -451,6 +451,10 @@ async function estimatePlayer(p) {
     else vodStreams.push({ start, end, title: v.title, vodId: v.id });
   }
   const vodAt = (t) => vodStreams.find((v) => t >= v.start && t < v.end) ?? null;
+  // Raids mit Zuschauerzahl (live oder aus der Chat-Wiedergabe, scripts/vod-chat.mjs): ausgehende zeigen, wie viele
+  // am Stream-Ende noch zuschauten; eingehende bringen dem Ziel Zuschauer
+  const raidsOut = (await q(`SELECT at, value FROM events WHERE type = 'raid' AND player = $1 AND value > 0 AND at <= $2`, [id, new Date(CUTOFF)])).rows.map((r) => ({ t: ms(r.at), v: Number(r.value) }));
+  const raidsIn = (await q(`SELECT at, value FROM events WHERE type = 'raid' AND meta->>'raidTargetPlayerId' = $1 AND value > 0 AND at <= $2`, [id, new Date(CUTOFF)])).rows.map((r) => ({ t: ms(r.at), v: Number(r.value) }));
   // Erstes Join nur, wenn der Spieler davor nicht schon im Verlauf auftaucht (Tracker-Neustarts melden alte Spieler neu)
   const firstJoin = evs.find((e) => e.type === "first_join" && e.t <= R[0].t + 5 * MIN) ?? null;
   let pStart = firstJoin ? firstJoin.t : START;
@@ -872,7 +876,9 @@ async function estimatePlayer(p) {
       const fromStart = i === 0 && s.startLive;
       const toEnd = j === n && s.endLive;
       const v0 = fromStart && s.before?.viewers ? s.before.viewers : null;
-      const v1 = toEnd && s.after?.viewers ? s.after.viewers : null;
+      // Endet der Stream in der Lücke mit einem Raid, ist die Zuschauerzahl am Ende bekannt (Raid-Größe)
+      const endRaid = !toEnd ? raidsOut.find((r) => r.t >= polls[j - 1] - 10 * MIN && r.t <= (polls[j] ?? g.b) + 15 * MIN) : null;
+      const v1 = toEnd && s.after?.viewers ? s.after.viewers : endRaid ? endRaid.v : null;
       const level = Math.exp(vrng.normal() * 0.3);
       let z = 0;
       for (let k = i; k < j; k++) {
@@ -894,7 +900,9 @@ async function estimatePlayer(p) {
         const toEndMin = (polls[j - 1] - t) / MIN;
         if (!fromStart && v1 === null) base *= 0.35 + 0.65 * clamp(sinceStart / 25, 0, 1);
         else if (!fromStart) base *= 0.5 + 0.5 * clamp(sinceStart / 15, 0, 1);
-        if (!toEnd) base *= 0.8 + 0.2 * clamp(toEndMin / 15, 0, 1);
+        if (!toEnd && !endRaid) base *= 0.8 + 0.2 * clamp(toEndMin / 15, 0, 1);
+        // Eingehende Raids: etwa die Hälfte der Raider bleibt erst, dann wandern sie über eine Stunde ab
+        for (const r of raidsIn) if (t >= r.t && t - r.t < 3 * HOUR) base += r.v * 0.5 * Math.exp(-(t - r.t) / HOUR);
         z = 0.93 * z + vrng.normal() * 0.045;
         viewers[k] = Math.max(0, Math.round(base * Math.exp(z)));
       }
