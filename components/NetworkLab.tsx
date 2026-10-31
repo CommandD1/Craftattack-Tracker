@@ -10,7 +10,7 @@ import { RadialGraph, type RadialScale } from "./RadialGraph";
 import { useGroupSettings } from "./GroupSettings";
 import { weigh, type LinkCounts } from "@/lib/connectionWeights";
 import { adjacency, closeness, directed, distancesFrom, GROUP_COLORS, type Direction } from "@/lib/network";
-import { num } from "@/lib/format";
+import { duration, num } from "@/lib/format";
 
 const pct = (v: number) => `${Math.round(v * 100)} %`;
 
@@ -34,7 +34,9 @@ export function NetworkLab({ nodes, edges, internKey }: { nodes: GraphNode[]; ed
   const [dir, setDir] = useState<Direction>("von");
   const [scale, setScale] = useState<RadialScale>("naehe");
   /** Wie viele der Nähesten (0 = alle erreichbaren, auch weit entfernte) */
-  const [maxNodes, setMaxNodes] = useState(40);
+  const [maxNodes, setMaxNodes] = useState(0);
+  /** Auch Spieler zeigen, die in dieser Richtung gar nicht verbunden sind (äußerer Ring) */
+  const [showAll, setShowAll] = useState(true);
   const [colorGroups, setColorGroups] = useState(true);
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   // Startpunkt: der Spieler mit den meisten Verbindungen
@@ -55,6 +57,23 @@ export function NetworkLab({ nodes, edges, internKey }: { nodes: GraphNode[]; ed
     const ab = out.get(parent)?.get(child) ?? 0;
     const ba = out.get(child)?.get(parent) ?? 0;
     return dir === "von" ? ab : dir === "zu" ? ba : Math.min(ab, ba);
+  };
+  // Zählwerte je Paar für die Erklärung einer Verbindung
+  const pairOf = useMemo(() => new Map(edges.map((e) => [`${e.a}|${e.b}`, e])), [edges]);
+  const explain = (from: string, to: string) => {
+    const e = pairOf.get(from < to ? `${from}|${to}` : `${to}|${from}`);
+    if (!e) return "";
+    const fwd = e.a === from;
+    const raids = fwd ? e.raidsAB : e.raidsBA;
+    const msgs = fwd ? e.msgsAB : e.msgsBA;
+    const { ab, ba } = directed(e, weights);
+    const parts = [
+      raids ? `${num(raids)}× geraidet` : null,
+      msgs ? `${num(msgs)} Nachrichten im Chat von ${name(to)}` : null,
+      e.chats ? `${num(e.chats)}× geteilter Chat (${duration(e.chatSeconds)})` : null,
+    ].filter(Boolean);
+    const pts = dir === "gegenseitig" ? Math.min(ab, ba) : fwd ? ab : ba;
+    return parts.length ? `${parts.join(" · ")} = ${pts.toLocaleString("de-DE", { maximumFractionDigits: 1 })} Punkte` : "";
   };
   const unreachable = useMemo(() => nodes.filter((n) => !reach.has(n.id)).sort((a, b) => a.name.localeCompare(b.name, "de")), [nodes, reach]);
 
@@ -146,6 +165,9 @@ export function NetworkLab({ nodes, edges, internKey }: { nodes: GraphNode[]; ed
                 </button>
               </span>
             </label>
+            <label className="conn__row">
+              <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Auch nicht verbundene Spieler zeigen (äußerer Ring)
+            </label>
           </fieldset>
         ) : (
           <fieldset className="conn__group">
@@ -162,7 +184,7 @@ export function NetworkLab({ nodes, edges, internKey }: { nodes: GraphNode[]; ed
       {tab === "naehe" ? (
         <>
           <div className="box conn__box" data-tone="white">
-            <RadialGraph nodes={nodes} reach={reach} strengthOf={strengthOf} dir={dir} scale={scale} maxNodes={maxNodes === 0 ? reach.size : maxNodes + 1} colorOf={colorOf} onFocus={setFocus} />
+            <RadialGraph nodes={nodes} reach={reach} strengthOf={strengthOf} dir={dir} scale={scale} maxNodes={maxNodes === 0 ? reach.size : maxNodes + 1} colorOf={colorOf} onFocus={setFocus} explain={explain} showAll={showAll && maxNodes === 0} />
           </div>
           {center && (
             <p className="muted" style={{ marginTop: 12 }}>

@@ -5095,3 +5095,38 @@ button.conn__person {
   min-height: 1.5em;
   margin: 10px 0 0;
 }
+.grp__explain {
+  border-left: 8px solid var(--grp);
+  padding: 14px 18px;
+  margin-block: 20px;
+}
+.grp__explain ul {
+  margin: 8px 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 6px;
+}
+.radial__hit {
+  stroke: transparent;
+  stroke-width: 16;
+  cursor: help;
+}
+.radial__edge[data-on] {
+  stroke: var(--gold);
+  color: var(--gold);
+}
+.radial__node--out {
+  opacity: 0.45;
+}
+.radial__node--out:hover {
+  opacity: 1;
+}
+.radial__tip p {
+  margin: 0;
+}
+.radial__steps {
+  margin: 6px 0 0;
+  padding-left: 1.4em;
+  display: grid;
+  gap: 2px;
+}

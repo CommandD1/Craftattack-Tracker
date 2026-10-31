@@ -19,6 +19,9 @@ export async function register() {
     // Offizielle Termine: nur der Tracker fragt craftattack.one ab, die Website liest aus der Datenbank
     const { startOfficialEventsSync } = await import("./lib/officialEvents");
     startOfficialEventsSync();
+    // Köpfe und Skins neuer Spieler von craftattack.one speichern (die Website selbst wird dort gesperrt)
+    const { startImageWarmup } = await import("./lib/imageCache");
+    startImageWarmup();
     // Einmal pro Prozess: alte Verlaufsdaten korrigieren und fehlende AFK-Farm-Ereignisse nachtragen
     const { runBackfills } = await import("./lib/backfill");
     runBackfills().catch((err: unknown) => console.error("[tracker] Nachträge fehlgeschlagen:", err));

@@ -9,7 +9,7 @@
  * - Kern: hohe Zugehörigkeit und stark verbunden; Rand: geringe Zugehörigkeit oder fast genauso stark mit einer
  *   anderen Gruppe verbunden.
  */
-import { DEFAULT_WEIGHTS, type LinkCounts, type Weights } from "./connectionWeights";
+import { BASE_POINTS, DEFAULT_WEIGHTS, type LinkCounts, type Weights } from "./connectionWeights";
 import { detectGroups, directed, GROUP_COLORS } from "./network";
 
 export type Role = "anfuehrer" | "kern" | "mitglied" | "rand";
@@ -266,4 +266,102 @@ export function resolutionForCount(edges: LinkCounts[], w: Weights, count: numbe
     else hi = mid;
   }
   return Math.round(best.r * 100) / 100;
+}
+
+export interface GroupExplanation {
+  /** Kurzform für Karten, z. B. „vor allem geteilte Chats · 6× mehr als Zufall“ */
+  short: string;
+  /** Begründung in Sätzen; `ids` = darin genannte Spieler (für Links) */
+  points: { text: string; ids?: string[] }[];
+}
+
+const KIND_LABEL = { raid: "Raids", shared: "geteilte Chats", msgs: "Chat-Nachrichten" } as const;
+
+/**
+ * Warum diese Spieler eine Gruppe sind: wie viel mehr sie untereinander verbunden sind als zufällig zu erwarten,
+ * was sie verbindet (Art im Vergleich zum ganzen Netz), die tragenden Paare, ob der Kern geschlossen ist und wie
+ * schwach die Verbindung nach außen ist.
+ */
+export function explainGroup(g: Group, analysis: GroupAnalysis, edges: LinkCounts[], w: Weights, name: (id: string) => string): GroupExplanation {
+  const members = new Set(g.members.map((m) => m.id));
+  const pts = (e: LinkCounts) => ({
+    raid: (e.raidsAB + e.raidsBA) * BASE_POINTS.raid * w.raid,
+    shared: e.chats * BASE_POINTS.shared * w.shared,
+    msgs: (e.msgsAB + e.msgsBA) * BASE_POINTS.msgs * w.msgs,
+  });
+  const inner = { raid: 0, shared: 0, msgs: 0 };
+  const all = { raid: 0, shared: 0, msgs: 0 };
+  let memberTotal = 0;
+  const innerPairs: { a: string; b: string; s: number; e: LinkCounts }[] = [];
+  for (const e of edges) {
+    const p = pts(e);
+    const s = p.raid + p.shared + p.msgs;
+    if (s <= 0) continue;
+    for (const k of ["raid", "shared", "msgs"] as const) all[k] += p[k];
+    const ina = members.has(e.a);
+    const inb = members.has(e.b);
+    memberTotal += (ina ? s : 0) + (inb ? s : 0);
+    if (ina && inb) {
+      for (const k of ["raid", "shared", "msgs"] as const) inner[k] += p[k];
+      innerPairs.push({ a: e.a, b: e.b, s, e });
+    }
+  }
+  const allSum = all.raid + all.shared + all.msgs || 1;
+  const innerSum = inner.raid + inner.shared + inner.msgs || 1;
+  // Zufall: Jede Verbindung eines Mitglieds landet mit der Wahrscheinlichkeit bei einem Mitglied, die dem Anteil der
+  // Gruppe an der gesamten Verbindungsstärke entspricht
+  const expected = Math.max(0.01, memberTotal / (2 * allSum));
+  const factor = g.cohesion / expected;
+  const kinds = (["raid", "shared", "msgs"] as const).filter((k) => inner[k] > 0).sort((a, b) => inner[b] - inner[a]);
+  const top = kinds[0];
+  const pct = (v: number) => `${Math.round(v * 100)} %`;
+  const points: GroupExplanation["points"] = [];
+  points.push({
+    text: `${pct(g.cohesion)} der Verbindungen der Mitglieder bleiben in der Gruppe. Wären sie zufällig über alle verteilt, wären es etwa ${pct(expected)}: ${factor >= 1.5 ? `${factor.toLocaleString("de-DE", { maximumFractionDigits: 1 })}× so viel wie Zufall` : "kaum mehr als Zufall, eine lockere Gruppe"}.`,
+  });
+  if (top) {
+    const share = inner[top] / innerSum;
+    const net = all[top] / allSum;
+    const counts = top === "raid" ? `${g.inside.raids.toLocaleString("de-DE")} Raids` : top === "shared" ? `${g.inside.chats.toLocaleString("de-DE")} geteilte Chats` : `${g.inside.msgs.toLocaleString("de-DE")} Nachrichten`;
+    points.push({
+      text: `Was sie verbindet: vor allem ${KIND_LABEL[top]} (${counts}, ${pct(share)} der Punkte in der Gruppe${Math.abs(share - net) > 0.1 ? `, im ganzen Netz nur ${pct(net)}` : ""}).${kinds[1] ? ` Danach ${KIND_LABEL[kinds[1]]} (${pct(inner[kinds[1]] / innerSum)}).` : ""}`,
+    });
+  }
+  const backbone = innerPairs.sort((a, b) => b.s - a.s).slice(0, 3);
+  if (backbone.length) {
+    const share = backbone.reduce((s, p) => s + p.s, 0) / innerSum;
+    points.push({
+      text: `Getragen vor allem von ${backbone.map((p) => `${name(p.a)} und ${name(p.b)}`).join(", ")} (zusammen ${pct(share)} der Punkte in der Gruppe).`,
+      ids: backbone.flatMap((p) => [p.a, p.b]),
+    });
+  }
+  const core = g.members.filter((m) => m.role === "anfuehrer" || m.role === "kern").map((m) => m.id);
+  if (core.length >= 3) {
+    const set = new Set(core);
+    const links = innerPairs.filter((p) => set.has(p.a) && set.has(p.b)).length;
+    const possible = (core.length * (core.length - 1)) / 2;
+    points.push({
+      text:
+        links === possible
+          ? `Der Kern (${core.map(name).join(", ")}) ist geschlossen: alle sind direkt miteinander verbunden.`
+          : `Im Kern (${core.map(name).join(", ")}) sind ${links} von ${possible} Paaren direkt verbunden.`,
+      ids: core,
+    });
+  }
+  const nb = g.neighbours[0];
+  if (nb) {
+    const other = analysis.groups[nb.group];
+    const share = nb.weight / (memberTotal || 1);
+    const bridge = nb.bridges[0];
+    points.push({
+      text: `Nach außen am meisten zur Gruppe um ${name(other.leader)}, aber nur ${pct(share)} der Verbindungen${bridge ? `, vor allem über ${name(bridge.a)} – ${name(bridge.b)}` : ""}.`,
+      ids: bridge ? [bridge.a, bridge.b] : undefined,
+    });
+  } else points.push({ text: "Keine Verbindungen zu anderen Gruppen." });
+  const edgeCount = g.members.filter((m) => m.role === "rand").length;
+  if (edgeCount) points.push({ text: `${edgeCount} ${edgeCount === 1 ? "Spieler steht" : "Spieler stehen"} am Rand: kaum verbunden oder fast genauso mit einer anderen Gruppe.` });
+  return {
+    short: `${top ? `vor allem ${KIND_LABEL[top]}` : "kaum Verbindungen"} · ${factor >= 1.5 ? `${factor.toLocaleString("de-DE", { maximumFractionDigits: 1 })}× mehr als Zufall` : "locker"}`,
+    points,
+  };
 }

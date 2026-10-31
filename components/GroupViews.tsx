@@ -7,7 +7,7 @@ import { Head } from "./Head";
 import { PlayerSearch } from "./PlayerSearch";
 import { weigh, type LinkCounts, type Weights } from "@/lib/connectionWeights";
 import { useGroupSettings } from "./GroupSettings";
-import { reasonText, ROLE_LABEL, ROLE_TONE, type Group, type GroupAnalysis, type Member, type Role } from "@/lib/groups";
+import { explainGroup, reasonText, ROLE_LABEL, ROLE_TONE, type Group, type GroupAnalysis, type Member, type Role } from "@/lib/groups";
 import { GROUP_COLORS } from "@/lib/network";
 import { num } from "@/lib/format";
 
@@ -68,6 +68,7 @@ export function GroupsOverview({ nodes, edges, base }: { nodes: GraphNode[]; edg
                 </span>
               </Link>
               <Bar parts={[{ v: g.cohesion, color: g.color, label: "bleibt in der Gruppe" }]} />
+              <p className="muted grp__line">{explainGroup(g, analysis, edges, weights, name).short}</p>
               <p className="grp__line">
                 <span className="eyebrow">Kern</span>
                 <Heads ids={byRole("kern").map((m) => m.id)} byId={byId} max={8} />
@@ -252,6 +253,20 @@ export function GroupView({ nodes, edges, member, base }: { nodes: GraphNode[]; 
       </section>
 
       {controls}
+
+      <section className="box grp__explain" data-tone="white" aria-labelledby="warum-h" style={{ "--grp": `var(${g.color})` } as React.CSSProperties}>
+        <h3 className="t-3" id="warum-h">
+          Warum das eine Gruppe ist
+        </h3>
+        <ul>
+          {explainGroup(g, analysis, edges, weights, name).points.map((p) => (
+            <li key={p.text} onMouseEnter={() => p.ids?.[0] && setHover(p.ids[0])} onMouseLeave={() => setHover(null)}>
+              {p.text}
+            </li>
+          ))}
+        </ul>
+        <p className="muted">Erkannt nach Louvain: Die Aufteilung, bei der möglichst viel Verbindungsstärke innerhalb der Gruppen liegt, verglichen mit Zufall.</p>
+      </section>
 
       <div className="grp__grid">
         <section className="box grp__leader" data-tone="white" aria-labelledby="anf-h">

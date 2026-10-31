@@ -97,16 +97,15 @@ export async function getConnections(hours: number | null): Promise<ConnectionEd
   return [...pairs.values()];
 }
 
-/** Netz für die Seiten: nur erfasste Spieler, an den Browser gehen nur die Zählwerte (gewichtet wird dort) */
+/**
+ * Netz für die Seiten: nur erfasste Spieler, an den Browser gehen nur die Zählwerte (gewichtet wird dort).
+ * `nodes` enthält alle erfassten Spieler, auch ohne Verbindung (für Suche und „alle Spieler“-Ansichten).
+ */
 export async function getNetwork(hours: number | null): Promise<{ nodes: NetworkNode[]; edges: LinkCounts[] }> {
   const [{ state }, all] = await Promise.all([loadTracker(), getConnections(hours)]);
   const edges: LinkCounts[] = all
     .filter((e) => state.players[e.a] && state.players[e.b])
     .map(({ a, b, raidsAB, raidsBA, chats, chatSeconds, msgsAB, msgsBA, now }) => ({ a, b, raidsAB, raidsBA, chats, chatSeconds, msgsAB, msgsBA, now }));
-  const ids = [...new Set(edges.flatMap((e) => [e.a, e.b]))];
-  const nodes = ids.map((id) => {
-    const p = state.players[id];
-    return { id, name: p.name, uuid: p.uuid, online: p.online, live: Boolean(p.live) };
-  });
+  const nodes = Object.values(state.players).map((p) => ({ id: p.id, name: p.name, uuid: p.uuid, online: p.online, live: Boolean(p.live) }));
   return { nodes, edges };
 }
