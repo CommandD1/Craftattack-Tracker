@@ -171,3 +171,9 @@ export function detectGroups(edges: LinkCounts[], w: Weights, resolution = 1): M
 
 /** Farben für Gruppen (CSS-Variablen), wiederholen sich ab der zehnten */
 export const GROUP_COLORS = ["--diamond", "--gold", "--redstone", "--grass", "--amethyst", "--lava", "--sky", "--pink", "--twitch", "--dirt"];
+
+/** Gegenseitig: beide tun etwas für den anderen (geteilter Chat zählt für beide Seiten) */
+export function isMutual(e: LinkCounts, w: Weights): boolean {
+  const { ab, ba } = directed(e, w);
+  return ab > 0 && ba > 0;
+}

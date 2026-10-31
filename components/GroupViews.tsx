@@ -24,14 +24,14 @@ function groupName(g: Group, name: (id: string) => string) {
 
 /** Übersicht aller Gruppen: Karte der Gruppen (Anführer-Köpfe) und eine Karte je Gruppe */
 export function GroupsOverview({ nodes, edges, base }: { nodes: GraphNode[]; edges: LinkCounts[]; base: { path: string; key: string } }) {
-  const { analysis, weights, controls } = useAnalysis(edges);
+  const { analysis, weights, controls, shown: isShown, groupEdges } = useAnalysis(edges);
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const name = (id: string) => byId.get(id)?.name ?? id;
   const href = (id: string) => `${base.path}/${encodeURIComponent(id)}?key=${encodeURIComponent(base.key)}`;
   const [find, setFind] = useState("");
 
   // Karte: je Gruppe ein Knoten (Kopf des Anführers), Linien = Verbindungen zwischen Gruppen
-  const { mapNodes, mapEdges, leaderGroup } = useMemo(() => groupMap(analysis, byId, weights, edges), [analysis, byId, weights, edges]);
+  const { mapNodes, mapEdges, leaderGroup } = useMemo(() => groupMap(analysis, byId, weights, edges.filter(isShown)), [analysis, byId, weights, edges, isShown]);
   const colorOf = useMemo(() => (id: string) => GROUP_COLORS[(leaderGroup.get(id) ?? 0) % GROUP_COLORS.length], [leaderGroup]);
   const hrefOf = useMemo(() => (id: string) => href(id), [base.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -68,7 +68,7 @@ export function GroupsOverview({ nodes, edges, base }: { nodes: GraphNode[]; edg
                 </span>
               </Link>
               <Bar parts={[{ v: g.cohesion, color: g.color, label: "bleibt in der Gruppe" }]} />
-              <p className="muted grp__line">{explainGroup(g, analysis, edges, weights, name).short}</p>
+              <p className="muted grp__line">{explainGroup(g, analysis, groupEdges, weights, name).short}</p>
               <p className="grp__line">
                 <span className="eyebrow">Kern</span>
                 <Heads ids={byRole("kern").map((m) => m.id)} byId={byId} max={8} />
@@ -149,7 +149,7 @@ function Bar({ parts }: { parts: { v: number; color: string; label: string }[] }
 
 /** Seite einer Gruppe: Anführer und warum, Netz der Mitglieder, Rollen, Zugehörigkeit, Matrix, Nachbargruppen */
 export function GroupView({ nodes, edges, member, base }: { nodes: GraphNode[]; edges: LinkCounts[]; member: string; base: { path: string; key: string } }) {
-  const { analysis, weights, controls } = useAnalysis(edges);
+  const { analysis, weights, controls, shown: isShown, groupEdges } = useAnalysis(edges);
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const name = (id: string) => byId.get(id)?.name ?? id;
   const href = (id: string) => `${base.path}/${encodeURIComponent(id)}?key=${encodeURIComponent(base.key)}`;
@@ -162,7 +162,7 @@ export function GroupView({ nodes, edges, member, base }: { nodes: GraphNode[]; 
   const memberOf = useMemo(() => new Map(g?.members.map((m) => [m.id, m]) ?? []), [g]);
   // Umfeld: auch Spieler außerhalb der Gruppe, bis zu `around` Schritte von einem Mitglied entfernt
   const [around, setAround] = useState(0);
-  const weighted: GraphEdge[] = useMemo(() => edges.map((e) => ({ ...e, ...weigh(e, weights) })).filter((e) => e.weight > 0), [edges, weights]);
+  const weighted: GraphEdge[] = useMemo(() => edges.filter(isShown).map((e) => ({ ...e, ...weigh(e, weights) })).filter((e) => e.weight > 0), [edges, weights, isShown]);
   const shown = useMemo(() => {
     const set = new Set(ids);
     let frontier = [...ids];
@@ -259,7 +259,7 @@ export function GroupView({ nodes, edges, member, base }: { nodes: GraphNode[]; 
           Warum das eine Gruppe ist
         </h3>
         <ul>
-          {explainGroup(g, analysis, edges, weights, name).points.map((p) => (
+          {explainGroup(g, analysis, groupEdges, weights, name).points.map((p) => (
             <li key={p.text} onMouseEnter={() => p.ids?.[0] && setHover(p.ids[0])} onMouseLeave={() => setHover(null)}>
               {p.text}
             </li>

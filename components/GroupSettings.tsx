@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BASE_POINTS, DEFAULT_WEIGHTS, LINK_KINDS, type LinkCounts, type LinkKind, type Weights } from "@/lib/connectionWeights";
+import { BASE_POINTS, DEFAULT_WEIGHTS, LINK_KINDS, weigh, type LinkCounts, type LinkKind, type Weights } from "@/lib/connectionWeights";
 import { analyzeGroups, resolutionForCount, type GroupAnalysis } from "@/lib/groups";
 import { num } from "@/lib/format";
+import { isMutual } from "@/lib/network";
 
 const dec = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 });
 const MSGS_PER_POINT = Math.round(1 / BASE_POINTS.msgs);
@@ -31,8 +32,12 @@ export interface GroupSettingsValue {
   mode: "feinheit" | "anzahl";
   resolution: number;
   count: number;
+  /** Nur Verbindungen zeigen, die in beide Richtungen gehen */
+  mutual: boolean;
+  /** … und auch die Gruppen nur daraus bilden */
+  mutualGroups: boolean;
 }
-const DEFAULTS: GroupSettingsValue = { weights: DEFAULT_WEIGHTS, mode: "feinheit", resolution: 1, count: 10 };
+const DEFAULTS: GroupSettingsValue = { weights: DEFAULT_WEIGHTS, mode: "feinheit", resolution: 1, count: 10, mutual: false, mutualGroups: false };
 const STORAGE_KEY = "ac.gruppen.v1";
 
 function load(): GroupSettingsValue | null {
@@ -49,6 +54,8 @@ function load(): GroupSettingsValue | null {
       mode: raw.mode === "anzahl" ? "anzahl" : "feinheit",
       resolution: typeof raw.resolution === "number" && raw.resolution >= 0.25 && raw.resolution <= 16 ? raw.resolution : 1,
       count: typeof raw.count === "number" && raw.count >= 2 && raw.count <= 60 ? Math.round(raw.count) : 10,
+      mutual: raw.mutual === true,
+      mutualGroups: raw.mutual === true && raw.mutualGroups === true,
     };
   } catch {
     return null;
@@ -78,8 +85,13 @@ export function useGroupSettings(edges: LinkCounts[]) {
     }
   }, [s, loaded]);
   const set = (patch: Partial<GroupSettingsValue>) => setS((prev) => ({ ...prev, ...patch }));
-  const resolution = useMemo(() => (s.mode === "anzahl" ? resolutionForCount(edges, s.weights, s.count) : s.resolution), [edges, s.weights, s.mode, s.count, s.resolution]);
-  const analysis: GroupAnalysis = useMemo(() => analyzeGroups(edges, s.weights, resolution), [edges, s.weights, resolution]);
+  // Einseitige Verbindungen (nur Raids oder Nachrichten in eine Richtung) ausblenden, auf Wunsch auch für die Gruppen
+  const mutualEdges = useMemo(() => edges.filter((e) => isMutual(e, s.weights)), [edges, s.weights]);
+  const groupEdges = s.mutual && s.mutualGroups ? mutualEdges : edges;
+  const shown = useMemo(() => (s.mutual ? (e: LinkCounts) => isMutual(e, s.weights) : () => true), [s.mutual, s.weights]);
+  const resolution = useMemo(() => (s.mode === "anzahl" ? resolutionForCount(groupEdges, s.weights, s.count) : s.resolution), [groupEdges, s.weights, s.mode, s.count, s.resolution]);
+  const analysis: GroupAnalysis = useMemo(() => analyzeGroups(groupEdges, s.weights, resolution), [groupEdges, s.weights, resolution]);
+  const activeCount = useMemo(() => edges.filter((e) => weigh(e, s.weights).weight > 0).length, [edges, s.weights]);
   const sizes = analysis.groups.map((g) => g.members.length);
   const controls = (
     <div className="box conn__controls" data-tone="white">
@@ -115,6 +127,25 @@ export function useGroupSettings(edges: LinkCounts[]) {
         })}
       </fieldset>
       <fieldset className="conn__group">
+        <legend className="eyebrow">Verbindungen</legend>
+        <div className="gb__seg" role="group" aria-label="Richtung der Verbindungen">
+          <button type="button" aria-pressed={!s.mutual} onClick={() => set({ mutual: false, mutualGroups: false })}>
+            Alle
+          </button>
+          <button type="button" aria-pressed={s.mutual} onClick={() => set({ mutual: true })} title="Nur, wenn beide etwas für den anderen tun: z. B. raiden sich gegenseitig, schreiben beieinander oder teilen einen Chat">
+            Nur gegenseitige
+          </button>
+        </div>
+        <p className="muted">
+          {num(mutualEdges.length)} von {num(activeCount)} Verbindungen gehen in beide Richtungen. Einseitig: nur einer raidet oder schreibt beim anderen.
+        </p>
+        {s.mutual && (
+          <label className="conn__row">
+            <input type="checkbox" checked={s.mutualGroups} onChange={(e) => set({ mutualGroups: e.target.checked })} /> Auch die Gruppen nur aus gegenseitigen Verbindungen bilden
+          </label>
+        )}
+      </fieldset>
+      <fieldset className="conn__group">
         <legend className="eyebrow">Gruppen</legend>
         <div className="gb__seg" role="group" aria-label="Einteilung">
           <button type="button" aria-pressed={s.mode === "feinheit"} onClick={() => set({ mode: "feinheit", resolution })}>
@@ -142,11 +173,11 @@ export function useGroupSettings(edges: LinkCounts[]) {
         <p className="muted">
           {num(analysis.groups.length)} Gruppen · größte {num(sizes[0] ?? 0)} Spieler · {num(sizes.filter((n) => n === 1).length)} ohne Gruppe (allein)
         </p>
-        <button type="button" className="tag conn__reset" onClick={() => setS({ ...DEFAULTS })} hidden={same(s.weights, DEFAULTS.weights) && s.mode === "feinheit" && s.resolution === 1}>
+        <button type="button" className="tag conn__reset" onClick={() => setS({ ...DEFAULTS })} hidden={same(s.weights, DEFAULTS.weights) && s.mode === "feinheit" && s.resolution === 1 && !s.mutual}>
           Zurücksetzen
         </button>
       </fieldset>
     </div>
   );
-  return { analysis, weights: s.weights, resolution, controls };
+  return { analysis, weights: s.weights, resolution, controls, shown, mutual: s.mutual, groupEdges };
 }
