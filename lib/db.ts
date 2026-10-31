@@ -301,5 +301,36 @@ async function migrate(db: Db) {
       deaths           integer NOT NULL
     )`);
   await db.query(`ALTER TABLE history ADD COLUMN IF NOT EXISTS player_count integer`);
+  // Twitch-Verlauf aus der Helix-API (auch rückwirkend, z. B. für Tracker-Lücken): Archiv-VODs = Stream-Zeiten mit
+  // Titel, Clips = Momente mit Zeitpunkt. Holt nur der Tracker (lib/twitchHistory.ts).
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS twitch_vods (
+      id         text PRIMARY KEY,
+      player     text NOT NULL,
+      login      text NOT NULL,
+      created_at timestamptz NOT NULL,
+      duration_s integer NOT NULL,
+      title      text NOT NULL,
+      view_count integer NOT NULL DEFAULT 0,
+      fetched_at timestamptz NOT NULL
+    )`);
+  await db.query(`CREATE INDEX IF NOT EXISTS twitch_vods_player_idx ON twitch_vods (player, created_at)`);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS twitch_clips (
+      id           text PRIMARY KEY,
+      player       text NOT NULL,
+      created_at   timestamptz NOT NULL,
+      title        text NOT NULL,
+      view_count   integer NOT NULL DEFAULT 0,
+      creator_name text,
+      vod_id       text,
+      vod_offset   integer,
+      duration     real,
+      url          text NOT NULL,
+      thumbnail    text,
+      fetched_at   timestamptz NOT NULL
+    )`);
+  await db.query(`CREATE INDEX IF NOT EXISTS twitch_clips_player_idx ON twitch_clips (player, created_at)`);
+  await db.query(`CREATE INDEX IF NOT EXISTS twitch_clips_views_idx ON twitch_clips (view_count DESC)`);
   // Früher: Tabelle user_files für das entfernte Konto-Feature. Bestehende (leere) Tabellen bleiben unangetastet.
 }

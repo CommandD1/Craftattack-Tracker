@@ -202,6 +202,19 @@ export const EVENT_META: Record<EventType, EventMeta> = {
     text: (e) => `hat ${num(e.value ?? 0)} Bits von ${e.meta?.fromName ?? "einem Zuschauer"} bekommen`,
     sub: (e) => (e.meta?.fromPlayerName ? `Gecheert hat Spieler ${e.meta.fromPlayerName}` : "Einzelner Cheer"),
   },
+  clip: {
+    label: "Clip",
+    tone: "twitch",
+    text: (e) => `wurde geclippt: „${e.meta?.title ?? "Clip"}“`,
+    sub: (e) =>
+      [
+        e.value !== undefined ? `${num(e.value)} Aufrufe` : null,
+        typeof e.meta?.creatorName === "string" ? `Clip von ${e.meta.creatorName}` : null,
+        typeof e.meta?.clipSeconds === "number" ? `${e.meta.clipSeconds} s` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || null,
+  },
   follower_burst: {
     label: "Follower-Schub",
     tone: "twitch",
@@ -290,7 +303,7 @@ export const EVENT_GROUPS: { key: string; label: string; tone: string; types: Ev
   { key: "server", label: "Server", tone: "white", types: ["join", "leave", "afk_start", "afk_mobs_start", "afk_mobs_end", "afk_blocks_start", "afk_blocks_end", "afk_end", "server_online", "server_offline", "tracker_start"] },
   { key: "death", label: "Tode", tone: BOARD_TONE.deaths, types: ["death"] },
   { key: "loot", label: "Loot & Arbeit", tone: "white", types: ["diamonds", "blocksBroken", "mobsKilled", "distance", "damageDealt", "totemsUsed", "foodEaten"] },
-  { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title", "subscription", "subscription_gift", "cheer", "follower_burst", "raid", "chat", "shared_chat_start", "shared_chat_end"] },
+  { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title", "subscription", "subscription_gift", "cheer", "clip", "follower_burst", "raid", "chat", "shared_chat_start", "shared_chat_end"] },
   { key: "highlights", label: "Highlights", tone: "white", types: ["achievement", "first_join", "rank", "milestone", "record"] },
 ];
 
@@ -328,6 +341,8 @@ export function eventBadge(e: TrackerEvent): string | null {
       return `${num(e.delta ?? 0)} Subs`;
     case "cheer":
       return `${num(e.value ?? 0)} Bits`;
+    case "clip":
+      return `${num(e.value ?? 0)} Aufrufe`;
     case "follower_burst":
       return `+${num(e.delta ?? 0)} Follower`;
     case "raid":
@@ -389,6 +404,7 @@ export const EVENT_TYPES: EventType[] = [
   "subscription",
   "subscription_gift",
   "cheer",
+  "clip",
   "follower_burst",
   "raid",
   "chat",
