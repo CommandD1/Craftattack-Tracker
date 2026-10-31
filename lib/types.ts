@@ -157,6 +157,7 @@ export type EventType =
   | "subscription"
   | "subscription_gift"
   | "cheer"
+  | "clip"
   | "follower_burst"
   | "raid"
   | "chat"

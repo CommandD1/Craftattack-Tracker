@@ -52,6 +52,11 @@ async function token(): Promise<string> {
 }
 
 async function helix<T>(path: string, params: Record<string, string>): Promise<T[]> {
+  return (await helixPage<T>(path, params)).data;
+}
+
+/** Eine Seite einer Helix-Liste mit Cursor für die nächste */
+export async function helixPage<T>(path: string, params: Record<string, string>): Promise<{ data: T[]; cursor: string | null }> {
   const q = new URLSearchParams(params).toString();
   const res = await fetch(`https://api.twitch.tv/helix/${path}?${q}`, {
     headers: { "Client-Id": CLIENT_ID, Authorization: `Bearer ${await token()}` },
@@ -60,10 +65,11 @@ async function helix<T>(path: string, params: Record<string, string>): Promise<T
   });
   if (res.status === 401) g().token = null;
   if (!res.ok) throw new Error(`Twitch ${path} HTTP ${res.status}`);
-  return ((await res.json()) as { data: T[] }).data;
+  const j = (await res.json()) as { data: T[]; pagination?: { cursor?: string } };
+  return { data: j.data, cursor: j.pagination?.cursor ?? null };
 }
 
-async function userId(login: string): Promise<string | null> {
+export async function userId(login: string): Promise<string | null> {
   const c = g();
   const key = login.toLowerCase();
   const hit = c.users.get(key);
@@ -75,7 +81,7 @@ async function userId(login: string): Promise<string | null> {
 }
 
 /** Twitch-Dauerformat „1h23m45s“ → Sekunden */
-function parseDuration(s: string) {
+export function parseDuration(s: string) {
   let total = 0;
   for (const [, n, u] of s.matchAll(/(\d+)([hms])/g)) total += Number(n) * (u === "h" ? 3600 : u === "m" ? 60 : 1);
   return total;

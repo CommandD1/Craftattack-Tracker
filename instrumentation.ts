@@ -22,6 +22,9 @@ export async function register() {
     // Köpfe und Skins neuer Spieler von craftattack.one speichern (die Website selbst wird dort gesperrt)
     const { startImageWarmup } = await import("./lib/imageCache");
     startImageWarmup();
+    // Twitch-Verlauf (VODs, Clips) auch rückwirkend, z. B. Streams in Tracker-Lücken
+    const { startTwitchHistorySync } = await import("./lib/twitchHistory");
+    startTwitchHistorySync();
     // Einmal pro Prozess: alte Verlaufsdaten korrigieren und fehlende AFK-Farm-Ereignisse nachtragen
     const { runBackfills } = await import("./lib/backfill");
     runBackfills().catch((err: unknown) => console.error("[tracker] Nachträge fehlgeschlagen:", err));

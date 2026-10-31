@@ -199,6 +199,7 @@ export const EVENT_ICON: Record<EventType, keyof typeof Icon> = {
   subscription: "gift",
   subscription_gift: "gift",
   cheer: "bits",
+  clip: "eye",
   follower_burst: "users",
   raid: "raid",
   chat: "chat",

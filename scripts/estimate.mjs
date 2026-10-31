@@ -440,6 +440,17 @@ async function estimatePlayer(p) {
     )
   ).rows.map((e) => ({ ...e, t: ms(e.at) }));
   const R = rows.map((r) => ({ ...r, t: ms(r.at), live: r.viewers !== null }));
+  // Echte Stream-Zeiten aus den Archiv-VODs (lib/twitchHistory.ts): in Lücken genau statt geschätzt.
+  // Aufeinanderfolgende VODs (Twitch teilt nach 48 h) sind ein Stream.
+  const vodStreams = [];
+  for (const v of (await q(`SELECT id, created_at, duration_s, title FROM twitch_vods WHERE player = $1 ORDER BY created_at`, [id]).catch(() => ({ rows: [] }))).rows) {
+    const start = ms(v.created_at);
+    const end = start + v.duration_s * 1000;
+    const prev = vodStreams[vodStreams.length - 1];
+    if (prev && start - prev.end < 5 * MIN) prev.end = Math.max(prev.end, end);
+    else vodStreams.push({ start, end, title: v.title, vodId: v.id });
+  }
+  const vodAt = (t) => vodStreams.find((v) => t >= v.start && t < v.end) ?? null;
   // Erstes Join nur, wenn der Spieler davor nicht schon im Verlauf auftaucht (Tracker-Neustarts melden alte Spieler neu)
   const firstJoin = evs.find((e) => e.type === "first_join" && e.t <= R[0].t + 5 * MIN) ?? null;
   let pStart = firstJoin ? firstJoin.t : START;
@@ -840,6 +851,11 @@ async function estimatePlayer(p) {
         const k = r + Math.floor(lrng() * (n - r));
         for (let i = Math.max(r === 0 && s.startLive ? 1 : r, k); i < n; i++) live[i] = 0;
       }
+    }
+    // VODs vorhanden: Stream-Zustand in der Lücke ist bekannt (nur, wo der Kanal VODs hat)
+    if (vodStreams.length) {
+      for (let i = 0; i < n; i++) live[i] = vodAt(polls[i]) ? 1 : 0;
+      s.fromVods = true;
     }
     s.live = live;
 
@@ -1264,13 +1280,17 @@ async function estimatePlayer(p) {
       }
       if (!end && !prevLive && lv) {
         const real = replacedStream.get(s);
-        const startAt = s.knownStreamStart !== null && Math.abs(s.knownStreamStart - t) < 3 * MIN ? s.knownStreamStart : t;
-        const title = real?.meta?.title ?? shiftTitle(lastTitle(g.a), lastBefore(g.a, ["stream_start", "stream_title"])?.t ?? t, t);
-        push(startAt, "stream_start", {
-          where: "twitch",
-          value: viewers[i],
-          meta: { title, login: real?.meta?.login ?? p.twitch_login ?? id, onServer: on, startedAt: iso(startAt), estimated: true },
-        });
+        const vod = s.fromVods ? vodAt(t) : null;
+        const startAt = vod ? vod.start : s.knownStreamStart !== null && Math.abs(s.knownStreamStart - t) < 3 * MIN ? s.knownStreamStart : t;
+        const title = vod?.title ?? real?.meta?.title ?? shiftTitle(lastTitle(g.a), lastBefore(g.a, ["stream_start", "stream_title"])?.t ?? t, t);
+        // Stream lief laut VOD schon vor der Lücke: sein Beginn steht schon als echtes Ereignis (lib/twitchHistory.ts) da
+        if (!(vod && vod.start <= g.a))
+          push(startAt, "stream_start", {
+            where: "twitch",
+            value: viewers[i],
+            // Zeit und Titel aus dem VOD sind echt, nur die Zuschauerzahl ist geschätzt
+            meta: { title, login: real?.meta?.login ?? p.twitch_login ?? id, onServer: on, startedAt: iso(startAt), estimated: true, ...(vod ? { source: "vod", vodId: vod.vodId, vodUrl: `https://www.twitch.tv/videos/${vod.vodId}` } : {}) },
+          });
         liveSince = startAt;
       }
       if (end) {

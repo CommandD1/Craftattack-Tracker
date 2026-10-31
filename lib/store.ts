@@ -31,6 +31,7 @@ const KEEP_IN_MEMORY = new Set<TrackerEvent["type"]>([
   "shared_chat_end",
   "chat",
   "cheer",
+  "clip",
   "server_online",
   "server_offline",
   "tracker_start",
