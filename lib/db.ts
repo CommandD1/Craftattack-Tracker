@@ -260,6 +260,18 @@ async function migrate(db: Db) {
       at   timestamptz NOT NULL,
       data text NOT NULL
     )`);
+  // Wann der Live-Chat mitschrieb (lib/ircCoverage.ts), für die VOD-Nachlese der Lücken
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS irc_uptime (
+      minute integer PRIMARY KEY,
+      ok     boolean NOT NULL DEFAULT true
+    )`);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS irc_joined (
+      player text NOT NULL,
+      bin    integer NOT NULL,
+      PRIMARY KEY (player, bin)
+    )`);
   // Chat-Spuren der Zuschauerwanderung (lib/chatMoves.ts): nur Summen je 5-Minuten-Abschnitt und Kanalpaar
   await db.query(`
     CREATE TABLE IF NOT EXISTS viewer_chat_moves (

@@ -88,6 +88,9 @@ await q(`
 
 /** Zeitfenster ohne Live-Chat nach CHAT_START (keine Abo-, Chat- oder Raid-Zeile aus dem Live-Chat) */
 async function ircOutages() {
+  // Seit der Tracker die Mitschrift festhält (irc_uptime), übernimmt fillGaps(); die Schätzung gilt nur davor
+  const first = (await q(`SELECT min(minute) AS m FROM irc_uptime`).catch(() => ({ rows: [] }))).rows[0]?.m;
+  const cap = first == null ? Infinity : Number(first) * 60_000;
   // Ereignisse aus dem Live-Chat (Abo-Minuten gibt es seit dem 14.10., die Einzel-Abos erst seit dem 29.10.)
   const rows = (
     await q(
@@ -100,7 +103,7 @@ async function ircOutages() {
   ).rows.map((r) => r.t.getTime());
   const out = [];
   let prev = CHAT_START;
-  for (const t of [...rows, Date.now() - RECENT_MS]) {
+  for (const t of [...rows.filter((x) => x < cap), Math.min(Date.now() - RECENT_MS, cap)]) {
     if (t - prev > IRC_GAP_MS) out.push([prev, t]);
     prev = Math.max(prev, t);
   }
@@ -374,6 +377,8 @@ async function main() {
   for (;;) {
     if (Date.now() - lastPlan > 30 * 60_000 || !work.length) {
       await loadPlayers();
+      // Genau bekannte Lücken des Live-Chats zuerst (alle Kanäle gleichauf, mit Zuschauerwanderung)
+      await fillGaps().catch((e) => log("[lücken] Fehler:", e.message));
       work = (await plan()).filter((w) => w.ranges.length || w.finished);
       // VODs ohne Abschnitte (alles vom Live-Chat abgedeckt, fertig gesendet) gleich als erledigt markieren
       for (const w of work.filter((x) => !x.ranges.length && x.finished))
@@ -390,7 +395,7 @@ async function main() {
       log(`${work.length} VODs offen (${atRisk} gefährdet), ${Math.round(remainingSec / 3600)} VOD-Stunden, ~${Math.round(remainingReq)} Anfragen (${dens.toFixed(0)}/h), ${(delay / 1000).toFixed(1)} s Abstand, fertig in ~${etaH < 48 ? `${Math.round(etaH)} Std` : `${Math.round(etaH / 24)} Tagen`}${Date.now() + etaH * 3600_000 > DEADLINE ? ` (nach der Frist ${new Date(DEADLINE).toISOString().slice(0, 10)})` : ""}`);
       if (!work.length) {
         if (ONCE) break;
-        await sleep(3 * 3600_000);
+        await sleep(30 * 60_000);
         continue;
       }
     }
@@ -444,17 +449,197 @@ async function main() {
   await db.end();
 }
 
+/* ---------- Alle Kanäle zeitlich gleichauf lesen (Nachlese ganzer Zeiträume und Lücken) ---------- */
+
+const SLICE_MS = 5 * 60_000;
+const MOVE_WINDOW_MS = 45 * 60_000;
+const STAY_AFTER_MS = 20 * 60_000;
+const FOLLOW_MS = 90 * 60_000;
+/** Geteilter Chat: dieselbe Nachricht derselben Person kurz nacheinander in zwei Kanälen ist eine Kopie */
+const COPY_MS = 5_000;
+
+/**
+ * Zuschauerwanderung wie lib/chatMoves.ts: schreibt jemand bei A und bis 45 Min später bei B, zählt das als Wechsel.
+ * Nutzernamen liegen nur im Arbeitsspeicher (höchstens 90 Min Wiedergabezeit) und werden nie geschrieben oder geloggt.
+ * `count(at, from, to)` entscheidet, ob ein Wechsel gezählt wird (Lücken: nur, was der Live-Chat verpasst hat).
+ */
+class Flow {
+  constructor(count = () => true) {
+    this.count = count;
+    this.seen = new Map();
+    this.moved = new Map();
+    this.pending = new Map();
+  }
+  bump(key, field) {
+    const p = this.pending.get(key) ?? { n: 0, stay: 0, back: 0 };
+    p[field]++;
+    this.pending.set(key, p);
+  }
+  note(chan, user, at) {
+    const mv = this.moved.get(user);
+    if (mv) {
+      if (!mv.stay && chan === mv.to && at - mv.at >= STAY_AFTER_MS && at - mv.at <= FOLLOW_MS) {
+        mv.stay = true;
+        this.bump(mv.key, "stay");
+      }
+      if (!mv.back && chan === mv.from && at - mv.at <= FOLLOW_MS) {
+        mv.back = true;
+        this.bump(mv.key, "back");
+      }
+    }
+    const prev = this.seen.get(user);
+    if (prev && prev.chan !== chan && at - prev.at <= MOVE_WINDOW_MS && at >= prev.at && this.count(at, prev.chan, chan)) {
+      const key = `${Math.floor(at / 60_000 / 5)}|${prev.chan}|${chan}`;
+      this.bump(key, "n");
+      this.moved.set(user, { from: prev.chan, to: chan, key, at, stay: false, back: false });
+    }
+    this.seen.set(user, { chan, at });
+  }
+  forget(now) {
+    for (const [u, s] of this.seen) if (now - s.at > MOVE_WINDOW_MS) this.seen.delete(u);
+    for (const [u, s] of this.moved) if (now - s.at > FOLLOW_MS) this.moved.delete(u);
+  }
+  /** Gesammelte Wechsel (mit `client` in einer laufenden Transaktion) schreiben; Zahl der Wechsel */
+  async flush(client) {
+    const rows = [...this.pending];
+    this.pending.clear();
+    for (let i = 0; i < rows.length; i += 500) {
+      const part = rows.slice(i, i + 500);
+      const values = [];
+      const ph = part.map(([key, c], j) => {
+        const [bin, a, b] = key.split("|");
+        values.push(Number(bin), a, b, c.n, c.stay, c.back);
+        const o = j * 6;
+        return `($${o + 1}, $${o + 2}, $${o + 3}, $${o + 4}, $${o + 5}, $${o + 6})`;
+      });
+      await client.query(
+        `INSERT INTO viewer_chat_moves (bin, from_id, to_id, n, stay, back) VALUES ${ph.join(", ")}
+         ON CONFLICT (bin, from_id, to_id) DO UPDATE SET n = viewer_chat_moves.n + EXCLUDED.n, stay = viewer_chat_moves.stay + EXCLUDED.stay, back = viewer_chat_moves.back + EXCLUDED.back`,
+        values,
+      );
+    }
+    return rows.reduce((s, [, c]) => s + c.n, 0);
+  }
+}
+
+/** Abstand zwischen Anfragen (geteilt von Nachlese und Lücken; 429 macht ihn größer) */
+let sliceDelay = MIN_DELAY_MS;
+let sliceErrors = 0;
+/** Eine Seite holen; bei Fehlern warten und erneut (wie im Normalbetrieb). null = VOD gelöscht */
+async function fetchPage(vodId, offset) {
+  for (;;) {
+    await sleep(sliceDelay * (0.8 + Math.random() * 0.4));
+    try {
+      const r = await fetchComments(vodId, offset);
+      sliceErrors = 0;
+      sliceDelay = Math.max(MIN_DELAY_MS, sliceDelay * 0.99);
+      return r;
+    } catch (err) {
+      sliceErrors++;
+      if (/HTTP 429/.test(err.message)) sliceDelay = Math.min(MAX_DELAY_MS, sliceDelay * 2);
+      const wait = err instanceof Blocked ? 6 * 3600_000 : Math.min(3600_000, 60_000 * 2 ** Math.min(6, sliceErrors));
+      log(`[nachlese] Fehler (${err.message}), Pause ${Math.round(wait / 60_000)} Min`);
+      await sleep(wait);
+    }
+  }
+}
+
+/** VODs, die [from, to) berühren, als Lesezustand */
+async function vodsBetween(from, to, onlyPlayers = null) {
+  return (
+    await q(
+      `SELECT id, player, created_at, duration_s FROM twitch_vods
+        WHERE created_at < $2 AND created_at + make_interval(secs => duration_s) > $1 ${onlyPlayers ? "AND player = ANY($3)" : ""} ORDER BY created_at`,
+      onlyPlayers ? [new Date(from), new Date(to), onlyPlayers] : [new Date(from), new Date(to)],
+    )
+  ).rows.map((v) => ({ id: v.id, player: v.player, start: v.created_at.getTime(), end: v.created_at.getTime() + v.duration_s * 1000, duration: v.duration_s, offset: null, carry: [], lastIds: new Set(), gone: false }));
+}
+
+/**
+ * Alle `vods` von `from` bis `to` in 5-Minuten-Abschnitten lesen, zeitlich geordnet, Kopien aus dem geteilten Chat
+ * ausgelassen. `onSlice(items, start, end, requests)` bekommt je Abschnitt die Zeilen { t, chan, login, node }.
+ */
+async function readSlices(vods, from, to, onSlice) {
+  let pos = from;
+  let requests = 0;
+  while (pos < to) {
+    const end = Math.min(pos + SLICE_MS, to);
+    const batch = [];
+    let sliceRequests = 0;
+    for (const v of vods) {
+      if (v.gone || v.start >= end || v.end <= pos) continue;
+      if (v.offset === null) v.offset = Math.max(0, Math.floor((pos - v.start) / 1000));
+      const keep = [];
+      for (const n of v.carry) (n.t < end ? batch : keep).push(n);
+      v.carry = keep;
+      while (v.start + v.offset * 1000 < end && v.offset < v.duration) {
+        const page = await fetchPage(v.id, v.offset);
+        requests++;
+        sliceRequests++;
+        if (page === null) {
+          log(`[nachlese] VOD ${v.id} (${v.player}) nicht mehr verfügbar`);
+          v.gone = true;
+          v.carry = [];
+          break;
+        }
+        const ids = new Set();
+        for (const n of page) {
+          ids.add(n.id);
+          if (v.lastIds.has(n.id)) continue;
+          const t = Date.parse(n.createdAt);
+          if (!Number.isFinite(t) || t < pos) continue;
+          (t < end ? batch : v.carry).push({ t, chan: v.player, node: n });
+        }
+        v.lastIds = ids;
+        const last = page[page.length - 1];
+        let next = !last || last.contentOffsetSeconds <= v.offset ? v.offset + (page.length ? 1 : 60) : last.contentOffsetSeconds;
+        if (page.length && page[0].contentOffsetSeconds === last.contentOffsetSeconds) next = last.contentOffsetSeconds + 1;
+        v.offset = next;
+      }
+    }
+    batch.sort((a, b) => a.t - b.t);
+    const recent = new Map();
+    const items = [];
+    for (const it of batch) {
+      const login = it.node.commenter?.login?.toLowerCase();
+      if (!login) continue;
+      const text = (it.node.message?.fragments ?? []).map((f) => f.text).join("").trim();
+      const key = `${login}|${text}`;
+      const r = recent.get(key);
+      if (r && r.chan !== it.chan && it.t - r.t <= COPY_MS) continue;
+      recent.set(key, { chan: it.chan, t: it.t });
+      items.push({ ...it, login });
+    }
+    await onSlice(items, pos, end, sliceRequests, batch.length);
+    pos = end;
+  }
+  return requests;
+}
+
+async function inTransaction(fn) {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const r = await fn(client);
+    await client.query("COMMIT");
+    return r;
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 /* ---------- Nachlese ganzer Zeiträume (--backfill) ---------- */
 
 /**
- * Liest die Chat-Wiedergabe ALLER VODs eines Zeitraums vollständig, alle Kanäle zeitlich gleichauf in Abschnitten von
- * 5 Minuten. Nachgetragen wird, was der Live-Chat damals noch nicht erfasst hat:
+ * Liest die Chat-Wiedergabe ALLER VODs eines Zeitraums vollständig. Nachgetragen wird, was der Live-Chat damals noch
+ * nicht erfasst hat:
  * - A (19.10.–29.10.): einzelne Abos mit Schenker/Stufe/Monaten (live erst ab 29.10., vorher nur Summen je Minute)
  *   und Cheers (live erst ab 25.10.), dazu die Zuschauerwanderung
  * - B (29.10.–03.11.): nur Zuschauerwanderung (live ab 03.11. 10:10 UTC, erster Abschnitt in viewer_chat_moves)
  * - C (10.10.–19.10.): nur Zuschauerwanderung (Abos/Cheers/Raids/Chat dort schon aus dem Normalbetrieb)
- * Zuschauerwanderung wie lib/chatMoves.ts: schreibt jemand bei A und bis 45 Min später bei B, zählt das als Wechsel.
- * Nutzernamen liegen nur im Arbeitsspeicher (höchstens 90 Min Wiedergabezeit) und werden nie geschrieben oder geloggt.
  * Fortschritt je Zeitraum in vod_backfill_progress; nach einem Neustart geht es am letzten Abschnitt weiter.
  */
 const BACKFILL_PASSES = [
@@ -462,12 +647,6 @@ const BACKFILL_PASSES = [
   { name: "B", from: "2026-10-29T07:10:00Z", to: "2026-11-03T10:10:00Z", only: [] },
   { name: "C", from: "2026-10-10T08:00:00Z", to: "2026-10-19T10:06:00Z", only: [] },
 ];
-const SLICE_MS = 5 * 60_000;
-const MOVE_WINDOW_MS = 45 * 60_000;
-const STAY_AFTER_MS = 20 * 60_000;
-const FOLLOW_MS = 90 * 60_000;
-/** Geteilter Chat: dieselbe Nachricht derselben Person kurz nacheinander in zwei Kanälen ist eine Kopie */
-const COPY_MS = 5_000;
 
 async function backfill() {
   await q(`
@@ -481,193 +660,179 @@ async function backfill() {
       updated_at timestamptz NOT NULL DEFAULT now()
     )`);
   await loadPlayers();
-  let delay = MIN_DELAY_MS;
-  let errors = 0;
   /** Zustand der Zuschauerwanderung; bleibt über aneinandergrenzende Zeiträume (A → B) erhalten */
   let flow = null;
   let flowEnd = 0;
-  const newFlow = () => ({ seen: new Map(), moved: new Map(), pending: new Map() });
-  const bump = (key, field) => {
-    const p = flow.pending.get(key) ?? { n: 0, stay: 0, back: 0 };
-    p[field]++;
-    flow.pending.set(key, p);
-  };
-  const noteChatter = (chan, user, at) => {
-    const mv = flow.moved.get(user);
-    if (mv) {
-      if (!mv.stay && chan === mv.to && at - mv.at >= STAY_AFTER_MS && at - mv.at <= FOLLOW_MS) {
-        mv.stay = true;
-        bump(mv.key, "stay");
-      }
-      if (!mv.back && chan === mv.from && at - mv.at <= FOLLOW_MS) {
-        mv.back = true;
-        bump(mv.key, "back");
-      }
-    }
-    const prev = flow.seen.get(user);
-    if (prev && prev.chan !== chan && at - prev.at <= MOVE_WINDOW_MS && at >= prev.at) {
-      const key = `${Math.floor(at / 60_000 / 5)}|${prev.chan}|${chan}`;
-      bump(key, "n");
-      flow.moved.set(user, { from: prev.chan, to: chan, key, at, stay: false, back: false });
-    }
-    flow.seen.set(user, { chan, at });
-  };
-
-  /** Eine Seite holen; bei Fehlern warten und erneut (wie im Normalbetrieb). null = VOD gelöscht */
-  const fetchPage = async (vodId, offset) => {
-    for (;;) {
-      await sleep(delay * (0.8 + Math.random() * 0.4));
-      try {
-        const r = await fetchComments(vodId, offset);
-        errors = 0;
-        delay = Math.max(MIN_DELAY_MS, delay * 0.99);
-        return r;
-      } catch (err) {
-        errors++;
-        if (/HTTP 429/.test(err.message)) delay = Math.min(MAX_DELAY_MS, delay * 2);
-        const wait = err instanceof Blocked ? 6 * 3600_000 : Math.min(3600_000, 60_000 * 2 ** Math.min(6, errors));
-        log(`[nachlese] Fehler (${err.message}), Pause ${Math.round(wait / 60_000)} Min`);
-        await sleep(wait);
-      }
-    }
-  };
-
   for (const pass of BACKFILL_PASSES) {
     const from = Date.parse(pass.from);
     const to = Date.parse(pass.to);
     const saved = (await q(`SELECT pos, done FROM vod_backfill_progress WHERE pass = $1`, [pass.name])).rows[0];
     if (saved?.done) continue;
-    let pos = saved ? saved.pos.getTime() : from;
+    const pos = saved ? saved.pos.getTime() : from;
     if (!saved) await q(`INSERT INTO vod_backfill_progress (pass, pos) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [pass.name, new Date(pos)]);
-    if (!flow || flowEnd !== pos) flow = newFlow();
+    if (!flow || flowEnd !== pos) flow = new Flow();
     const only = new Set(pass.only);
-    const vods = (
-      await q(
-        `SELECT id, player, created_at, duration_s FROM twitch_vods
-          WHERE created_at < $2 AND created_at + make_interval(secs => duration_s) > $1 ORDER BY created_at`,
-        [new Date(pos), new Date(to)],
-      )
-    ).rows.map((v) => ({ id: v.id, player: v.player, start: v.created_at.getTime(), end: v.created_at.getTime() + v.duration_s * 1000, duration: v.duration_s, offset: null, carry: [], lastIds: new Set(), gone: false }));
-    const totalH = vods.reduce((s, v) => s + Math.max(0, Math.min(v.end, to) - Math.max(v.start, pos)), 0) / 3600_000;
+    const vods = await vodsBetween(pos, to);
+    const remaining = (at) => vods.reduce((s, v) => s + (v.gone ? 0 : Math.max(0, Math.min(v.end, to) - Math.max(v.start, at))), 0) / 3600_000;
+    const totalH = remaining(pos);
     log(`[nachlese] Zeitraum ${pass.name} ab ${new Date(pos).toISOString()}: ${vods.length} VODs, ${Math.round(totalH)} VOD-Stunden${only.size ? `, dazu ${[...only].join("/")}` : ""}`);
     let requests = 0;
     let comments = 0;
     let lastLog = Date.now();
     const startedAt = Date.now();
-    while (pos < to) {
-      const end = Math.min(pos + SLICE_MS, to);
-      const batch = [];
-      let sliceRequests = 0;
-      for (const v of vods) {
-        if (v.gone || v.start >= end || v.end <= pos) continue;
-        if (v.offset === null) v.offset = Math.max(0, Math.floor((pos - v.start) / 1000));
-        const keep = [];
-        for (const n of v.carry) (n.t < end ? batch : keep).push(n);
-        v.carry = keep;
-        while (v.start + v.offset * 1000 < end && v.offset < v.duration) {
-          const page = await fetchPage(v.id, v.offset);
-          requests++;
-          sliceRequests++;
-          if (page === null) {
-            log(`[nachlese] VOD ${v.id} (${v.player}) nicht mehr verfügbar`);
-            v.gone = true;
-            v.carry = [];
-            break;
-          }
-          const ids = new Set();
-          for (const n of page) {
-            ids.add(n.id);
-            if (v.lastIds.has(n.id)) continue;
-            const t = Date.parse(n.createdAt);
-            if (!Number.isFinite(t) || t < pos) continue;
-            const item = { t, chan: v.player, node: n };
-            (t < end ? batch : v.carry).push(item);
-          }
-          v.lastIds = ids;
-          comments += page.length;
-          const last = page[page.length - 1];
-          let next = !last || last.contentOffsetSeconds <= v.offset ? v.offset + (page.length ? 1 : 60) : last.contentOffsetSeconds;
-          if (page.length && page[0].contentOffsetSeconds === last.contentOffsetSeconds) next = last.contentOffsetSeconds + 1;
-          v.offset = next;
-        }
-      }
-      // Zeitlich ordnen, Kopien aus dem geteilten Chat auslassen
-      batch.sort((a, b) => a.t - b.t);
-      const recent = new Map();
+    let stop = false;
+    await readSlices(vods, pos, to, async (items, start, end, sliceRequests, lines) => {
+      if (stop) return;
+      requests += sliceRequests;
+      comments += lines;
       const found = {};
-      for (const { t, chan, node } of batch) {
-        const login = node.commenter?.login?.toLowerCase();
-        if (!login) continue;
-        const text = (node.message?.fragments ?? []).map((f) => f.text).join("").trim();
-        const key = `${login}|${text}`;
-        const r = recent.get(key);
-        if (r && r.chan !== chan && t - r.t <= COPY_MS) continue;
-        recent.set(key, { chan, t });
+      for (const { t, chan, login, node } of items) {
         if (only.size) {
           const owner = players.get(chan);
           if (owner) await handle(owner, node, found, only).catch((e) => log("[nachlese] Zeile übersprungen:", e.message));
         }
-        noteChatter(chan, login, t);
+        flow.note(chan, login, t);
       }
-      // Alte Einträge vergessen (Wiedergabezeit)
-      for (const [u, s] of flow.seen) if (end - s.at > MOVE_WINDOW_MS) flow.seen.delete(u);
-      for (const [u, s] of flow.moved) if (end - s.at > FOLLOW_MS) flow.moved.delete(u);
-      // Wechsel schreiben und Fortschritt merken (zusammen)
-      const rows = [...flow.pending];
-      flow.pending.clear();
-      found.moves = rows.reduce((s, [, c]) => s + c.n, 0);
-      const client = await db.connect();
-      try {
-        await client.query("BEGIN");
-        for (let i = 0; i < rows.length; i += 500) {
-          const part = rows.slice(i, i + 500);
-          const values = [];
-          const ph = part.map(([key, c], j) => {
-            const [bin, a, b] = key.split("|");
-            values.push(Number(bin), a, b, c.n, c.stay, c.back);
-            const o = j * 6;
-            return `($${o + 1}, $${o + 2}, $${o + 3}, $${o + 4}, $${o + 5}, $${o + 6})`;
-          });
-          await client.query(
-            `INSERT INTO viewer_chat_moves (bin, from_id, to_id, n, stay, back) VALUES ${ph.join(", ")}
-             ON CONFLICT (bin, from_id, to_id) DO UPDATE SET n = viewer_chat_moves.n + EXCLUDED.n, stay = viewer_chat_moves.stay + EXCLUDED.stay, back = viewer_chat_moves.back + EXCLUDED.back`,
-            values,
-          );
-        }
+      flow.forget(end);
+      await inTransaction(async (client) => {
+        found.moves = await flow.flush(client);
         await client.query(
           `UPDATE vod_backfill_progress SET pos = $2, done = $3, requests = requests + $4, comments = comments + $5,
              found = COALESCE((SELECT jsonb_object_agg(k, coalesce((found->>k)::bigint, 0) + coalesce(($6::jsonb->>k)::bigint, 0))
                         FROM (SELECT jsonb_object_keys(found || $6::jsonb) AS k) keys), '{}'::jsonb),
              updated_at = now()
            WHERE pass = $1`,
-          [pass.name, new Date(end), end >= to, sliceRequests, batch.length, JSON.stringify(found)],
+          [pass.name, new Date(end), end >= to, sliceRequests, lines, JSON.stringify(found)],
         );
-        await client.query("COMMIT");
-      } catch (e) {
-        await client.query("ROLLBACK").catch(() => {});
-        throw e;
-      } finally {
-        client.release();
-      }
-      pos = end;
-      flowEnd = pos;
-      if (Date.now() - lastLog > 30 * 60_000 || pos >= to) {
-        const left = vods.reduce((s, v) => s + (v.gone ? 0 : Math.max(0, Math.min(v.end, to) - Math.max(v.start, pos))), 0) / 3600_000;
+      });
+      flowEnd = end;
+      if (Date.now() - lastLog > 30 * 60_000 || end >= to) {
+        const left = remaining(end);
         const done = totalH - left;
         const etaH = done > 0 ? ((Date.now() - startedAt) / 3600_000) * (left / done) : NaN;
         const mem = Math.round(process.memoryUsage().rss / 1048576);
-        log(`[nachlese] ${pass.name}: bei ${new Date(pos).toISOString().slice(0, 16)}, ${requests} Anfragen, ${comments} Zeilen, noch ${Math.round(left)} VOD-Stunden${Number.isFinite(etaH) ? `, fertig in ~${etaH < 48 ? `${Math.round(etaH)} Std` : `${Math.round(etaH / 24)} Tagen`}` : ""}, ${flow.seen.size} Schreiber im Speicher, ${mem} MB`);
+        log(`[nachlese] ${pass.name}: bei ${new Date(end).toISOString().slice(0, 16)}, ${requests} Anfragen, ${comments} Zeilen, noch ${Math.round(left)} VOD-Stunden${Number.isFinite(etaH) ? `, fertig in ~${etaH < 48 ? `${Math.round(etaH)} Std` : `${Math.round(etaH / 24)} Tagen`}` : ""}, ${flow.seen.size} Schreiber im Speicher, ${mem} MB`);
         lastLog = Date.now();
       }
-      if (MAX_REQUESTS && requests >= MAX_REQUESTS) {
-        await db.end();
-        return;
-      }
+      if (MAX_REQUESTS && requests >= MAX_REQUESTS) stop = true;
+    });
+    if (stop) {
+      await db.end();
+      return;
     }
     log(`[nachlese] Zeitraum ${pass.name} fertig`);
   }
   log("[nachlese] alles fertig");
   await db.end();
+}
+
+/* ---------- Lücken des Live-Chats seit Beginn der Mitschrift (lib/ircCoverage.ts) ---------- */
+
+/**
+ * Seit der Tracker irc_uptime/irc_joined schreibt, sind Lücken genau bekannt:
+ * - Minute ohne irc_uptime (oder ok = false): Verbindung weg oder Nachricht verloren → alle Kanäle
+ * - 5-Minuten-Abschnitt ohne irc_joined für einen Kanal, dessen VOD da lief → nur dieser Kanal
+ * Gleichzeitige Lücken werden zu einem Fenster zusammengefasst. Je Fenster werden die VODs der betroffenen Kanäle
+ * ganz ausgewertet (Abos, Geschenke, Cheers, Raids, Chat zwischen Spielern; Doppelte erkennt handle()) und für die
+ * Zuschauerwanderung alle laufenden VODs ab 10–45 Min vorher gelesen, gezählt werden nur Wechsel von/zu betroffenen
+ * Kanälen innerhalb der Lücke. Erledigte Abschnitte in vod_gap_bins.
+ */
+/** Vorlauf für die Wanderung: so lang wie die Lücke, mindestens 10, höchstens 45 Min (kurze Lücken, z. B. ein Neustart
+ * des Trackers, sollen nicht jedes Mal 45 Min aller Kanäle kosten) */
+const gapWarmup = (len) => Math.min(MOVE_WINDOW_MS, Math.max(10 * 60_000, len));
+/** Höchstens so lange lesen wir für die Wanderung alle Kanäle mit (sonst nur die betroffenen) */
+const GAP_FLOW_MAX_MS = 3 * 3600_000;
+
+async function gapWindows() {
+  await q(`CREATE TABLE IF NOT EXISTS vod_gap_bins (bin integer PRIMARY KEY, players text[] NOT NULL, done_at timestamptz NOT NULL DEFAULT now())`);
+  // Bis hier ist alles geprüft (ältere Abschnitte ändern sich nicht mehr)
+  await q(`CREATE TABLE IF NOT EXISTS vod_gap_state (id integer PRIMARY KEY, checked_bin integer NOT NULL)`);
+  const first = (await q(`SELECT min(minute) AS m FROM irc_uptime`).catch(() => ({ rows: [] }))).rows[0]?.m;
+  if (first == null) return [];
+  // Ab dem ersten vollen Abschnitt nach Beginn der Mitschrift, bis vor RECENT_MS (VODs wachsen dort noch)
+  const checked = (await q(`SELECT checked_bin FROM vod_gap_state WHERE id = 1`)).rows[0]?.checked_bin;
+  const fromBin = Math.max(Math.ceil((Number(first) + 1) / 5), checked ?? 0);
+  const toBin = Math.floor((Date.now() - RECENT_MS) / SLICE_MS);
+  if (toBin <= fromBin) return [];
+  gapCheckedTo = toBin;
+  const rows = (
+    await q(
+      `WITH bins AS (SELECT generate_series($1::int, $2::int - 1) AS bin),
+            down AS (
+              SELECT b.bin FROM bins b
+               WHERE (SELECT count(*) FROM irc_uptime u WHERE u.minute BETWEEN b.bin * 5 AND b.bin * 5 + 4 AND u.ok) < 5
+            ),
+            live AS (
+              SELECT b.bin, v.player FROM bins b JOIN twitch_vods v
+                ON v.created_at < to_timestamp((b.bin + 1) * 300) AND v.created_at + make_interval(secs => v.duration_s) > to_timestamp(b.bin * 300)
+            )
+       SELECT l.bin, array_agg(DISTINCT l.player) AS players, bool_or(d.bin IS NOT NULL) AS down
+         FROM live l LEFT JOIN down d ON d.bin = l.bin
+        WHERE (d.bin IS NOT NULL OR NOT EXISTS (SELECT 1 FROM irc_joined j WHERE j.player = l.player AND j.bin = l.bin))
+          AND NOT EXISTS (SELECT 1 FROM vod_gap_bins g WHERE g.bin = l.bin)
+        GROUP BY l.bin ORDER BY l.bin`,
+      [fromBin, toBin],
+    )
+  ).rows;
+  // Aufeinanderfolgende Abschnitte zu Fenstern
+  const out = [];
+  for (const r of rows) {
+    const w = out[out.length - 1];
+    if (w && w.toBin === r.bin) {
+      w.toBin = r.bin + 1;
+      for (const p of r.players) w.players.add(p);
+      w.bins.push(r.bin);
+    } else out.push({ fromBin: r.bin, toBin: r.bin + 1, players: new Set(r.players), bins: [r.bin] });
+  }
+  return out;
+}
+
+let gapCheckedTo = null;
+const markChecked = () =>
+  gapCheckedTo == null ? null : q(`INSERT INTO vod_gap_state (id, checked_bin) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET checked_bin = EXCLUDED.checked_bin`, [gapCheckedTo]);
+
+/** Alle offenen Lücken füllen; gibt die Zahl der Anfragen zurück */
+async function fillGaps() {
+  gapCheckedTo = null;
+  const windows = await gapWindows();
+  if (!windows.length) {
+    await markChecked();
+    return 0;
+  }
+  const bins = windows.reduce((s, w) => s + w.bins.length, 0);
+  log(`[lücken] ${windows.length} Fenster offen (${bins} Abschnitte à 5 Min)`);
+  let total = 0;
+  for (const w of windows) {
+    const a = w.fromBin * SLICE_MS;
+    const b = w.toBin * SLICE_MS;
+    const G = w.players;
+    const withFlow = b - a <= GAP_FLOW_MAX_MS;
+    const warm = withFlow ? gapWarmup(b - a) : 0;
+    const vods = withFlow ? await vodsBetween(a - warm, b) : await vodsBetween(a, b, [...G]);
+    const flow = new Flow((at, from, to) => at >= a && (G.has(from) || G.has(to)));
+    const found = {};
+    const gapBins = new Set(w.bins);
+    const requests = await readSlices(vods, a - warm, b, async (items, _start, end) => {
+      for (const { t, chan, login, node } of items) {
+        // Nur Zeilen der betroffenen Kanäle in betroffenen Abschnitten auswerten (Doppelte erkennt handle())
+        if (t >= a && G.has(chan) && gapBins.has(Math.floor(t / SLICE_MS))) {
+          const owner = players.get(chan);
+          if (owner) await handle(owner, node, found).catch((e) => log("[lücken] Zeile übersprungen:", e.message));
+        }
+        if (withFlow) flow.note(chan, login, t);
+      }
+      if (withFlow) flow.forget(end);
+    });
+    await inTransaction(async (client) => {
+      found.moves = withFlow ? await flow.flush(client) : 0;
+      await client.query(`INSERT INTO vod_gap_bins (bin, players) SELECT unnest($1::int[]), $2::text[] ON CONFLICT (bin) DO NOTHING`, [w.bins, [...G]]);
+    });
+    total += requests;
+    const what = Object.entries(found).filter(([, v]) => v).map(([k, v]) => `${v} ${k}`).join(", ") || "nichts Neues";
+    log(`[lücken] ${new Date(a).toISOString().slice(0, 16)}–${new Date(b).toISOString().slice(11, 16)} (${G.size} Kanäle${withFlow ? "" : ", ohne Wanderung"}): ${requests} Anfragen, ${what}`);
+  }
+  await markChecked();
+  return total;
 }
 
 process.on("SIGTERM", () => {
