@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { appendLiveEvent, chatEvent, getEvents, getState, incrementLiveSubscriptionEvent, saveTwitchCheer, saveTwitchChatMessage, saveTwitchSub } from "./store";
 import { observeSharedChatPair } from "./sharedChat";
 import { noteChatter } from "./chatMoves";
+import { noteIrcAlive, noteIrcLost } from "./ircCoverage";
 import { KNOWN_LOGINS } from "./tracker";
 import type { PlayerState, TrackerEvent } from "./types";
 
@@ -96,6 +97,11 @@ interface IrcState {
   socket: WebSocket | null;
   registered: boolean;
   joined: Set<string>;
+  /** Kanäle, deren JOIN Twitch bestätigt hat (Echo der eigenen JOIN-Zeile) */
+  confirmed: Set<string>;
+  /** Zeitpunkt der letzten empfangenen Zeile (Twitch schickt mindestens alle ~5 Min ein PING) */
+  lastLineAt: number;
+  aliveTimer: ReturnType<typeof setInterval> | null;
   desired: Map<string, ChannelOwner>;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   syncTimer: ReturnType<typeof setInterval> | null;
@@ -120,6 +126,9 @@ function state(): IrcState {
       socket: null,
       registered: false,
       joined: new Set(),
+      confirmed: new Set(),
+      lastLineAt: 0,
+      aliveTimer: null,
       desired: new Map(),
       reconnectTimer: null,
       syncTimer: null,
@@ -134,6 +143,9 @@ function state(): IrcState {
     };
   }
   gl.__acTwitchIrc.roomIds ??= new Map();
+  gl.__acTwitchIrc.confirmed ??= new Set();
+  gl.__acTwitchIrc.lastLineAt ??= 0;
+  gl.__acTwitchIrc.aliveTimer ??= null;
   return gl.__acTwitchIrc;
 }
 
@@ -218,6 +230,7 @@ function pumpJoins(irc: IrcState) {
     if (!irc.desired.has(channel)) {
       socket.send(`PART #${channel}\r\n`);
       irc.joined.delete(channel);
+      irc.confirmed.delete(channel);
     }
   }
   const channel = [...irc.desired.keys()].find((candidate) => !irc.joined.has(candidate));
@@ -264,6 +277,7 @@ function connect(irc: IrcState) {
     irc.socket = socket;
     irc.registered = false;
     irc.joined.clear();
+    irc.confirmed.clear();
     socket.addEventListener("open", () => {
       socket.send(`PASS ${credentials.token ? `oauth:${credentials.token}` : "SCHMOOPIIE"}\r\n`);
       socket.send(`NICK ${credentials.nick ?? `justinfan${Math.floor(Math.random() * 9_000_000 + 1_000_000)}`}\r\n`);
@@ -271,6 +285,7 @@ function connect(irc: IrcState) {
     });
     socket.addEventListener("message", (event: MessageEvent) => {
       if (typeof event.data !== "string") return;
+      if (irc.socket === socket) irc.lastLineAt = Date.now();
       for (const line of event.data.split(/\r\n/)) {
         if (!line) continue;
         processLine(irc, socket, line, 0);
@@ -280,6 +295,7 @@ function connect(irc: IrcState) {
       if (irc.socket === socket) irc.socket = null;
       irc.registered = false;
       irc.joined.clear();
+      irc.confirmed.clear();
       if (irc.joinTimer) clearTimeout(irc.joinTimer);
       irc.joinTimer = null;
       scheduleReconnect(irc);
@@ -304,6 +320,7 @@ function processLine(irc: IrcState, socket: WebSocket, line: string, tries: numb
     .catch((error: unknown) => {
       // Nur Nachrichten und Notices nachholen; deren Zeitpunkt steht im Tag `tmi-sent-ts`, die IDs sind fest.
       const retryable = / (PRIVMSG|USERNOTICE) /.test(line) && tries < MAX_RETRIES && irc.retry.length < MAX_RETRY_LINES;
+      if (!retryable && / (PRIVMSG|USERNOTICE) /.test(line)) noteIrcLost(Number(line.match(/tmi-sent-ts=(\d+)/)?.[1] ?? Date.now()));
       if (tries === 0) console.error(`[twitch-irc] IRC-Nachricht konnte nicht verarbeitet werden${retryable ? ", neuer Versuch folgt" : ""}:`, error instanceof Error ? error.message : error);
       if (!retryable) return;
       irc.retry.push({ socket, line, tries: tries + 1 });
@@ -497,6 +514,17 @@ async function handleLine(irc: IrcState, socket: WebSocket, line: string) {
     reconcileChannels(irc);
     return;
   }
+  // Bestätigtes JOIN/PART des eigenen Zugangs (Twitch schickt die Zeile zurück)
+  if (message.command === "JOIN" || message.command === "PART") {
+    const channel = safeChannel(message.params[0] ?? "");
+    const nick = message.prefix?.split("!", 1)[0]?.toLowerCase();
+    const own = ircCredentials().nick?.toLowerCase();
+    if (channel && nick && (own ? nick === own : nick.startsWith("justinfan"))) {
+      if (message.command === "JOIN") irc.confirmed.add(channel);
+      else irc.confirmed.delete(channel);
+    }
+    return;
+  }
   if (message.command === "ROOMSTATE") {
     const channel = safeChannel(message.params[0] ?? "");
     if (channel && message.tags["room-id"]) irc.roomIds.set(message.tags["room-id"], channel);
@@ -662,6 +690,17 @@ export function startTwitchIrc() {
   }).catch((error: unknown) => {
     console.error("[twitch-irc] Ereignisse konnten nicht geladen werden:", error);
   });
+  // Mitschrift festhalten (lib/ircCoverage.ts): Verbindung steht und hat zuletzt etwas empfangen
+  irc.aliveTimer ??= setInterval(() => {
+    const socket = irc.socket;
+    if (!socket || socket.readyState !== WebSocket.OPEN || !irc.registered || Date.now() - irc.lastLineAt > 7 * 60_000) return;
+    const ids: string[] = [];
+    for (const channel of irc.confirmed) {
+      const owner = irc.desired.get(channel);
+      if (owner) ids.push(owner.id);
+    }
+    noteIrcAlive(ids);
+  }, 20_000);
   irc.syncTimer = setInterval(() => {
     void syncChannels(irc).catch((error: unknown) => {
       console.error("[twitch-irc] Kanäle konnten nicht synchronisiert werden:", error);
