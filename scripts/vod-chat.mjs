@@ -237,7 +237,9 @@ async function addSubMinute(owner, at, count, extraMeta = {}) {
   );
 }
 
-async function handle(owner, n, found) {
+/** `only`: nur diese Arten auswerten (subs, bits, raids, chat); ohne Angabe alle */
+async function handle(owner, n, found, only = null) {
+  const want = (k) => !only || only.has(k);
   const text = (n.message?.fragments ?? []).map((f) => f.text).join("").trim();
   const login = n.commenter?.login?.toLowerCase() ?? "";
   const at = Date.parse(n.createdAt);
@@ -246,6 +248,7 @@ async function handle(owner, n, found) {
   let m;
 
   if ((m = text.match(MYSTERY_RE))) {
+    if (!want("subs")) return;
     const gifter = login || m[1].toLowerCase();
     const count = Number(m[2]);
     if (await exists(`SELECT 1 FROM twitch_subs WHERE channel_id = $1 AND kind LIKE '%submysterygift' AND coalesce(from_login, '') = $2 AND at BETWEEN $3 AND $4 LIMIT 1`, [owner.id, gifter, ...near(5 * 60_000)])) return;
@@ -271,6 +274,7 @@ async function handle(owner, n, found) {
     return;
   }
   if ((m = text.match(GIFT_RE))) {
+    if (!want("subs")) return;
     const gifter = login || m[1].toLowerCase();
     const g = giftGroups.get(`${owner.id}|${gifter}`);
     const inGroup = g && at - g.at < 5 * 60_000 && g.left > 0;
@@ -286,6 +290,7 @@ async function handle(owner, n, found) {
     return;
   }
   if ((m = text.match(SUB_RE))) {
+    if (!want("subs")) return;
     const months = m[3] ? Number(m[3]) : 1;
     const kind = months > 1 ? "resub" : "sub";
     if (await exists(`SELECT 1 FROM twitch_subs WHERE channel_id = $1 AND kind IN ('sub', 'resub') AND from_login = $2 AND at BETWEEN $3 AND $4 LIMIT 1`, [owner.id, login, ...near(3 * 60_000)])) return;
@@ -298,6 +303,7 @@ async function handle(owner, n, found) {
     return;
   }
   if ((m = text.match(RAID_RE))) {
+    if (!want("raids")) return;
     const raider = byLogin.get(m[2].toLowerCase());
     if (!raider || raider.id === owner.id) return;
     if (await exists(`SELECT 1 FROM events WHERE type = 'raid' AND player = $1 AND meta->>'raidTargetPlayerId' = $2 AND at BETWEEN $3 AND $4 LIMIT 1`, [raider.id, owner.id, ...near(30 * 60_000)])) return;
@@ -313,7 +319,7 @@ async function handle(owner, n, found) {
     const c = w.match(CHEERMOTE);
     return s + (c ? Number(c[2]) : 0);
   }, 0);
-  if (bits > 0 && login) {
+  if (bits > 0 && login && want("bits")) {
     if (!(await exists(`SELECT 1 FROM twitch_cheers WHERE channel_id = $1 AND from_login = $2 AND bits = $3 AND at BETWEEN $4 AND $5 LIMIT 1`, [owner.id, login, bits, ...near(3 * 60_000)]))) {
       const on = await onServer(owner.id, at);
       const id = `vod-cheer-${n.id}`;
@@ -330,6 +336,7 @@ async function handle(owner, n, found) {
     }
   }
   // Nachricht eines Spielers im Chat eines anderen Spielers
+  if (!want("chat")) return;
   const sender = byLogin.get(login);
   if (!sender || sender.id === owner.id) return;
   if (await exists(`SELECT 1 FROM twitch_chat_messages WHERE sender_id = $1 AND channel_id = $2 AND message = $3 AND at BETWEEN $4 AND $5 LIMIT 1`, [sender.id, owner.id, text, ...near(2 * 60_000)])) return;
@@ -437,8 +444,235 @@ async function main() {
   await db.end();
 }
 
+/* ---------- Nachlese ganzer Zeiträume (--backfill) ---------- */
+
+/**
+ * Liest die Chat-Wiedergabe ALLER VODs eines Zeitraums vollständig, alle Kanäle zeitlich gleichauf in Abschnitten von
+ * 5 Minuten. Nachgetragen wird, was der Live-Chat damals noch nicht erfasst hat:
+ * - A (19.10.–29.10.): einzelne Abos mit Schenker/Stufe/Monaten (live erst ab 29.10., vorher nur Summen je Minute)
+ *   und Cheers (live erst ab 25.10.), dazu die Zuschauerwanderung
+ * - B (29.10.–03.11.): nur Zuschauerwanderung (live ab 03.11. 10:10 UTC, erster Abschnitt in viewer_chat_moves)
+ * - C (10.10.–19.10.): nur Zuschauerwanderung (Abos/Cheers/Raids/Chat dort schon aus dem Normalbetrieb)
+ * Zuschauerwanderung wie lib/chatMoves.ts: schreibt jemand bei A und bis 45 Min später bei B, zählt das als Wechsel.
+ * Nutzernamen liegen nur im Arbeitsspeicher (höchstens 90 Min Wiedergabezeit) und werden nie geschrieben oder geloggt.
+ * Fortschritt je Zeitraum in vod_backfill_progress; nach einem Neustart geht es am letzten Abschnitt weiter.
+ */
+const BACKFILL_PASSES = [
+  { name: "A", from: "2026-10-19T10:06:00Z", to: "2026-10-29T07:10:00Z", only: ["subs", "bits"] },
+  { name: "B", from: "2026-10-29T07:10:00Z", to: "2026-11-03T10:10:00Z", only: [] },
+  { name: "C", from: "2026-10-10T08:00:00Z", to: "2026-10-19T10:06:00Z", only: [] },
+];
+const SLICE_MS = 5 * 60_000;
+const MOVE_WINDOW_MS = 45 * 60_000;
+const STAY_AFTER_MS = 20 * 60_000;
+const FOLLOW_MS = 90 * 60_000;
+/** Geteilter Chat: dieselbe Nachricht derselben Person kurz nacheinander in zwei Kanälen ist eine Kopie */
+const COPY_MS = 5_000;
+
+async function backfill() {
+  await q(`
+    CREATE TABLE IF NOT EXISTS vod_backfill_progress (
+      pass       text PRIMARY KEY,
+      pos        timestamptz NOT NULL,
+      done       boolean NOT NULL DEFAULT false,
+      requests   integer NOT NULL DEFAULT 0,
+      comments   bigint NOT NULL DEFAULT 0,
+      found      jsonb NOT NULL DEFAULT '{}'::jsonb,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+  await loadPlayers();
+  let delay = MIN_DELAY_MS;
+  let errors = 0;
+  /** Zustand der Zuschauerwanderung; bleibt über aneinandergrenzende Zeiträume (A → B) erhalten */
+  let flow = null;
+  let flowEnd = 0;
+  const newFlow = () => ({ seen: new Map(), moved: new Map(), pending: new Map() });
+  const bump = (key, field) => {
+    const p = flow.pending.get(key) ?? { n: 0, stay: 0, back: 0 };
+    p[field]++;
+    flow.pending.set(key, p);
+  };
+  const noteChatter = (chan, user, at) => {
+    const mv = flow.moved.get(user);
+    if (mv) {
+      if (!mv.stay && chan === mv.to && at - mv.at >= STAY_AFTER_MS && at - mv.at <= FOLLOW_MS) {
+        mv.stay = true;
+        bump(mv.key, "stay");
+      }
+      if (!mv.back && chan === mv.from && at - mv.at <= FOLLOW_MS) {
+        mv.back = true;
+        bump(mv.key, "back");
+      }
+    }
+    const prev = flow.seen.get(user);
+    if (prev && prev.chan !== chan && at - prev.at <= MOVE_WINDOW_MS && at >= prev.at) {
+      const key = `${Math.floor(at / 60_000 / 5)}|${prev.chan}|${chan}`;
+      bump(key, "n");
+      flow.moved.set(user, { from: prev.chan, to: chan, key, at, stay: false, back: false });
+    }
+    flow.seen.set(user, { chan, at });
+  };
+
+  /** Eine Seite holen; bei Fehlern warten und erneut (wie im Normalbetrieb). null = VOD gelöscht */
+  const fetchPage = async (vodId, offset) => {
+    for (;;) {
+      await sleep(delay * (0.8 + Math.random() * 0.4));
+      try {
+        const r = await fetchComments(vodId, offset);
+        errors = 0;
+        delay = Math.max(MIN_DELAY_MS, delay * 0.99);
+        return r;
+      } catch (err) {
+        errors++;
+        if (/HTTP 429/.test(err.message)) delay = Math.min(MAX_DELAY_MS, delay * 2);
+        const wait = err instanceof Blocked ? 6 * 3600_000 : Math.min(3600_000, 60_000 * 2 ** Math.min(6, errors));
+        log(`[nachlese] Fehler (${err.message}), Pause ${Math.round(wait / 60_000)} Min`);
+        await sleep(wait);
+      }
+    }
+  };
+
+  for (const pass of BACKFILL_PASSES) {
+    const from = Date.parse(pass.from);
+    const to = Date.parse(pass.to);
+    const saved = (await q(`SELECT pos, done FROM vod_backfill_progress WHERE pass = $1`, [pass.name])).rows[0];
+    if (saved?.done) continue;
+    let pos = saved ? saved.pos.getTime() : from;
+    if (!saved) await q(`INSERT INTO vod_backfill_progress (pass, pos) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [pass.name, new Date(pos)]);
+    if (!flow || flowEnd !== pos) flow = newFlow();
+    const only = new Set(pass.only);
+    const vods = (
+      await q(
+        `SELECT id, player, created_at, duration_s FROM twitch_vods
+          WHERE created_at < $2 AND created_at + make_interval(secs => duration_s) > $1 ORDER BY created_at`,
+        [new Date(pos), new Date(to)],
+      )
+    ).rows.map((v) => ({ id: v.id, player: v.player, start: v.created_at.getTime(), end: v.created_at.getTime() + v.duration_s * 1000, duration: v.duration_s, offset: null, carry: [], lastIds: new Set(), gone: false }));
+    const totalH = vods.reduce((s, v) => s + Math.max(0, Math.min(v.end, to) - Math.max(v.start, pos)), 0) / 3600_000;
+    log(`[nachlese] Zeitraum ${pass.name} ab ${new Date(pos).toISOString()}: ${vods.length} VODs, ${Math.round(totalH)} VOD-Stunden${only.size ? `, dazu ${[...only].join("/")}` : ""}`);
+    let requests = 0;
+    let comments = 0;
+    let lastLog = Date.now();
+    const startedAt = Date.now();
+    while (pos < to) {
+      const end = Math.min(pos + SLICE_MS, to);
+      const batch = [];
+      let sliceRequests = 0;
+      for (const v of vods) {
+        if (v.gone || v.start >= end || v.end <= pos) continue;
+        if (v.offset === null) v.offset = Math.max(0, Math.floor((pos - v.start) / 1000));
+        const keep = [];
+        for (const n of v.carry) (n.t < end ? batch : keep).push(n);
+        v.carry = keep;
+        while (v.start + v.offset * 1000 < end && v.offset < v.duration) {
+          const page = await fetchPage(v.id, v.offset);
+          requests++;
+          sliceRequests++;
+          if (page === null) {
+            log(`[nachlese] VOD ${v.id} (${v.player}) nicht mehr verfügbar`);
+            v.gone = true;
+            v.carry = [];
+            break;
+          }
+          const ids = new Set();
+          for (const n of page) {
+            ids.add(n.id);
+            if (v.lastIds.has(n.id)) continue;
+            const t = Date.parse(n.createdAt);
+            if (!Number.isFinite(t) || t < pos) continue;
+            const item = { t, chan: v.player, node: n };
+            (t < end ? batch : v.carry).push(item);
+          }
+          v.lastIds = ids;
+          comments += page.length;
+          const last = page[page.length - 1];
+          let next = !last || last.contentOffsetSeconds <= v.offset ? v.offset + (page.length ? 1 : 60) : last.contentOffsetSeconds;
+          if (page.length && page[0].contentOffsetSeconds === last.contentOffsetSeconds) next = last.contentOffsetSeconds + 1;
+          v.offset = next;
+        }
+      }
+      // Zeitlich ordnen, Kopien aus dem geteilten Chat auslassen
+      batch.sort((a, b) => a.t - b.t);
+      const recent = new Map();
+      const found = {};
+      for (const { t, chan, node } of batch) {
+        const login = node.commenter?.login?.toLowerCase();
+        if (!login) continue;
+        const text = (node.message?.fragments ?? []).map((f) => f.text).join("").trim();
+        const key = `${login}|${text}`;
+        const r = recent.get(key);
+        if (r && r.chan !== chan && t - r.t <= COPY_MS) continue;
+        recent.set(key, { chan, t });
+        if (only.size) {
+          const owner = players.get(chan);
+          if (owner) await handle(owner, node, found, only).catch((e) => log("[nachlese] Zeile übersprungen:", e.message));
+        }
+        noteChatter(chan, login, t);
+      }
+      // Alte Einträge vergessen (Wiedergabezeit)
+      for (const [u, s] of flow.seen) if (end - s.at > MOVE_WINDOW_MS) flow.seen.delete(u);
+      for (const [u, s] of flow.moved) if (end - s.at > FOLLOW_MS) flow.moved.delete(u);
+      // Wechsel schreiben und Fortschritt merken (zusammen)
+      const rows = [...flow.pending];
+      flow.pending.clear();
+      found.moves = rows.reduce((s, [, c]) => s + c.n, 0);
+      const client = await db.connect();
+      try {
+        await client.query("BEGIN");
+        for (let i = 0; i < rows.length; i += 500) {
+          const part = rows.slice(i, i + 500);
+          const values = [];
+          const ph = part.map(([key, c], j) => {
+            const [bin, a, b] = key.split("|");
+            values.push(Number(bin), a, b, c.n, c.stay, c.back);
+            const o = j * 6;
+            return `($${o + 1}, $${o + 2}, $${o + 3}, $${o + 4}, $${o + 5}, $${o + 6})`;
+          });
+          await client.query(
+            `INSERT INTO viewer_chat_moves (bin, from_id, to_id, n, stay, back) VALUES ${ph.join(", ")}
+             ON CONFLICT (bin, from_id, to_id) DO UPDATE SET n = viewer_chat_moves.n + EXCLUDED.n, stay = viewer_chat_moves.stay + EXCLUDED.stay, back = viewer_chat_moves.back + EXCLUDED.back`,
+            values,
+          );
+        }
+        await client.query(
+          `UPDATE vod_backfill_progress SET pos = $2, done = $3, requests = requests + $4, comments = comments + $5,
+             found = COALESCE((SELECT jsonb_object_agg(k, coalesce((found->>k)::bigint, 0) + coalesce(($6::jsonb->>k)::bigint, 0))
+                        FROM (SELECT jsonb_object_keys(found || $6::jsonb) AS k) keys), '{}'::jsonb),
+             updated_at = now()
+           WHERE pass = $1`,
+          [pass.name, new Date(end), end >= to, sliceRequests, batch.length, JSON.stringify(found)],
+        );
+        await client.query("COMMIT");
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw e;
+      } finally {
+        client.release();
+      }
+      pos = end;
+      flowEnd = pos;
+      if (Date.now() - lastLog > 30 * 60_000 || pos >= to) {
+        const left = vods.reduce((s, v) => s + (v.gone ? 0 : Math.max(0, Math.min(v.end, to) - Math.max(v.start, pos))), 0) / 3600_000;
+        const done = totalH - left;
+        const etaH = done > 0 ? ((Date.now() - startedAt) / 3600_000) * (left / done) : NaN;
+        const mem = Math.round(process.memoryUsage().rss / 1048576);
+        log(`[nachlese] ${pass.name}: bei ${new Date(pos).toISOString().slice(0, 16)}, ${requests} Anfragen, ${comments} Zeilen, noch ${Math.round(left)} VOD-Stunden${Number.isFinite(etaH) ? `, fertig in ~${etaH < 48 ? `${Math.round(etaH)} Std` : `${Math.round(etaH / 24)} Tagen`}` : ""}, ${flow.seen.size} Schreiber im Speicher, ${mem} MB`);
+        lastLog = Date.now();
+      }
+      if (MAX_REQUESTS && requests >= MAX_REQUESTS) {
+        await db.end();
+        return;
+      }
+    }
+    log(`[nachlese] Zeitraum ${pass.name} fertig`);
+  }
+  log("[nachlese] alles fertig");
+  await db.end();
+}
+
 process.on("SIGTERM", () => {
   log("beendet");
   process.exit(0);
 });
-await main();
+if (args.includes("--backfill")) await backfill();
+else await main();

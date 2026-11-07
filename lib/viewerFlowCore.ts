@@ -72,8 +72,15 @@ export interface FlowInput {
    */
   affinity?: Map<string, Map<string, number>>;
   /** Chat-Spuren: Wechsel von Schreibern von A nach B je 5-Minuten-Abschnitt (Abschnitt = Minute / 5) */
-  chatMoves?: { bin: number; from: string; to: string; n: number; stay: number }[];
+  chatMoves?: ChatMoveSeries;
 }
+
+/**
+ * Chat-Spuren kompakt je Kanalpaar (Schlüssel `von|nach`): Abschnitte aufsteigend und die Zahl der Wechsel darin.
+ * Über die ganze Staffel sind das einige Hunderttausend Zeilen; als Zahlenreihen statt einzelner Objekte bleibt das
+ * im Tracker klein.
+ */
+export type ChatMoveSeries = Map<string, { bins: Int32Array; n: Int32Array }>;
 
 /** „start“: B geht live; `from` ist dann der Starter und `shares` sind die Streams, von denen Zuschauer kamen */
 export type SourceKind = "ende" | "einbruch" | "raid" | "start";
@@ -462,20 +469,24 @@ export function computeFlows(input: FlowInput): FlowResult {
     });
   }
 
-  // Chat-Spuren je (Abschnitt, Quelle, Ziel)
-  const chat = new Map<string, { n: number; stay: number }>();
+  // Chat-Spuren je Kanalpaar: Summe der Wechsel in den Abschnitten k … k+4
+  const chat = input.chatMoves ?? new Map<string, { bins: Int32Array; n: Int32Array }>();
   let chatMovesTotal = 0;
-  for (const m of input.chatMoves ?? []) {
-    const key = `${m.bin - k0}|${m.from}|${m.to}`;
-    const c = chat.get(key) ?? { n: 0, stay: 0 };
-    c.n += m.n;
-    c.stay += m.stay;
-    chat.set(key, c);
-    chatMovesTotal += m.n;
-  }
+  for (const c of chat.values()) for (let i = 0; i < c.n.length; i++) chatMovesTotal += c.n[i];
   const chatIn = (k: number, from: string, to: string) => {
+    const c = chat.get(`${from}|${to}`);
+    if (!c) return 0;
+    const lo = k + k0;
+    // erster Abschnitt >= lo (binäre Suche)
+    let a = 0;
+    let b = c.bins.length;
+    while (a < b) {
+      const m = (a + b) >> 1;
+      if (c.bins[m] < lo) a = m + 1;
+      else b = m;
+    }
     let s = 0;
-    for (let q = k; q <= k + 4; q++) s += chat.get(`${q}|${from}|${to}`)?.n ?? 0;
+    for (let i = a; i < c.bins.length && c.bins[i] <= lo + 4; i++) s += c.n[i];
     return s;
   };
 

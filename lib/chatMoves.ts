@@ -1,5 +1,6 @@
 import "server-only";
 import { getDb } from "./db";
+import type { ChatMoveSeries } from "./viewerFlowCore";
 
 /**
  * Chat-Spuren für die Zuschauerwanderung: Schreibt jemand im Chat von A und kurz darauf (bis 45 Min) im Chat von B,
@@ -107,9 +108,15 @@ export async function flushChatMoves() {
   }
 }
 
-/** Gespeicherte Summen (für die Auswertung) */
-export async function loadChatMoves(): Promise<{ bin: number; from: string; to: string; n: number; stay: number; back: number }[]> {
+/** Gespeicherte Summen (für die Auswertung), kompakt je Kanalpaar (siehe ChatMoveSeries) */
+export async function loadChatMoves(): Promise<ChatMoveSeries> {
   const db = await getDb();
-  const r = await db.query<{ bin: number; from_id: string; to_id: string; n: number; stay: number; back: number }>(`SELECT bin, from_id, to_id, n, stay, back FROM viewer_chat_moves`).catch(() => ({ rows: [] }));
-  return r.rows.map((x) => ({ bin: x.bin, from: x.from_id, to: x.to_id, n: x.n, stay: x.stay, back: x.back }));
+  const r = await db
+    .query<{ from_id: string; to_id: string; bins: number[]; ns: number[] }>(
+      `SELECT from_id, to_id, array_agg(bin ORDER BY bin) AS bins, array_agg(n ORDER BY bin) AS ns FROM viewer_chat_moves GROUP BY 1, 2`,
+    )
+    .catch(() => ({ rows: [] as { from_id: string; to_id: string; bins: number[]; ns: number[] }[] }));
+  const out: ChatMoveSeries = new Map();
+  for (const x of r.rows) out.set(`${x.from_id}|${x.to_id}`, { bins: Int32Array.from(x.bins), n: Int32Array.from(x.ns) });
+  return out;
 }
