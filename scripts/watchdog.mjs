@@ -158,7 +158,7 @@ async function check() {
       }
       return Math.round(sum / 1024);
     };
-    const line = `${new Date().toISOString()} avail=${Math.round(availMb)} swap=${Math.round(swapUsed * 100)}% web=${await rss("actracker-web", false)} tracker=${await rss("actracker-tracker", true)} schaetzung=${await rss("actracker-schaetzung", true)} vodchat=${await rss("actracker-vodchat", true)}\n`;
+    const line = `${new Date().toISOString()} avail=${Math.round(availMb)} swap=${Math.round(swapUsed * 100)}% web=${await rss("actracker-web", false)} tracker=${await rss("actracker-tracker", true)} vodchat=${await rss("actracker-vodchat", true)} vodbackfill=${await rss("actracker-vodbackfill", true)}\n`;
     const log = `${homedir()}/.local/state/actracker-mem.log`;
     appendFileSync(log, line);
     const lines = readFileSync(log, "utf8").split("\n");
@@ -167,9 +167,14 @@ async function check() {
     /* nur Protokoll */
   }
 
-  for (const unit of ["actracker-schaetzung", "actracker-vodchat"]) {
+  // Schätzung (/schaetzung) ist seit 03.11. abgeschaltet und wird nicht mehr geprüft.
+  // Die VOD-Nachlese beendet sich, wenn sie fertig ist; nur ein Absturz ist ein Problem.
+  for (const [unit, bad] of [
+    ["actracker-vodchat", (s) => s !== "active"],
+    ["actracker-vodbackfill", (s) => s === "failed"],
+  ]) {
     const s = await sh("systemctl", ["--user", "is-active", unit]);
-    if (s !== "active")
+    if (bad(s))
       problems[unit] = { title: `Dienst ${unit} läuft nicht`, message: `Zustand: ${s}. Nicht dringend, bitte bei Gelegenheit melden.`, priority: "low", tags: "gear", after: 30 * MIN };
   }
 
