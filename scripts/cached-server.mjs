@@ -23,12 +23,16 @@
  *
  * Endet der aktive Next.js-Prozess unerwartet, endet auch dieser Prozess (systemd startet neu).
  * `/schaetzung` ist abgeschaltet und leitet auf die Startseite.
+ *
+ * Unbekannte Adressen (erstes Pfadstück ist keine Seite, Route, Weiterleitung oder Datei aus public/) bekommen eine
+ * zwischengespeicherte 404-Seite, statt jedes Mal neu gerendert zu werden: Bots, die zufällige Adressen abklappern,
+ * kosten so keine Rechenzeit.
  */
 import http from "node:http";
 import { spawn } from "node:child_process";
 import { gunzipSync } from "node:zlib";
 import { createRequire } from "node:module";
-import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { extname, join, normalize, sep } from "node:path";
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -322,6 +326,64 @@ function pass(req, res) {
   req.pipe(up);
 }
 
+/* ---------- Unbekannte Adressen ---------- */
+
+/** @type {Map<string, Set<string> | null>} erste Pfadstücke, die es in einem Build gibt (null = unbekannt, alles durchlassen) */
+const knownByDist = new Map();
+function knownSegments(dist) {
+  if (knownByDist.has(dist)) return knownByDist.get(dist);
+  let out = null;
+  try {
+    const set = new Set(["", "_next", "api"]);
+    const first = (p) => p.split("/")[1] ?? "";
+    for (const k of Object.keys(JSON.parse(readFileSync(join(dist, "server", "app-paths-manifest.json"), "utf8")))) set.add(first(k));
+    for (const r of JSON.parse(readFileSync(join(dist, "routes-manifest.json"), "utf8")).redirects ?? []) {
+      const f = first(r.source);
+      if (f && !f.startsWith(":")) set.add(f);
+    }
+    for (const f of readdirSync("public")) set.add(f);
+    out = set;
+  } catch (e) {
+    log(`Routenliste für ${dist} nicht lesbar, unbekannte Adressen werden normal gerendert:`, e?.message ?? e);
+  }
+  knownByDist.set(dist, out);
+  return out;
+}
+function isUnknown(url) {
+  const known = knownSegments(current.dist);
+  if (!known) return false;
+  let seg = url.split(/[?#]/, 1)[0].split("/")[1] ?? "";
+  try {
+    seg = decodeURIComponent(seg);
+  } catch {
+    return true;
+  }
+  return !known.has(seg);
+}
+/** Eine 404-Seite je Version, höchstens stündlich neu */
+let notFound = null;
+let notFoundPending = null;
+async function sendNotFound(req, res) {
+  const dist = current.dist;
+  const fresh = notFound && notFound.dist === dist && Date.now() - notFound.entry.at < 3600_000;
+  if (!fresh && !notFoundPending) {
+    notFoundPending = slot()
+      .then(() => fetchUpstream({ url: "/__nicht-gefunden", headers: { host: req.headers.host ?? "localhost" } }).finally(release))
+      .then((entry) => {
+        entry.key = "\n404";
+        if (entry.status === 404) notFound = { dist, entry };
+      })
+      .finally(() => (notFoundPending = null));
+    notFoundPending.catch(() => {});
+  }
+  if ((!notFound || notFound.dist !== dist) && notFoundPending) await notFoundPending.catch(() => {});
+  if (!notFound) {
+    res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+    return res.end("Seite nicht gefunden.");
+  }
+  send(req, res, notFound.entry, "404");
+}
+
 const server = http.createServer(async (req, res) => {
   res.on("error", () => {});
   const url = req.url ?? "/";
@@ -330,7 +392,14 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
   if ((req.method === "GET" || req.method === "HEAD") && url.startsWith("/_next/static/") && serveStatic(req, res)) return;
+  // Server-Aktionen gibt es auf der Website nicht; Anfragen mit dem Kopf `Next-Action` sind Scanner (oder Tabs einer
+  // alten Version) und erzeugen sonst Fehler im Protokoll
+  if (req.headers["next-action"] !== undefined) {
+    res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+    return res.end("Nicht gefunden.");
+  }
   if ((req.method !== "GET" && req.method !== "HEAD") || BYPASS.some((r) => r.test(url))) return pass(req, res);
+  if (isUnknown(url)) return sendNotFound(req, res);
   const key = [req.headers.host ?? "", url, ...VARY.map((h) => req.headers[h] ?? "")].join("\n");
   const hit = cache.get(key);
   const age = hit ? Date.now() - hit.at : Infinity;

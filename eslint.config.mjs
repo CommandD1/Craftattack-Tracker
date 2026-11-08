@@ -18,6 +18,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Build-Ordner der Live-Kopie (Versionswechsel ohne Ausfall, scripts/deploy.sh) und lokale Hilfsdateien
+    ".next-*/**",
+    ".next.tmp/**",
+    "scripts/.tmp/**",
+    ".claude/**",
   ]),
 ]);
 

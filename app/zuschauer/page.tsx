@@ -217,7 +217,7 @@ function SeasonView({ flows, names, streamerHref }: { flows: FlowAnalysis; names
           <FigValue>{pct(startShare)}</FigValue>
         </div>
         <div className="box st-fig" data-tone="white">
-          <dt title="Wechsel von Chat-Schreibern zwischen erfassten Kanälen (seit 3. Nov.)">Chat-Wechsel</dt>
+          <dt title="Wechsel von Chat-Schreibern zwischen erfassten Kanälen (live seit 3. Nov., davor aus den VOD-Chats nachgetragen, soweit VODs vorhanden)">Chat-Wechsel</dt>
           <FigValue>{num(flows.chatMovesTotal)}</FigValue>
         </div>
       </dl>
