@@ -4,6 +4,7 @@
 #   scripts/deploy.sh            git pull, bauen, umschalten, Tracker neu starten
 #   scripts/deploy.sh --no-pull  nur bauen und umschalten
 #   FRONT_RESTART=1 …            Cache-Server sicher neu starten (z. B. nach manuellem git pull)
+#   NPM_CI=1 …                   Pakete neu installieren (geschieht von selbst, wenn sich package-lock.json ändert)
 #
 # Gebaut wird in den gerade NICHT benutzten Ordner (.next-a / .next-b), während die alte Version weiterläuft.
 # Danach steht der neue Ordner in .next-active, `.next` zeigt darauf (für den Tracker), und scripts/cached-server.mjs
@@ -26,6 +27,13 @@ if [[ "${1:-}" != "--no-pull" ]]; then git pull --ff-only; fi
 # Hat sich der Cache-Server selbst geändert, braucht es einmal einen echten Neustart (kurzer Ausfall)
 front_changed="${FRONT_RESTART:-}"
 if ! git diff --quiet "$before" HEAD -- scripts/cached-server.mjs; then front_changed=1; fi
+# Neue Paketversionen: einmal sauber installieren (laufende Prozesse haben ihre Module schon geladen; der Cache-Server
+# startet danach ohnehin neu, damit nichts Altes und Neues gemischt läuft)
+if ! git diff --quiet "$before" HEAD -- package-lock.json || [[ -n "${NPM_CI:-}" ]]; then
+  echo "[deploy] package-lock.json geändert: npm ci"
+  PATH="$(dirname "$NODE"):$PATH" npm ci --no-audit --no-fund > /tmp/actracker-npm.log 2>&1 || { tail -20 /tmp/actracker-npm.log; echo "[deploy] npm ci fehlgeschlagen, Abbruch"; exit 1; }
+  front_changed=1
+fi
 
 active="$(cat .next-active 2>/dev/null || true)"
 if [[ "$active" == ".next-a" ]]; then target=".next-b"; else target=".next-a"; fi
