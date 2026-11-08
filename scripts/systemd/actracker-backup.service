@@ -1,0 +1,14 @@
+# Kopie liegt in ~/.config/systemd/user/ (systemctl --user daemon-reload nach Änderungen)
+[Unit]
+Description=CraftAttack Tracker: Datenbank-Sicherung (scripts/backup.sh)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/commandd/actracker-live
+ExecStart=/usr/bin/bash scripts/backup.sh
+Nice=10
+CPUWeight=20
+IOSchedulingClass=idle
+MemoryMax=900M
+TimeoutStartSec=2h

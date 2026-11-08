@@ -25,6 +25,7 @@ const WEB = process.env.WATCHDOG_WEB ?? "http://127.0.0.1:3010/bot";
 const PUBLIC = process.env.WATCHDOG_PUBLIC ?? "https://craftattack.hiorcraft.tv/";
 /** Speicher des Website-Dienstes (Root-Unit, cgroup v2) */
 const WEB_CGROUP = process.env.WATCHDOG_WEB_CGROUP ?? "/sys/fs/cgroup/system.slice/actracker-web.service";
+const BACKUP_STATE = process.env.WATCHDOG_BACKUP_STATE ?? `${homedir()}/.local/state/actracker-backup.json`;
 const PROXY_PORT = Number(process.env.WATCHDOG_PROXY_PORT ?? 1080);
 const MIN = 60_000;
 const REMIND_MS = 3 * 60 * MIN;
@@ -189,6 +190,41 @@ async function check() {
       after: 0,
     };
 
+  // Datenbank-Sicherung (scripts/backup.sh): täglich, auswärts falls eingerichtet, monatlicher Wiederherstellungstest
+  let backup = null;
+  try {
+    backup = JSON.parse(readFileSync(BACKUP_STATE, "utf8"));
+  } catch {
+    /* noch nie gesichert */
+  }
+  const ageH = (iso) => (iso ? (Date.now() - Date.parse(iso)) / 3600_000 : Infinity);
+  if (ageH(backup?.lastOk) > 30)
+    problems.backup = {
+      title: "Datenbank-Sicherung fehlt",
+      message: backup?.lastOk
+        ? `Die letzte Sicherung ist ${Math.round(ageH(backup.lastOk))} Std alt. Bitte prüfen: journalctl --user -u actracker-backup`
+        : "Es gibt noch keine Sicherung. Bitte prüfen: systemctl --user status actracker-backup.timer",
+      priority: "high",
+      tags: "floppy_disk",
+      after: 0,
+    };
+  else if (backup?.offsiteConfigured && ageH(backup.offsite) > 74)
+    problems.backupOffsite = {
+      title: "Sicherung auswärts klappt nicht",
+      message: `Die Sicherung auf dem Server läuft, aber nicht auswärts${backup.offsiteError ? ` (${backup.offsiteError})` : ""}. Fällt der Server aus, wären die Daten weg.`,
+      priority: "default",
+      tags: "cloud",
+      after: 0,
+    };
+  if (backup?.restoreError && ageH(backup.restoreError) < 48)
+    problems.backupRestore = {
+      title: "Test-Wiederherstellung der Sicherung gescheitert",
+      message: "Die Sicherung ließ sich nicht testweise einspielen. Bitte prüfen: journalctl --user -u actracker-backup",
+      priority: "default",
+      tags: "warning",
+      after: 0,
+    };
+
   // VOD-Chat-Nachtrag: lange Pause nach Sperre durch Twitch
   const vod = await sh("journalctl", ["--user", "-u", "actracker-vodchat", "--since", "-7 hours", "--no-pager", "-o", "cat"]);
   if (/Fehler \((?:HTTP 4\d\d|.*integrity.*)\), Pause 360 Min/i.test(vod))
@@ -245,7 +281,7 @@ for (const key of Object.keys(state)) {
   if (state[key].notified) {
     state[key].okSince ??= now;
     if (now - state[key].okSince < STABLE_MS) continue;
-    await notify({ title: "Läuft wieder", message: `Erledigt: ${key === "tunnel" ? "Tunnel ist wieder verbunden" : key === "polls" ? "Minecraft-Daten kommen wieder" : key === "web" ? "Website ist wieder erreichbar" : key === "webmem" ? "Website hat wieder genug Speicher" : key === "ram" ? "Server hat wieder genug Arbeitsspeicher" : key} (Problem seit ${berlin(state[key].since)} Uhr).`, priority: "low", tags: "white_check_mark" });
+    await notify({ title: "Läuft wieder", message: `Erledigt: ${key === "tunnel" ? "Tunnel ist wieder verbunden" : key === "polls" ? "Minecraft-Daten kommen wieder" : key === "web" ? "Website ist wieder erreichbar" : key === "webmem" ? "Website hat wieder genug Speicher" : key === "ram" ? "Server hat wieder genug Arbeitsspeicher" : key === "backup" ? "Datenbank-Sicherung läuft wieder" : key === "backupOffsite" ? "Sicherung auswärts klappt wieder" : key} (Problem seit ${berlin(state[key].since)} Uhr).`, priority: "low", tags: "white_check_mark" });
     console.log(`erledigt: ${key}`);
   }
   delete state[key];

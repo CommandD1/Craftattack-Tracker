@@ -1,0 +1,11 @@
+# Kopie liegt in ~/.config/systemd/user/ (systemctl --user enable --now actracker-backup.timer)
+[Unit]
+Description=CraftAttack Tracker: Datenbank-Sicherung täglich (ruhige Zeit)
+
+[Timer]
+OnCalendar=*-*-* 03:40:00 UTC
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
