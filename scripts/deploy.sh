@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Neue Version ohne Ausfall ausrollen (auf dem Server, im Live-Klon).
 #
-#   scripts/deploy.sh            git pull, bauen, umschalten, Tracker neu starten
+#   scripts/deploy.sh            git pull (+ HiorCraft/main einmischen), bauen, umschalten, Tracker neu starten
 #   scripts/deploy.sh --no-pull  nur bauen und umschalten
 #   FRONT_RESTART=1 …            Cache-Server sicher neu starten (z. B. nach manuellem git pull)
 #   NPM_CI=1 …                   Pakete neu installieren (geschieht von selbst, wenn sich package-lock.json ändert)
@@ -23,7 +23,22 @@ URL="${ACTRACKER_URL:-https://craftattack.hiorcraft.tv}"
 cd "$LIVE"
 
 before="$(git rev-parse HEAD)"
-if [[ "${1:-}" != "--no-pull" ]]; then git pull --ff-only; fi
+if [[ "${1:-}" != "--no-pull" ]]; then
+  git pull --ff-only
+  # Maßgeblich ist HiorCraft/main: dortige Änderungen kommen mit, eigene (noch offene PRs) bleiben drauf.
+  # Bei Konflikten Abbruch, die laufende Version bleibt unverändert.
+  HIOR_URL="${ACTRACKER_HIOR:-https://github.com/HiorCraft/Craftattack-Tracker.git}"
+  git fetch -q "$HIOR_URL" main
+  if ! git merge-base --is-ancestor FETCH_HEAD HEAD; then
+    git merge --no-edit -m "HiorCraft/main übernehmen" FETCH_HEAD || {
+      git merge --abort || true
+      echo "[deploy] HiorCraft/main lässt sich nicht konfliktfrei übernehmen, Abbruch"
+      exit 1
+    }
+    git push -q origin HEAD:main
+    echo "[deploy] HiorCraft/main übernommen und nach origin gepusht"
+  fi
+fi
 # Hat sich der Cache-Server selbst geändert, braucht es einmal einen echten Neustart (kurzer Ausfall)
 front_changed="${FRONT_RESTART:-}"
 if ! git diff --quiet "$before" HEAD -- scripts/cached-server.mjs; then front_changed=1; fi
