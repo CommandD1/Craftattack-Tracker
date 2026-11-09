@@ -33,7 +33,8 @@ import { spawn } from "node:child_process";
 import { gunzipSync } from "node:zlib";
 import { createRequire } from "node:module";
 import { createReadStream, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { extname, join, normalize, sep } from "node:path";
+import { extname, join, normalize, resolve, sep } from "node:path";
+import { timingSafeEqual } from "node:crypto";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const PORTS = [PORT + 1, PORT + 2];
@@ -216,6 +217,69 @@ function serveStatic(req, res) {
   return false;
 }
 
+/* ---------- Geheime Freigabe ---------- */
+// Liefert einen Ordner auf dem Server unter /x/<SHARE_KEY>/ aus (z. B. Video-Entwürfe), ohne Next.js und ohne Cache.
+// Beides kommt aus der Umgebung (web.env), nie aus dem Repo. Ohne SHARE_KEY/SHARE_DIR gibt es die Route nicht.
+// Falscher Schlüssel = normale 404-Seite. Range-Anfragen werden unterstützt (Spulen in Videos).
+const SHARE_KEY = process.env.SHARE_KEY ?? "";
+const SHARE_DIR = process.env.SHARE_DIR ? resolve(process.env.SHARE_DIR) : "";
+const SHARE_TYPES = { ...TYPES, ".html": "text/html; charset=utf-8", ".webm": "video/webm", ".mp4": "video/mp4", ".jpg": "image/jpeg", ".pdf": "application/pdf" };
+function serveShare(req, res, url) {
+  if (SHARE_KEY.length < 16 || !SHARE_DIR) return false;
+  const m = /^\/x\/([^/?#]+)(\/[^?#]*)?/.exec(url);
+  if (!m) return false;
+  const a = Buffer.from(m[1]), b = Buffer.from(SHARE_KEY);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return false;
+  if (m[2] === undefined) {
+    res.writeHead(301, { location: `/x/${SHARE_KEY}/`, "cache-control": "no-store" });
+    res.end();
+    return true;
+  }
+  let rel;
+  try {
+    rel = decodeURIComponent(m[2]);
+  } catch {
+    return false;
+  }
+  if (rel.endsWith("/")) rel += "index.html";
+  const file = resolve(SHARE_DIR, "." + normalize(rel));
+  if (!file.startsWith(SHARE_DIR + sep) || !SHARE_TYPES[extname(file)]) return false;
+  let st;
+  try {
+    st = statSync(file);
+  } catch {
+    return false;
+  }
+  if (!st.isFile()) return false;
+  const headers = {
+    "content-type": SHARE_TYPES[extname(file)],
+    "cache-control": "private, no-store",
+    "x-robots-tag": "noindex, nofollow",
+    "referrer-policy": "no-referrer",
+    "accept-ranges": "bytes",
+  };
+  const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? "");
+  let start = 0, end = st.size - 1, status = 200;
+  if (range && (range[1] || range[2])) {
+    if (range[1]) {
+      start = Number(range[1]);
+      if (range[2]) end = Math.min(Number(range[2]), end);
+    } else start = Math.max(0, st.size - Number(range[2]));
+    if (start > end || start >= st.size) {
+      res.writeHead(416, { "content-range": `bytes */${st.size}` });
+      res.end();
+      return true;
+    }
+    status = 206;
+    headers["content-range"] = `bytes ${start}-${end}/${st.size}`;
+  }
+  headers["content-length"] = String(end - start + 1);
+  res.writeHead(status, headers);
+  if (req.method === "HEAD") res.end();
+  else createReadStream(file, { start, end }).on("error", () => res.destroy()).pipe(res);
+  return true;
+}
+
 /* ---------- Cache ---------- */
 /** @type {Map<string, { key?: string; at: number; status: number; headers: Record<string, string | string[]>; body: Buffer; gzip: boolean; plain?: Buffer }>} */
 const cache = new Map();
@@ -392,6 +456,10 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
   if ((req.method === "GET" || req.method === "HEAD") && url.startsWith("/_next/static/") && serveStatic(req, res)) return;
+  if ((req.method === "GET" || req.method === "HEAD") && url.startsWith("/x/")) {
+    if (serveShare(req, res, url)) return;
+    return sendNotFound(req, res);
+  }
   // Server-Aktionen gibt es auf der Website nicht; Anfragen mit dem Kopf `Next-Action` sind Scanner (oder Tabs einer
   // alten Version) und erzeugen sonst Fehler im Protokoll
   if (req.headers["next-action"] !== undefined) {
