@@ -30,6 +30,7 @@ const EXTRA: Record<string, { title: string; next: string[] }> = {
   "/ereignisse": { title: "Ereignisse", next: ["/zeitstrahl", "/graph"] },
   "/graph": { title: "Graph", next: ["/statistik", "/bestenlisten"] },
   "/so-funktionierts": { title: "So funktioniert’s", next: ["/", "/spieler"] },
+  "/changelog": { title: "Changelog", next: ["/", "/spielertypen"] },
 };
 
 /** Weitere Ziele, die nicht im Rundgang stehen */
