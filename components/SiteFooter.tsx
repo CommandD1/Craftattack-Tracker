@@ -3,6 +3,8 @@ import { Icon } from "./Icons";
 import { SOCIALS } from "@/lib/site";
 import { HUBS } from "@/lib/hubs";
 import { ESTIMATE } from "@/lib/estimateMode";
+import { LATEST_CHANGE } from "@/lib/changelog";
+import { ChangelogLink } from "./ChangelogNew";
 
 export function SiteFooter() {
   return (
@@ -32,6 +34,9 @@ export function SiteFooter() {
           ))}
           <li>
             <Link href="/so-funktionierts">So funktioniert’s</Link>
+          </li>
+          <li>
+            <ChangelogLink latest={LATEST_CHANGE} />
           </li>
           {/* Die Schätzung (/schaetzung) ist abgeschaltet; nur ihr eigener Build verlinkt zurück */}
           {ESTIMATE && (

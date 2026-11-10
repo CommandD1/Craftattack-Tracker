@@ -55,7 +55,7 @@ export function NextSteps() {
               <span className="next-card__title t-3">Du hast alles Wichtige gesehen.</span>
               <span className="next-card__why">
                 Was danach passiert, steht auf der Übersicht unter „Zuletzt passiert“. Beim nächsten Besuch zeigt dir die Zahl an „Verlauf“, wie viel
-                dazugekommen ist.
+                dazugekommen ist. Was sich an der Seite selbst ändert, steht im <Link href="/changelog">Changelog</Link>.
               </span>
             </div>
           )}
