@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useId, useState, useSyncExternalStore } from "react";
 
 const KEY = "ac-twitch-consent";
@@ -48,8 +47,7 @@ export function TwitchGate({ name, playerSrc, chatSrc }: { name: string; playerS
         <div className="box twitch__gate" data-tone="white">
           <p className="twitch__gate-title">Stream von {name} laden?</p>
           <p>
-            Beim Laden verbindet sich dein Browser mit Twitch (USA). Twitch erhält dabei unter anderem deine IP-Adresse und kann Cookies setzen. Mehr in der{" "}
-            <Link href="/datenschutz#plugins">Datenschutzerklärung</Link>.
+            Beim Laden verbindet sich dein Browser mit Twitch (USA). Twitch erhält dabei unter anderem deine IP-Adresse und kann Cookies setzen.
           </p>
           <div className="twitch__gate-actions">
             <button
