@@ -42,6 +42,7 @@ Expensive analyses are precomputed by the tracker every ~10 min into table `snap
 - Changes to AFK detection: bump `AFK_HISTORY_VERSION` in `lib/backfill.ts` so events are rebuilt from history,
   and test the rebuild on a copy of the DB first.
 - Adding columns to `player_history.extra_stats` = append to the order in `lib/playerStats.ts`, never reorder.
+- New cookies, browser storage keys or third-party requests → update `cookie.md` (basis for the privacy policy).
 - Data never invented: VOD/IRC gap filling only records what was actually observed.
 
 ## Verify before a PR
