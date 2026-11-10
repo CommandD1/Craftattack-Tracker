@@ -217,7 +217,7 @@ async function Dashboard() {
                 ))}
               </ul>
               <ShowMore height={1300} label="Ereignisse">
-                <EventFeed events={recent} isShown={isShown} />
+                <EventFeed markNew events={recent} isShown={isShown} />
               </ShowMore>
             </div>
             <aside className="stack" style={{ "--stack": "16px" } as React.CSSProperties}>

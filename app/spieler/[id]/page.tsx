@@ -641,7 +641,7 @@ async function TimelineSection({ params }: { params: Params }) {
               }
             >
               <ShowMore height={1400} label="Ereignisse">
-                <EventFeed events={recent} focus={id} empty={`Für ${p.name} wurde noch nichts aufgezeichnet.`} getTimeState={getTimeState} isShown={isShown} />
+                <EventFeed markNew events={recent} focus={id} empty={`Für ${p.name} wurde noch nichts aufgezeichnet.`} getTimeState={getTimeState} isShown={isShown} />
               </ShowMore>
               <PresenceLegend />
             </Fold>

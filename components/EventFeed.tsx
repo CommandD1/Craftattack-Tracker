@@ -5,6 +5,7 @@ import { time } from "@/lib/format";
 import { Head } from "./Head";
 import { BOARD_ICON, EVENT_ICON, Icon } from "./Icons";
 import { EXTRA_STATS } from "@/lib/playerStats";
+import { FeedNewDivider, FeedSinceNote } from "./NewSince";
 
 const dayFmt = new Intl.DateTimeFormat("de-DE", {
   weekday: "long",
@@ -267,6 +268,7 @@ export function EventFeed({
   empty = "Noch nichts passiert. Der Tracker braucht erst zwei Abfragen, um Unterschiede zu sehen.",
   getTimeState,
   isShown = isShownEvent,
+  markNew = false,
 }: {
   events: TrackerEvent[];
   /** Spieler, um den es auf der Seite geht: sein eigener Kopf entfällt, wenn er selbst handelt */
@@ -277,6 +279,8 @@ export function EventFeed({
   getTimeState?: (at: string) => { server: boolean; live: boolean; href?: string };
   /** Was im Feed erscheint (Standard: feste Schwellen; Seiten übergeben die Tages-Schwellen, lib/feedThresholds.ts) */
   isShown?: (e: TrackerEvent) => boolean;
+  /** Neues seit dem letzten Besuch markieren (Zeile oben, Linie zwischen neu und gesehen; nur im Browser) */
+  markNew?: boolean;
 }) {
   const shown = events.filter(isShown);
   if (shown.length === 0) return <p className="st-online__empty">{empty}</p>;
@@ -284,6 +288,7 @@ export function EventFeed({
   const out: React.ReactNode[] = [];
   let lastDay = "";
   let lastMin = "";
+  let prevGroupAt: number | null = null;
   let bucket: TrackerEvent[] = [];
   const flush = () => {
     if (bucket.length === 0) return;
@@ -320,6 +325,10 @@ export function EventFeed({
     if (m !== lastMin) {
       flush();
       lastMin = m;
+      // Vor dem Tageskopf, damit die Linie nicht zwischen Tag und erster Minute steht
+      const at = Date.parse(e.at);
+      if (markNew && prevGroupAt !== null) out.push(<FeedNewDivider key={`new-${e.id}`} at={at} newerAt={prevGroupAt} />);
+      prevGroupAt = at;
     }
     if (k !== lastDay) {
       lastDay = k;
@@ -332,5 +341,11 @@ export function EventFeed({
     bucket.push(e);
   }
   flush();
-  return <ol className="feed">{out}</ol>;
+  if (!markNew) return <ol className="feed">{out}</ol>;
+  return (
+    <>
+      <FeedSinceNote at={visibleEvents.map((e) => Date.parse(e.at))} />
+      <ol className="feed">{out}</ol>
+    </>
+  );
 }
