@@ -4,6 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
 import { HUBS, hubOf } from "@/lib/hubs";
+import { NewBadge } from "./NewSince";
+
+/** Hier landen neue Ereignisse: Zahl seit dem letzten Besuch anzeigen */
+const NEW_HUB = "verlauf";
+const NEW_TAB = "/ereignisse";
 
 function List({ path }: { path: string | null }) {
   const current = hubOf(path);
@@ -13,6 +18,7 @@ function List({ path }: { path: string | null }) {
         <li key={h.key}>
           <Link href={h.tabs[0].href} aria-current={current?.hub.key === h.key ? "page" : undefined}>
             {h.label}
+            {h.key === NEW_HUB && <NewBadge />}
           </Link>
         </li>
       ))}
@@ -51,6 +57,7 @@ export function HubTabs() {
           <li key={t.href}>
             <Link href={t.href} aria-current={t.href === current.tab.href ? "page" : undefined}>
               {t.label}
+              {t.href === NEW_TAB && <NewBadge />}
             </Link>
           </li>
         ))}

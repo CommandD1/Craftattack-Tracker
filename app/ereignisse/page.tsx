@@ -209,7 +209,7 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
             )}
           </div>
 
-          <EventFeed events={slice} focus={player} highlight={evIndex >= 0 ? ev : undefined} getTimeState={getTimeState} isShown={isShown} />
+          <EventFeed markNew events={slice} focus={player} highlight={evIndex >= 0 ? ev : undefined} getTimeState={getTimeState} isShown={isShown} />
           {evIndex >= 0 && <ScrollToHighlight id={`ev-${ev}`} />}
           {player && (
             <PresenceLegend />

@@ -4,6 +4,8 @@ import "./globals.css";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { AutoRefresh } from "@/components/AutoRefresh";
+import { NextSteps } from "@/components/NextSteps";
+import { Suspense } from "react";
 import { HeadTip } from "@/components/HeadTip";
 import { ThemeScript } from "@/components/ThemeToggle";
 import { FoldScript } from "@/components/Fold";
@@ -59,12 +61,18 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <SiteHeader />
             <EstimateBanner />
             <main id="inhalt">{children}</main>
+            <Suspense fallback={null}>
+              <NextSteps />
+            </Suspense>
             <SiteFooter />
           </EstimateProvider>
         ) : (
           <>
             <SiteHeader />
             <main id="inhalt">{children}</main>
+            <Suspense fallback={null}>
+              <NextSteps />
+            </Suspense>
             <SiteFooter />
           </>
         )}
