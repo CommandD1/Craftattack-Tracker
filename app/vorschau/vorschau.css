@@ -1,0 +1,107 @@
+/* Versteckte Vorschau-Seiten (/vorschau/<key>), bauen auf den Klassen der Hauptseite auf */
+.vs-badge {
+  display: inline-block;
+  margin-bottom: 10px;
+}
+.vs-two {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+}
+.vs-two > * {
+  min-width: 0;
+}
+@media (width >= 900px) {
+  .vs-two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.vs-hero {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.vs-hero__text {
+  font-size: 1.125rem;
+  max-width: 60ch;
+}
+.vs-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 0;
+  list-style: none;
+}
+.vs-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+.vs-heads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.vs-heads li {
+  position: relative;
+}
+.vs-heads li[data-live] img {
+  outline: 3px solid var(--twitch);
+  outline-offset: 1px;
+}
+.vs-heads li[data-off] img {
+  opacity: 0.45;
+}
+.vs-now {
+  border-left: 4px solid var(--ink);
+  padding-left: 10px;
+  margin: 6px 0;
+  font-weight: 700;
+}
+
+/* Verlauf ±3 Std */
+.ewc {
+  position: relative;
+}
+.ewc svg {
+  display: block;
+  overflow: visible;
+}
+.ewc__grid {
+  stroke: color-mix(in srgb, var(--ink) 12%, transparent);
+  stroke-width: 1;
+}
+.ewc__tick {
+  fill: color-mix(in srgb, var(--ink) 65%, transparent);
+  font-size: 11px;
+}
+.ewc__mark {
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+.ewc__cross {
+  stroke: color-mix(in srgb, var(--ink) 40%, transparent);
+  stroke-width: 1;
+}
+.ewc__dot {
+  stroke: var(--white);
+  stroke-width: 2;
+}
+.ewc__tip {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  pointer-events: none;
+}

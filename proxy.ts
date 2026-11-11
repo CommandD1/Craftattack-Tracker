@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { servesWeb } from "@/lib/mode";
+import { previewDenied } from "@/lib/previewKey";
 import { fitnacraftKeyOk } from "@/lib/fitnacraftKey";
 
 /** Im Modus `tracker` bleiben nur Status- und Poll-Endpunkte erreichbar. */
@@ -16,6 +17,10 @@ function fitnacraftDenied(path: string) {
 }
 
 export function proxy(request: NextRequest) {
+  // Versteckte Vorschau-Seiten (lib/previewKey.ts): falscher Schlüssel → 404 ohne Rendern
+  if (previewDenied(request.nextUrl.pathname))
+    return new NextResponse("Seite nicht gefunden", { status: 404, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+
   // Direkte 404 statt Umschreiben: hinter scripts/cached-server.mjs trägt request.url „https://“, ein Rewrite würde
   // dann als externe Adresse per TLS an den internen HTTP-Port gehen (500)
   if (fitnacraftDenied(request.nextUrl.pathname))
