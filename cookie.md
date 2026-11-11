@@ -28,7 +28,6 @@ löschen; `sessionStorage` verschwindet mit dem Schließen des Tabs.
 | `ac.fold.v1` | localStorage | Kennungen der eingeklappten Abschnitte | Ausgeblendete Abschnitte bleiben ausgeblendet | bis zum Löschen | live |
 | `ac.verbindungen.v2` | localStorage | Einstellungen der Seite „Verbindungen“ (Gewichtung, Filter, Gruppenzahl, Ansicht) | Einstellungen bleiben erhalten | bis zum Löschen | live |
 | `ac.verbindungen.offen` | localStorage | Welche Einstellungsbereiche auf „Verbindungen“ aufgeklappt sind | Bedienung | bis zum Löschen | live |
-| `ac.verbindungen.v1`, `ac.gruppen.v1` | localStorage | Ältere Einstellungen von Netz und Gruppen | Werden nur noch gelesen und in `ac.verbindungen.v2` übernommen | bis zum Löschen | alt |
 | `ac.scroll.v1` | sessionStorage | Pfad und Scroll-Position | Beim automatischen Aktualisieren (höchstens einmal pro Minute) bleibt die Position erhalten; wird danach sofort gelöscht | Sekunden | live |
 | `ac.adv.tab` | sessionStorage | Gewählter Reiter der Fortschritte im Spielerprofil | Bedienung | bis der Tab geschlossen wird | live |
 | `ca:besuch` | localStorage | Zwei Zeitpunkte: Ende des vorigen Besuchs, zuletzt aktiv | „Neu seit deinem letzten Besuch“: Zahl an „Verlauf“, Linie im Feed, „Neu für dich“ im Changelog; „Alles gesehen“ setzt ihn neu | bis zum Löschen | PR #130 (noch nicht live) |
@@ -63,10 +62,8 @@ erforderlich im Sinne von § 25 Abs. 2 Nr. 2 TDDDG. Übersicht: https://develope
 
 ## 4. Weitere Verbindungen zu Dritten (keine Cookies, aber für die Datenschutzerklärung relevant)
 
-- **Clip-Vorschaubilder** (Startseite „Top-Clips“, Staffel-Rückblick): werden direkt von `static-cdn.jtvnw.net`
-  (Twitch-CDN) geladen, **ohne vorherige Einwilligung**. Dabei erhält Twitch die IP-Adresse und den Browser-Typ;
-  Cookies werden dabei nach unserem Stand nicht gesetzt. Entweder in der Datenschutzerklärung nennen oder die Bilder
-  wie die Köpfe über den eigenen Server ausliefern (dann fällt der Punkt weg).
+- **Clip-Vorschaubilder** (Startseite „Top-Clips“, Spielerseite, Staffel-Rückblick) laden über den eigenen Server
+  (`/api/clip-thumb/<id>`), der sie bei `static-cdn.jtvnw.net` holt. Der Browser verbindet sich dabei nicht mit Twitch.
 - **Spielerköpfe und Skins** laden über den eigenen Server (`/api/head`, `/api/skin`), der sie bei craftattack.one,
   mc-heads.net oder minotar.net holt. Der Browser des Besuchers verbindet sich dabei nicht mit diesen Diensten.
 - **Schriften** liegen auf dem eigenen Server (`public/fonts`), keine Google Fonts.

@@ -33,6 +33,12 @@ export function SiteFooter() {
           <li>
             <Link href="/so-funktionierts">So funktioniert’s</Link>
           </li>
+          <li>
+            <Link href="/impressum">Impressum</Link>
+          </li>
+          <li>
+            <Link href="/datenschutz">Datenschutz</Link>
+          </li>
           {/* Die Schätzung (/schaetzung) ist abgeschaltet; nur ihr eigener Build verlinkt zurück */}
           {ESTIMATE && (
             <li>
