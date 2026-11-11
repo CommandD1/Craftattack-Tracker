@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { PageSkeleton } from "@/components/Skeletons";
 import { ClipGrid } from "@/components/ClipGrid";
 import type { Clip } from "@/lib/clips";
-import { fcBase, fcData, fcGate } from "@/lib/fitnacraft";
+import { fcBase, fcData, fcGate, fcThumb } from "@/lib/fitnacraft";
 import { num } from "@/lib/format";
 import { FcHead } from "../../_components/FcNav";
 
@@ -19,7 +19,7 @@ async function Clips(props: PageProps<"/fitnacraft/[key]/clips">) {
   const clips: Clip[] = d.clips
     .filter((c) => !spieler || c.player === spieler)
     .slice(0, 60)
-    .map((c) => ({ ...c, name: d.names[c.player]?.[0] ?? c.player, uuid: d.names[c.player]?.[1] ?? "", at: new Date(c.at).toISOString() }));
+    .map((c) => ({ ...c, name: d.names[c.player]?.[0] ?? c.player, uuid: d.names[c.player]?.[1] ?? "", at: new Date(c.at).toISOString(), thumbnail: fcThumb(c) }));
   const total = d.players.reduce((s, p) => s + p.clips, 0);
   return (
     <>
