@@ -1,5 +1,5 @@
 import "server-only";
-import { EVENT_MIN_DELTA } from "./events";
+import { COUNTER_EVENT_MIN } from "./events";
 import { createHash } from "node:crypto";
 import { appendEvents, appendFeedItems, deathFeedMeta, enrichDeathEvents, getState, recordPlayerPoints, recordTopSnapshots, saveState } from "./store";
 import { fetchFollowerCounts, fetchLiveStreams, TWITCH_ENABLED, type TwitchFollowerChannel, type TwitchStream } from "./twitch";
@@ -132,14 +132,8 @@ function endAfk(ps: PlayerState) {
 /** Wartezeit, bevor nicht zuordenbare Tode als „unbekannt“ gemeldet werden */
 export const UNKNOWN_DEATH_GRACE_MS = Number(process.env.CA_UNKNOWN_DEATH_GRACE_MS ?? 10 * 60_000);
 
-/** Mindest-Delta, ab dem ein Zähler-Ereignis entsteht (sonst zu viel Rauschen) */
-const MIN_DELTA: Partial<Record<BoardKey, number>> = {
-  distance: 500, // Meter
-  blocksBroken: 100,
-  mobsKilled: 10,
-  // Essen: mehr als 2; Schaden: mehr als 20 Herzen (siehe EVENT_MIN_DELTA in lib/events.ts)
-  ...EVENT_MIN_DELTA,
-};
+/** Mindest-Delta, ab dem ein Zähler-Ereignis entsteht (Werte in lib/events.ts, damit die Website sie zeigen kann) */
+const MIN_DELTA = COUNTER_EVENT_MIN;
 
 /** Meilensteine pro Zähler – beim Überschreiten gibt es ein Ereignis */
 const MILESTONES: Partial<Record<BoardKey, number[]>> = {

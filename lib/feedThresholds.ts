@@ -59,3 +59,15 @@ export async function getFeedFilter(): Promise<(e: TrackerEvent) => boolean> {
     return (e.type === "subscription" ? (e.value ?? e.delta ?? 0) : (e.delta ?? 0)) >= min;
   };
 }
+
+/** Feed-Schwelle für eine Art an einem Tag (gleiche Regel wie getFeedFilter); undefined = keine Schwelle */
+export async function getFeedMin(): Promise<(type: TrackerEvent["type"], iso: string) => number | undefined> {
+  await getFeedFilter(); // lädt bzw. erneuert den Zwischenspeicher
+  const map = cache!.map;
+  return (type, iso) => {
+    const fixed = FEED_MIN_DELTA[type];
+    if (fixed === undefined) return undefined;
+    const day = map.get(`${type}|${dayOf(iso)}`);
+    return day === undefined ? fixed : Math.min(fixed, Math.max(1, day));
+  };
+}

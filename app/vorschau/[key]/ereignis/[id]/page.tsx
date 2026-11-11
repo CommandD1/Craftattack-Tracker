@@ -14,12 +14,18 @@ import { getFeedFilter } from "@/lib/feedThresholds";
 import { dateTime, num } from "@/lib/format";
 import { previewEventHref, previewGate } from "@/lib/preview";
 import { findVodAt, vodLink } from "@/lib/twitch";
-import type { TrackerEvent } from "@/lib/types";
+import { BOARD_KEYS, type TrackerEvent } from "@/lib/types";
 import { EventWindowChart } from "../../../_components/EventWindowChart";
+import { EventSteps } from "../../../_components/EventSteps";
+import { EventOccurrences } from "../../../_components/EventOccurrences";
 
 export const metadata: Metadata = { title: "Ereignis" };
 
 const dayLong = new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Europe/Berlin" });
+
+const localParts = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+/** Zeitpunkt als `datetime-local`-Wert in deutscher Zeit („2026-11-10T23:02“), wie ihn /graph erwartet */
+const localTime = (ms: number) => localParts.format(ms).replace(" ", "T");
 
 /** „vor 3 Min“ / „nach 2 Std 5 Min“ relativ zum Ereignis */
 function rel(ms: number) {
@@ -60,6 +66,18 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
   const onServer = present.filter((x) => x.online);
   const liveElsewhere = present.filter((x) => !x.online && x.viewers !== null);
   const label = meta.label;
+  // Graph-Seite mit genau diesem Ausschnitt (datetime-local in deutscher Zeit)
+  const graph = (metric: string, spieler: string[]) => {
+    const q = new URLSearchParams({ metric, zeit: "eigen", von: localTime(d.window.from), bis: localTime(d.window.to) });
+    if (spieler.length) q.set("spieler", spieler.join(","));
+    return `/graph?${q}`;
+  };
+  // Köpfe und Namen für „Wann noch“
+  const who = d.all.who.map(([wid]) => [wid, state.players[wid]?.name ?? wid, state.players[wid]?.uuid ?? ""] as [string, string, string]);
+  // Stärke im Format des Zählers (Zuwachs bzw. Meilenstein), sonst als Zahl
+  const intensityFormat = d.stat && e.type !== "death" ? d.stat.format : "num";
+  const detailBase = `${root}/ereignis/`;
+  const playersWithSame = new Set(d.all.points.map((x) => x[2])).size;
 
   return (
     <>
@@ -157,7 +175,7 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
                   <p className="muted" style={{ marginBottom: 8 }}>
                     3 Stunden davor bis 3 Stunden danach, gestrichelt: das Ereignis.
                   </p>
-                  <EventWindowChart points={d.stat.points} from={d.window.from} to={d.window.to} at={at} label={`${d.stat.label} von ${name} rund um das Ereignis`} format={d.stat.format} tone="var(--presence)" step />
+                  <EventWindowChart points={d.stat.points} from={d.window.from} to={d.window.to} at={at} label={`${d.stat.label} von ${name} rund um das Ereignis`} format={d.stat.format} tone="var(--presence)" step href={e.player ? graph(d.stat.metric, [e.player]) : undefined} />
                 </div>
               )}
               {d.viewers.length > 0 && (
@@ -166,7 +184,7 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
                   <p className="muted" style={{ marginBottom: 8 }}>
                     Live auf Twitch; Lücken = nicht live.
                   </p>
-                  <EventWindowChart points={d.viewers} from={d.window.from} to={d.window.to} at={at} label={`Zuschauer von ${name} rund um das Ereignis`} tone="var(--twitch)" />
+                  <EventWindowChart points={d.viewers} from={d.window.from} to={d.window.to} at={at} label={`Zuschauer von ${name} rund um das Ereignis`} tone="var(--twitch)" href={e.player ? graph("viewers", [e.player]) : undefined} />
                 </div>
               )}
               {d.online.length > 1 && (
@@ -175,11 +193,57 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
                   <p className="muted" style={{ marginBottom: 8 }}>
                     Wie voll der Server rund um das Ereignis war.
                   </p>
-                  <EventWindowChart points={d.online} from={d.window.from} to={d.window.to} at={at} label="Spieler auf dem Server rund um das Ereignis" tone="var(--ink)" step />
+                  <EventWindowChart points={d.online} from={d.window.from} to={d.window.to} at={at} label="Spieler auf dem Server rund um das Ereignis" tone="var(--ink)" step href={graph("onlineCount", [])} />
                 </div>
               )}
             </div>
           )}
+
+          {d.stat && d.stat.steps.length > 0 && (
+            <div className="box" data-tone="white">
+              <h3 className="t-3">Rohdaten: {d.stat.label} je Messung</h3>
+              <p className="muted" style={{ marginBottom: 8 }}>
+                Jede Säule ist der Zuwachs zwischen zwei Messungen ({(BOARD_KEYS as string[]).includes(d.stat.key) ? "etwa jede Minute" : "etwa alle 5 Minuten"}) – auch der, der kein Ereignis wurde.
+                {d.stat.eventMin !== null ? " Über der gestrichelten Linie legt der Tracker ein Ereignis an." : " Für diesen Wert gibt es nur Meilensteine, keine Zuwachs-Ereignisse."}
+              </p>
+              {d.stat.streak && (
+                <p className="vs-now">
+                  Teil einer Serie: {num(d.stat.streak.count)} Messungen in Folge über der Schwelle, {dateTime(new Date(d.stat.streak.from).toISOString())}–
+                  {dateTime(new Date(d.stat.streak.to).toISOString()).slice(-5)} Uhr
+                </p>
+              )}
+              <EventSteps
+                steps={d.stat.steps}
+                from={d.window.from}
+                to={d.window.to}
+                at={at}
+                eventMin={d.stat.eventMin}
+                feedMin={d.stat.feedMin}
+                streak={d.stat.streak}
+                format={d.stat.format}
+                label={`Zuwachs ${d.stat.label} je Messung rund um das Ereignis`}
+              />
+            </div>
+          )}
+
+          <div className="stack">
+            {d.mine && e.player && (
+              <div className="box" data-tone="white">
+                <h3 className="t-3">Wann noch bei {name}</h3>
+                <p className="muted" style={{ marginBottom: 8 }}>
+                  Jedes „{label}“ von {name} in der Staffel{d.mine.partial ? " (die neuesten)" : ""}; je höher, desto stärker. Dieses ist das {num(d.mine.rank)}.-stärkste von {num(d.mine.total)}.
+                </p>
+                <EventOccurrences points={d.mine.points} ids={d.mine.ids} who={[]} current={e.id} hrefBase={detailBase} format={intensityFormat} label={`Alle „${label}“ von ${name} in der Staffel`} />
+              </div>
+            )}
+            <div className="box" data-tone="white">
+              <h3 className="t-3">Bei allen Spielern</h3>
+              <p className="muted" style={{ marginBottom: 8 }}>
+                Die {num(d.all.points.length)} stärksten „{label}“ von {num(playersWithSame)} Spielern, die 60 stärksten mit Kopf. Dieses ist auf Platz {num(d.all.rank)} von {num(d.all.total)}.
+              </p>
+              <EventOccurrences points={d.all.points} ids={d.all.ids} who={who} current={e.id} hrefBase={detailBase} format={intensityFormat} label={`Die stärksten „${label}“ aller Spieler`} heads />
+            </div>
+          </div>
 
           {e.player && (
             <div className="vs-two">
