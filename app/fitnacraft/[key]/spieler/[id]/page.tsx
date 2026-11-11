@@ -8,7 +8,7 @@ import { Head } from "@/components/Head";
 import { Sparkline } from "@/components/Sparkline";
 import { ClipGrid } from "@/components/ClipGrid";
 import type { Clip } from "@/lib/clips";
-import { fcData, fcGate, who } from "@/lib/fitnacraft";
+import { fcData, fcGate, fcThumb, who } from "@/lib/fitnacraft";
 import { dateTime, duration, num, time } from "@/lib/format";
 import { FcHead, change, fcPlayerHref, hours } from "../../../_components/FcNav";
 import { FcBars } from "../../../_components/FcBars";
@@ -52,7 +52,7 @@ async function Profile(props: PageProps<"/fitnacraft/[key]/spieler/[id]">) {
   const clips: Clip[] = d.clips
     .filter((c) => c.player === id)
     .slice(0, 12)
-    .map((c) => ({ ...c, name: p.name, uuid: p.uuid, at: new Date(c.at).toISOString() }));
+    .map((c) => ({ ...c, name: p.name, uuid: p.uuid, at: new Date(c.at).toISOString(), thumbnail: fcThumb(c) }));
   const chats = d.chats.filter((c) => c.from === id || c.to === id).slice(0, 40);
   const name = (x: string | null) => who(d, x)?.name ?? x ?? "?";
 

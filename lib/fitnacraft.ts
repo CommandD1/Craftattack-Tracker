@@ -171,6 +171,9 @@ export async function fcData(): Promise<FcData> {
   return d;
 }
 
+/** Vorschaubild über den eigenen Server (app/api/clip-thumb), nie direkt von Twitch (siehe cookie.md) */
+export const fcThumb = (c: { id: string; thumbnail: string | null }) => (c.thumbnail ? `/api/clip-thumb/${encodeURIComponent(c.id)}` : null);
+
 export const fcBase = (key: string) => `/fitnacraft/${encodeURIComponent(key)}`;
 
 /** Name und UUID eines Spielers (auch außerhalb von FitnaCraft, z. B. Raid-Ziele) */
