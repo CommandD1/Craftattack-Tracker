@@ -1,7 +1,6 @@
 /**
  * Gemeinsame Einstellungen der Verbindungs-Seite (Netz, Nähe, Gruppen): eine Gewichtung, ein Filter, eine
- * Gruppeneinteilung für alle Ansichten. Bleibt im Browser gespeichert; ältere getrennte Einstellungen von Netz
- * und Gruppen werden beim ersten Laden übernommen.
+ * Gruppeneinteilung für alle Ansichten. Bleibt im Browser gespeichert.
  */
 import { DEFAULT_WEIGHTS, LINK_KINDS, type Weights } from "./connectionWeights";
 import type { Direction } from "./network";
@@ -47,8 +46,6 @@ export const SETTINGS_DEFAULTS: CommunitySettings = {
 };
 
 const KEY = "ac.verbindungen.v2";
-const OLD_NET = "ac.verbindungen.v1";
-const OLD_GROUPS = "ac.gruppen.v1";
 
 export const sameWeights = (a: Weights, b: Weights) => LINK_KINDS.every((k) => a[k] === b[k]);
 
@@ -88,18 +85,7 @@ const read = (k: string) => {
 
 export function loadSettings(): CommunitySettings | null {
   const now = read(KEY);
-  if (now) return parseSettings(now);
-  const net = read(OLD_NET);
-  const groups = read(OLD_GROUPS);
-  if (!net && !groups) return null;
-  // Früher getrennt: Gewichtung des Netzes gewinnt, Gruppen-Einteilung und „gegenseitig“ von den Gruppen
-  return parseSettings({
-    ...(groups ?? {}),
-    ...(net ?? {}),
-    groupMode: groups?.mode ?? "feinheit",
-    mutual: groups?.mutual,
-    show: net?.show,
-  });
+  return now ? parseSettings(now) : null;
 }
 
 export function saveSettings(s: CommunitySettings) {

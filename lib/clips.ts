@@ -45,7 +45,24 @@ export async function getTopClips({ player, hours, limit = 8, perPlayer = 2 }: {
     views: r.view_count,
     seconds: Math.round(r.duration),
     url: r.url,
-    thumbnail: r.thumbnail,
+    // Über den eigenen Server (app/api/clip-thumb): der Browser verbindet sich so nicht ohne Einwilligung mit Twitch
+    thumbnail: r.thumbnail ? `/api/clip-thumb/${encodeURIComponent(r.id)}` : null,
     creator: r.creator_name,
   }));
+}
+
+/** Nur diese Twitch-Adressen werden für Vorschaubilder abgerufen (kein offener Bild-Proxy) */
+const THUMB_HOSTS = new Set(["static-cdn.jtvnw.net", "clips-media-assets2.twitch.tv"]);
+
+/** Gespeicherte Vorschaubild-Adresse eines Clips, sofern sie auf Twitchs CDN zeigt */
+export async function getClipThumbnailUrl(id: string): Promise<string | null> {
+  const db = await getDb();
+  const url = (await db.query<{ thumbnail: string | null }>(`SELECT thumbnail FROM twitch_clips WHERE id = $1`, [id])).rows[0]?.thumbnail;
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && THUMB_HOSTS.has(u.hostname) ? u.href : null;
+  } catch {
+    return null;
+  }
 }
