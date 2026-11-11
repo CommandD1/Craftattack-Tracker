@@ -1,0 +1,107 @@
+/* FitnaCraft-Rückblick (versteckte Seiten unter /fitnacraft/<key>); baut auf den Klassen der Hauptseite auf */
+.fc-source {
+  margin-top: 14px;
+  font-size: 0.8125rem;
+}
+.fc-bars {
+  --fc-bar: var(--presence);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fc-bars__plot {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 140px;
+  border-bottom: 2px solid color-mix(in srgb, var(--ink) 18%, transparent);
+}
+.fc-bars__col {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  position: relative;
+}
+.fc-bars__bar {
+  width: 100%;
+  min-height: 1px;
+  background: var(--fc-bar);
+  border-radius: 4px 4px 0 0;
+}
+.fc-bars__col:hover .fc-bars__bar,
+.fc-bars__col:focus-visible .fc-bars__bar {
+  filter: brightness(0.85);
+}
+.fc-bars__axis {
+  display: flex;
+  gap: 2px;
+  font-size: 0.6875rem;
+  color: var(--muted, color-mix(in srgb, var(--ink) 60%, transparent));
+}
+.fc-bars__axis span {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  overflow: visible;
+  white-space: nowrap;
+}
+.fc-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.fc-title {
+  max-width: 42ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fc-two {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+}
+.fc-two > *,
+.fc .stack > * {
+  min-width: 0;
+}
+.fc .spark {
+  width: 100%;
+  height: auto;
+}
+@media (width >= 900px) {
+  .fc-two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.fc-feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.fc-feed li {
+  display: grid;
+  grid-template-columns: 4.5em 1fr;
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 2px solid color-mix(in srgb, var(--ink) 10%, transparent);
+  align-items: baseline;
+}
+.fc-feed__day {
+  margin: 22px 0 6px;
+}
+.fc-ca {
+  background: var(--mig-c2) !important;
+}
+.tbl th a {
+  color: inherit;
+}
+.tbl th a[aria-current] {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.fc-feed--wide li {
+  grid-template-columns: 7.5em 1fr;
+}
