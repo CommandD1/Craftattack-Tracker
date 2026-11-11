@@ -16,7 +16,10 @@ function fitnacraftDenied(path: string) {
 }
 
 export function proxy(request: NextRequest) {
-  if (fitnacraftDenied(request.nextUrl.pathname)) return NextResponse.rewrite(new URL("/_fitnacraft-404", request.url));
+  // Direkte 404 statt Umschreiben: hinter scripts/cached-server.mjs trägt request.url „https://“, ein Rewrite würde
+  // dann als externe Adresse per TLS an den internen HTTP-Port gehen (500)
+  if (fitnacraftDenied(request.nextUrl.pathname))
+    return new NextResponse("Seite nicht gefunden", { status: 404, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
   if (servesWeb() || TRACKER_ONLY_PATHS.has(request.nextUrl.pathname)) return NextResponse.next();
   return NextResponse.json(
     { ok: false, error: "Dieser Prozess läuft mit TRACKER_MODE=tracker und liefert keine Website aus." },
