@@ -105,3 +105,68 @@
   white-space: nowrap;
   pointer-events: none;
 }
+.ewc__open {
+  display: block;
+  text-align: right;
+  margin-bottom: 4px;
+  font-size: 0.8125rem;
+}
+
+/* Rohdaten / Serie */
+.ews__bar {
+  fill: var(--idle);
+}
+.ews__bar--event {
+  fill: var(--presence);
+}
+.ews__bar--this {
+  fill: var(--ink);
+}
+.ews__line {
+  stroke: var(--presence);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.ews__line--feed {
+  stroke: var(--ink);
+}
+.ews__lbl {
+  font-weight: 600;
+}
+.ews__streak {
+  fill: color-mix(in srgb, var(--presence) 18%, transparent);
+}
+
+/* Wann noch */
+.ewo__dot {
+  fill: var(--presence);
+  stroke: var(--white);
+  stroke-width: 1;
+}
+.ewo__dot--faint {
+  fill: color-mix(in srgb, var(--ink) 30%, transparent);
+  stroke: none;
+}
+.ewo__dot--cur {
+  fill: var(--ink);
+}
+.ewo__ring {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2.5;
+}
+.ewo__hover {
+  fill: none;
+  stroke: var(--twitch);
+  stroke-width: 2;
+}
+.ewo__head {
+  image-rendering: pixelated;
+}
+/* Lange Namen („Alle „Handel mit Dorfbewohnern“ von …“) umbrechen statt über den Rand zu ragen */
+.vs-facts .tag,
+.vs-nav .btn {
+  white-space: normal;
+  max-width: 100%;
+  text-align: left;
+}

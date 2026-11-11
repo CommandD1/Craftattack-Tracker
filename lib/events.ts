@@ -1,4 +1,4 @@
-import type { EventType, TrackerEvent } from "./types";
+import type { BoardKey, EventType, TrackerEvent } from "./types";
 import { duration, hearts, num, distance } from "./format";
 import { BOARD_TONE, GROUP_TONE, METRIC_TONE } from "./statTone";
 import { EXTRA_STATS, FORMATTERS, type ExtraStatKey } from "./playerStats";
@@ -505,6 +505,17 @@ export const TIME_RANGES: { key: string; label: string; ms: number | null }[] = 
  * Essen: mehr als 2 Mahlzeiten. Schaden: mehr als 20 Herzen (Rohwert ÷ 20, also mehr als 400).
  */
 export const EVENT_MIN_DELTA = { foodEaten: 3, damageDealt: 401 } as const;
+
+/**
+ * Mindest-Zuwachs je Abfrage, ab dem der Tracker ein Zähler-Ereignis anlegt (sonst zu viel Rauschen); fehlende
+ * Zähler ab 1. Liegt hier statt in lib/tracker.ts, damit auch die Website die Schwelle zeigen kann.
+ */
+export const COUNTER_EVENT_MIN: Partial<Record<BoardKey, number>> = {
+  distance: 500, // Meter
+  blocksBroken: 100,
+  mobsKilled: 10,
+  ...EVENT_MIN_DELTA,
+};
 
 /**
  * Schwellen fürs Anzeigen in Feeds (gespeichert wird mehr, das bleibt für Graphen und Auswertungen). Gewählt nach der

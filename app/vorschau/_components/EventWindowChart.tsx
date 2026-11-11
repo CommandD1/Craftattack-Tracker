@@ -31,6 +31,7 @@ export function EventWindowChart({
   format = "num",
   tone = "var(--twitch)",
   step = false,
+  href,
 }: {
   points: [number, number | null][];
   from: number;
@@ -42,6 +43,8 @@ export function EventWindowChart({
   tone?: string;
   /** Treppe (Zähler) statt Linie */
   step?: boolean;
+  /** Klick öffnet diesen Verlauf im Graphen (/graph) */
+  href?: string;
 }) {
   const ref = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -90,7 +93,12 @@ export function EventWindowChart({
   const atVal = withVal.reduce<[number, number] | null>((m, p) => (p[0] <= at + 60_000 && (!m || p[0] > m[0]) ? p : m), null);
   return (
     <div className="ewc">
-      <svg ref={ref} viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={label} onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
+      {href && (
+        <a className="ewc__open" href={href} title="Diesen Verlauf im Graphen öffnen">
+          Im Graphen öffnen ↗
+        </a>
+      )}
+      <svg ref={ref} viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={label} onPointerMove={onMove} onPointerLeave={() => setHover(null)} onClick={href ? () => (window.location.href = href) : undefined} style={href ? { cursor: "pointer" } : undefined}>
         {ticks.map((v) => (
           <g key={v}>
             <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} className="ewc__grid" />
