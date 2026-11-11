@@ -118,6 +118,8 @@ async function switchVersion() {
   if (switching) return log("Wechsel läuft schon");
   const dist = activeDist();
   if (dist === current.dist) return log(`${dist} läuft bereits`);
+  // Im Ordner liegt ein neuer Build: dessen Routenliste neu lesen (sonst gälten neue Seiten als unbekannt → 404)
+  knownByDist.delete(dist);
   switching = true;
   const port = PORTS.find((p) => p !== current.port);
   log(`Starte neue Version aus ${dist} auf ${port}`);
