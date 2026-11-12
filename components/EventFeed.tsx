@@ -116,7 +116,7 @@ function detail(e: TrackerEvent): string | null {
  * (`focus`), entfällt, wenn er selbst handelt – Beteiligte auf der anderen Seite bleiben immer sichtbar.
  * Ein Klick auf die Kachel zeigt alle Ereignisse dieser Art von diesem Spieler, mit diesem hervorgehoben.
  */
-function EventTile({ e, focus, highlight, hrefFor }: { e: TrackerEvent; focus?: string; highlight?: boolean; hrefFor?: (e: TrackerEvent) => string }) {
+function EventTile({ e, focus, highlight, hrefFor, richTips }: { e: TrackerEvent; focus?: string; highlight?: boolean; hrefFor?: (e: TrackerEvent) => string; richTips?: boolean }) {
   const showPlayer = !focus || e.player !== focus;
   const meta = EVENT_META[e.type];
   // Meilensteine eines Zusatzwerts mit dem Icon ihres Werts
@@ -145,7 +145,8 @@ function EventTile({ e, focus, highlight, hrefFor }: { e: TrackerEvent; focus?: 
   const killerName = typeof e.meta?.killerName === "string" ? e.meta.killerName : killer;
 
   return (
-    <li className="tile" id={`ev-${e.id}`} data-tone={meta.tone} data-type={e.type} data-highlight={highlight || undefined} title={`${time(e.at)} · ${sentence}`}>
+    <li className="tile" id={`ev-${e.id}`} data-tone={meta.tone} data-type={e.type} data-highlight={highlight || undefined} title={richTips ? undefined : `${time(e.at)} · ${sentence}`}
+      data-full={richTips ? `${time(e.at)} · ${sentence}${info && !sentence.includes(info) ? `\n„${info}“` : ""}` : undefined}>
       <Link className="tile__hit" href={hrefFor ? hrefFor(e) : eventHref(e)} aria-label={hrefFor ? `„${meta.label}“${e.player ? ` von ${e.playerName ?? e.player}` : ""} im Detail` : `Alle „${meta.label}“${e.player ? ` von ${e.playerName ?? e.player}` : ""} zeigen`} />
       {withHead && showPlayer ? (
         <Link className="tile__head" href={`/spieler/${encodeURIComponent(e.player!)}`} aria-label={e.playerName ?? e.player}>
@@ -268,6 +269,7 @@ export function EventFeed({
   getTimeState,
   isShown = isShownEvent,
   hrefFor,
+  richTips = false,
 }: {
   events: TrackerEvent[];
   /** Spieler, um den es auf der Seite geht: sein eigener Kopf entfällt, wenn er selbst handelt */
@@ -280,6 +282,8 @@ export function EventFeed({
   isShown?: (e: TrackerEvent) => boolean;
   /** Ziel beim Klick auf eine Kachel (Standard: gefilterte Ereignisliste, lib/events.ts eventHref) */
   hrefFor?: (e: TrackerEvent) => string;
+  /** Ausführlicher Hover-Text (ganzer Satz, Chat-Nachricht vollständig, umbrechend) statt des einzeiligen title */
+  richTips?: boolean;
 }) {
   const shown = events.filter(isShown);
   if (shown.length === 0) return <p className="st-online__empty">{empty}</p>;
@@ -309,7 +313,7 @@ export function EventFeed({
         )}
         <ul className="tiles">
           {bucket.map((e) => (
-            <EventTile key={e.id} e={e} focus={focus} highlight={e.id === highlight} hrefFor={hrefFor} />
+            <EventTile key={e.id} e={e} focus={focus} highlight={e.id === highlight} hrefFor={hrefFor} richTips={richTips} />
           ))}
         </ul>
       </li>,
