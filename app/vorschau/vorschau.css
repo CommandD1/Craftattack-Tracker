@@ -193,3 +193,23 @@
 .vs-rel .tag {
   white-space: normal;
 }
+
+/* Häufigkeit je Spieler und Tag (gleich starke Ereignisse, z. B. Chat) */
+.ewm__band {
+  fill: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.ewm__name {
+  fill: var(--ink);
+  font-size: 12px;
+}
+.ewm__name--cur {
+  font-weight: 700;
+}
+.ewm__dot {
+  fill: var(--presence);
+  stroke: var(--white);
+  stroke-width: 1;
+}
+.ewm__dot--cur {
+  fill: var(--ink);
+}

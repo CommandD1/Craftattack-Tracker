@@ -18,6 +18,7 @@ import { BOARD_KEYS, type TrackerEvent } from "@/lib/types";
 import { EventWindowChart } from "../../../_components/EventWindowChart";
 import { EventSteps } from "../../../_components/EventSteps";
 import { EventOccurrences } from "../../../_components/EventOccurrences";
+import { EventMatrix } from "../../../_components/EventMatrix";
 
 export const metadata: Metadata = { title: "Ereignis" };
 
@@ -91,6 +92,8 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
   const milestones = d.related ? d.related.ladder.filter((x) => x.type === "milestone") : [];
   const ranks = d.related ? d.related.ladder.filter((x) => x.type === "rank") : [];
   const detailBase = `${root}/ereignis/`;
+  // Berliner Tag des Ereignisses (für die Häufigkeit je Tag)
+  const eventDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" }).format(at);
   const playersWithSame = new Set(d.all.points.map((x) => x[2])).size;
 
   return (
@@ -307,6 +310,42 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
             </div>
           )}
 
+          {d.frequency ? (
+            <div className="stack">
+              {e.player && d.frequency.mine.length > 0 && (
+                <div className="box" data-tone="white">
+                  <h3 className="t-3">Wann noch bei {name}</h3>
+                  <p className="muted" style={{ marginBottom: 8 }}>
+                    „{label}“ von {name} je Tag ({num(d.frequency.mine.reduce((s, x) => s + x.n, 0))} insgesamt) – alle gleich stark, deshalb zählt, wie oft. Klick öffnet das erste des Tages.
+                  </p>
+                  <EventOccurrences
+                    points={d.frequency.mine.map((x, i) => [Date.parse(`${x.day}T12:00:00Z`), x.n, -1, i] as [number, number, number, number])}
+                    ids={d.frequency.mine.map((x) => x.first)}
+                    who={[]}
+                    current={d.frequency.mine.find((x) => x.day === eventDay)?.first ?? ""}
+                    hrefBase={detailBase}
+                    format="num"
+                    label={`„${label}“ von ${name} je Tag`}
+                  />
+                </div>
+              )}
+              <div className="box" data-tone="white">
+                <h3 className="t-3">Bei allen Spielern</h3>
+                <p className="muted" style={{ marginBottom: 8 }}>
+                  Wie oft die {num(d.frequency.players.length)} aktivsten Spieler „{label}“ hatten, je Tag; Kreisfläche = Anzahl{e.player ? `, Ring: ${name} an diesem Tag` : ""}.
+                </p>
+                <EventMatrix
+                  players={d.frequency.players.map((pid) => [pid, state.players[pid]?.name ?? pid, state.players[pid]?.uuid ?? ""] as [string, string, string])}
+                  days={d.frequency.days}
+                  cells={d.frequency.cells}
+                  currentPlayer={e.player ?? null}
+                  currentDay={eventDay}
+                  hrefBase={detailBase}
+                  noun={`× „${label}“`}
+                />
+              </div>
+            </div>
+          ) : (
           <div className="stack">
             {d.mine && e.player && (
               <div className="box" data-tone="white">
@@ -336,6 +375,7 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
               <EventOccurrences points={d.all.points} ids={d.all.ids} who={who} current={e.id} hrefBase={detailBase} format={intensityFormat} label={e.type === "record" ? `Verlauf des Rekords ${String(e.meta?.label ?? "")}` : `Die stärksten „${label}“ aller Spieler`} heads={e.type !== "record"} />
             </div>
           </div>
+          )}
 
           {e.player && (
             <div className="vs-two">
