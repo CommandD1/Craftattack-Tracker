@@ -70,6 +70,8 @@ export interface EventDetail {
   present: { id: string; online: boolean; viewers: number | null }[];
   /** Dieselbe Art beim selben Spieler über die ganze Staffel */
   mine: Occurrences | null;
+  /** Familie (Zähler/Kennzahl) mit Meilensteinen und Rängen des Spielers und dem, was in denselben Minuten dazugehört */
+  related: { family: string; label: string; ladder: TrackerEvent[]; together: TrackerEvent[] } | null;
   /** Dieselbe Art bei allen Spielern (die stärksten) */
   all: Occurrences;
 }
@@ -99,8 +101,39 @@ function toEvent(r: Row): TrackerEvent {
 }
 
 /** Stärke eines Ereignisses: Abos nach Anzahl, sonst Zuwachs, sonst Wert (Raid-Zuschauer, Meilenstein), sonst 1 */
-const INTENSITY = `CASE WHEN type = 'subscription' THEN coalesce(value, delta, 1) ELSE coalesce(delta, value, 1) END`;
-const intensityOf = (e: TrackerEvent) => (e.type === "subscription" ? (e.value ?? e.delta ?? 1) : (e.delta ?? e.value ?? 1));
+// Rang: Platz 1 ist der stärkste (4 − Platz, die Top 3 → 3, 2, 1)
+// Rekord: die Höhe des Rekords (nicht der Abstand zum alten), so wird sein Verlauf eine Treppe
+const INTENSITY = `CASE WHEN type IN ('subscription', 'record') THEN coalesce(value, delta, 1) WHEN type = 'rank' THEN 4 - coalesce(value, 3) ELSE coalesce(delta, value, 1) END`;
+const intensityOf = (e: TrackerEvent) =>
+  e.type === "subscription" || e.type === "record" ? (e.value ?? e.delta ?? 1) : e.type === "rank" ? 4 - (e.value ?? 3) : (e.delta ?? e.value ?? 1);
+
+/**
+ * Familie eines Ereignisses: der Zähler bzw. die Kennzahl, zu der es gehört. Meilensteine und Ränge nennen ihn in
+ * meta.board, Rekorde in meta.key; Zähler-Ereignisse heißen wie ihr Zähler (Tode: „death“ ↔ Zähler „deaths“).
+ * `field` = Feld in meta, das bei „gleicher Art“ mit übereinstimmen muss.
+ */
+function familyOf(e: TrackerEvent): { family: string; field: "board" | "key" | null } | null {
+  if ((e.type === "milestone" || e.type === "rank") && typeof e.meta?.board === "string") return { family: e.meta.board, field: "board" };
+  if (e.type === "record" && typeof e.meta?.key === "string") return { family: e.meta.key, field: "key" };
+  if (e.type === "death") return { family: "deaths", field: null };
+  if ((BOARD_KEYS as string[]).includes(e.type) || e.type in EXTRA_STATS) return { family: e.type, field: null };
+  return null;
+}
+/** Anzeigename einer Familie */
+function familyLabel(f: string): string {
+  if ((BOARD_KEYS as string[]).includes(f)) return BOARD_LABEL[f as BoardKey];
+  if (f in EXTRA_STATS) return EXTRA_STATS[f as ExtraStatKey].label;
+  return RECORD_SERIES[f]?.label ?? f;
+}
+/** Zähler-Ereignistyp einer Familie (Tode heißen als Ereignis „death“) */
+const counterType = (family: string) => (family === "deaths" ? "death" : family);
+
+/** Rekord → die Kennzahl des Servers, deren Höchstwert er ist (Spalte in `history`, Kennzahl für /graph) */
+const RECORD_SERIES: Record<string, { col: "online_count" | "viewers" | "live_count"; metric: string; label: string }> = {
+  peakOnline: { col: "online_count", metric: "onlineCount", label: "Spieler gleichzeitig online" },
+  peakViewers: { col: "viewers", metric: "viewers", label: "Zuschauer aller Streams" },
+  peakLive: { col: "live_count", metric: "liveCount", label: "Streams gleichzeitig live" },
+};
 
 const BOARD_COL: Record<BoardKey, string> = {
   playtimeSeconds: "playtime_seconds",
@@ -132,7 +165,7 @@ const BOARD_FORMAT: Partial<Record<BoardKey, ChartFormat>> = { playtimeSeconds: 
  * Säulen als Zuwachs je Minute (die Tracker-Schwelle ist eine Rate), `subs`/`cheers` = Twitch-Tabellen,
  * `state` = nur Verlauf ohne Säulen (z. B. online ja/nein).
  */
-type StatSource = "history" | "rate" | "subs" | "cheers" | "state";
+type StatSource = "history" | "rate" | "subs" | "cheers" | "state" | "server";
 interface StatDef {
   key: string;
   metric: string;
@@ -154,6 +187,11 @@ interface StatDef {
 function statOf(e: TrackerEvent): StatDef | null {
   // Twitch und Anwesenheit: eigene Quellen
   switch (e.type) {
+    case "record": {
+      // Rekord: Verlauf der Server-Kennzahl, deren Höchstwert er ist
+      const r = RECORD_SERIES[String(e.meta?.key ?? "")];
+      return r ? { key: String(e.meta?.key), metric: r.metric, label: r.label, format: "num", source: "server", sql: r.col, eventMin: null, isStep: false, maxStepMs: 0 } : null;
+    }
     case "follower_burst":
       // Tracker: mehr als 20 neue Follower je Minute, während der Streamer auf dem Server ist
       return { key: "followers", metric: "followers", label: "Neue Follower auf dem Server", format: "num", source: "rate", sql: "followers_on_server", eventMin: 20, isStep: false, maxStepMs: 10 * 60_000, per: "/Min" };
@@ -169,7 +207,7 @@ function statOf(e: TrackerEvent): StatDef | null {
       return { key: "online", metric: "online", label: "Auf dem Server (1 = ja)", format: "num", source: "state", sql: "(CASE WHEN online THEN 1 ELSE 0 END)", eventMin: null, isStep: false, maxStepMs: 0 };
   }
   const k =
-    e.type === "milestone" || e.type === "record" || e.type === "rank"
+    e.type === "milestone" || e.type === "rank"
       ? String(e.meta?.board ?? "")
       : e.type === "death"
         ? "deaths"
@@ -208,9 +246,10 @@ export async function getEventDetail(id: string): Promise<EventDetail | null> {
   const to = at + 3 * HOUR;
   const stat = statOf(event);
   const p = event.player ?? null;
-  // Meilensteine: nur die desselben Zählers gelten als „gleiche Art“
-  const board = event.type === "milestone" && typeof event.meta?.board === "string" ? event.meta.board : null;
-  const sameSql = (n: number) => `type = $1${board ? ` AND meta->>'board' = $${n}` : ""}`;
+  // Meilensteine und Ränge nur desselben Zählers, Rekorde derselben Kennzahl gelten als „gleiche Art“
+  const fam = familyOf(event);
+  const board = fam?.field ? fam.family : null;
+  const sameSql = (n: number) => `type = $1${board ? ` AND meta->>'${fam!.field}' = $${n}` : ""}`;
   const sameArgs = board ? [board] : [];
 
   const [beforeRows, afterRows, aroundRows, prevRow, nextRow, counts, hist, srv, present, mineRows, mineRank, allRows, allRank] = await Promise.all([
@@ -225,11 +264,11 @@ export async function getEventDetail(id: string): Promise<EventDetail | null> {
     ),
     p
       ? db.query<{ at: Date; online: boolean; viewers: number | null; v: number | null }>(
-          `SELECT at, online, viewers, ${stat?.sql ? stat.sql : "NULL"} AS v FROM player_history WHERE player = $1 AND at BETWEEN $2 AND $3 ORDER BY at`,
+          `SELECT at, online, viewers, ${stat?.sql && stat.source !== "server" ? stat.sql : "NULL"} AS v FROM player_history WHERE player = $1 AND at BETWEEN $2 AND $3 ORDER BY at`,
           [p, new Date(from), new Date(to)],
         )
       : null,
-    db.query<{ at: Date; online_count: number }>(`SELECT at, online_count FROM history WHERE at BETWEEN $1 AND $2 ORDER BY at`, [new Date(from), new Date(to)]),
+    db.query<{ at: Date; online_count: number; viewers: number; live_count: number }>(`SELECT at, online_count, viewers, live_count FROM history WHERE at BETWEEN $1 AND $2 ORDER BY at`, [new Date(from), new Date(to)]),
     db.query<{ player: string; online: boolean; viewers: number | null }>(
       `SELECT DISTINCT ON (player) player, online, viewers FROM player_history
         WHERE at BETWEEN $1 AND $2 AND (online OR viewers IS NOT NULL)
@@ -309,6 +348,12 @@ export async function getEventDetail(id: string): Promise<EventDetail | null> {
     statPoints.push([Math.min(to, Date.now()), sum]);
   }
 
+  // Rekord: Verlauf der Server-Kennzahl aus `history`
+  if (stat?.source === "server") {
+    const col = stat.sql as "online_count" | "viewers" | "live_count";
+    for (const r of srv.rows) statPoints.push([r.at.getTime(), Number(r[col])]);
+  }
+
   // Der Zuwachs des Ereignisses selbst fehlt, wenn die Messungen davor eine Pause hatten: aus dem Ereignis ergänzen
   if (stat?.isStep && stat.source === "history" && event.delta !== undefined && !steps.some(([ms, dd]) => Math.abs(ms - at) < 30_000 && dd > 0)) {
     const dup = steps.findIndex(([ms]) => Math.abs(ms - at) < 30_000);
@@ -329,6 +374,33 @@ export async function getEventDetail(id: string): Promise<EventDetail | null> {
       while (b < steps.length - 1 && steps[b + 1][1] >= stat.eventMin) b++;
       if (b > a) streak = { count: b - a + 1, from: steps[a][0], to: steps[b][0], sum: steps.slice(a, b + 1).reduce((s, x) => s + x[1], 0) };
     }
+  }
+
+  // Zusammenhänge in derselben Familie: Meilensteine und Ränge des Spielers über die Staffel, und was in denselben
+  // Minuten dazugehört (der Zuwachs, der einen Meilenstein brachte; der Rang, den er kostete; …)
+  let related: EventDetail["related"] = null;
+  if (fam) {
+    const [ladderRows, togetherRows] = await Promise.all([
+      p
+        ? db.query<Row>(
+            `SELECT ${COLS} FROM events WHERE player = $1 AND type IN ('milestone', 'rank') AND meta->>'board' = $2 ORDER BY at LIMIT 400`,
+            [p, fam.family],
+          )
+        : null,
+      db.query<Row>(
+        `SELECT ${COLS} FROM events
+          WHERE at BETWEEN $1 AND $2 AND id <> $3 ${p ? "AND player = $6" : ""}
+            AND ((type IN ('milestone', 'rank') AND meta->>'board' = $4) OR (type = 'record' AND meta->>'key' = $4) OR type = $5)
+          ORDER BY at LIMIT 20`,
+        [new Date(at - 2 * 60_000), new Date(at + 2 * 60_000), id, fam.family, counterType(fam.family), ...(p ? [p] : [])],
+      ),
+    ]);
+    related = {
+      family: fam.family,
+      label: familyLabel(fam.family),
+      ladder: ladderRows ? ladderRows.rows.map(toEvent) : [],
+      together: togetherRows.rows.map(toEvent).filter((x) => x.meta?.catchUp !== true),
+    };
   }
 
   const occ = (rows: { id: string; at: Date; i: number; player?: string | null }[], rank: { rank: string; total: string } | undefined, withWho: boolean, limit: number): Occurrences => {
@@ -384,5 +456,6 @@ export async function getEventDetail(id: string): Promise<EventDetail | null> {
     present: present.rows.map((r) => ({ id: r.player, online: r.online, viewers: r.viewers })),
     mine: mineRows ? occ(mineRows.rows, mineRank?.rows[0], false, MINE_LIMIT) : null,
     all: occ(allRows.rows, allRank.rows[0], true, ALL_LIMIT),
+    related,
   };
 }
