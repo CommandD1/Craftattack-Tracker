@@ -1307,6 +1307,24 @@ export async function deleteEvents(types: string[], keep: string[] = []): Promis
   return ids.length;
 }
 
+/** Entfernt einzelne Ereignisse (z. B. Doppelte, siehe lib/eventDedupe.ts) aus DB und Speicher. */
+export async function deleteEventsById(ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  await ensureLoaded();
+  const store = g();
+  const db = await getDb();
+  let gone: string[] = [];
+  for (let i = 0; i < ids.length; i += 1000) {
+    gone = gone.concat((await db.query<{ id: string }>(`DELETE FROM events WHERE id = ANY($1::text[]) RETURNING id`, [ids.slice(i, i + 1000)])).rows.map((r) => r.id));
+  }
+  if (gone.length > 0) {
+    const set = new Set(gone);
+    store.events = store.events.filter((e) => !set.has(e.id));
+    if (store.state) store.state.eventCount = Math.max(0, store.state.eventCount - gone.length);
+  }
+  return gone.length;
+}
+
 /** Ordnet ein bisher spielerloses Ereignis (z. B. unbekannter Tod) nachträglich einem Spieler zu – in DB und Speicher. */
 export async function assignEventPlayer(id: string, p: { id: string; name: string; uuid: string }, patch: NonNullable<TrackerEvent["meta"]>) {
   await ensureLoaded();

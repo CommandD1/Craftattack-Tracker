@@ -1,5 +1,6 @@
 import "server-only";
 import { COUNTER_EVENT_MIN } from "./events";
+import { flushStreamFlickers, loadReachedMilestones, milestoneSeen, noteStreamEnd, streamFlicker } from "./eventDedupe";
 import { createHash } from "node:crypto";
 import { appendEvents, appendFeedItems, deathFeedMeta, enrichDeathEvents, getState, recordPlayerPoints, recordTopSnapshots, saveState } from "./store";
 import { fetchFollowerCounts, fetchLiveStreams, TWITCH_ENABLED, type TwitchFollowerChannel, type TwitchStream } from "./twitch";
@@ -702,7 +703,12 @@ function diffStreams(ctx: DiffContext, liveNow: Map<string, ApiStats["live"][num
       if (onServer) ps.streamOnServerSeconds = (ps.streamOnServerSeconds ?? 0) + sinceLast;
       else ps.streamOffServerSeconds = (ps.streamOffServerSeconds ?? 0) + sinceLast;
     }
-    if (newStream) {
+    // Derselbe Stream war nur kurz aus der Twitch-Antwort verschwunden: weiterlaufen lassen, kein neuer Start
+    const flicker = !prev && !restarted ? streamFlicker(l.id, startedAt, nowDate.getTime()) : null;
+    if (flicker) {
+      ps.liveSince = flicker.liveSince ?? startedAt ?? now;
+      ps.livePeakViewers = Math.max(flicker.livePeak, l.viewers);
+    } else if (newStream) {
       ps.liveSince = startedAt ?? now;
       if (!first) {
         push({
@@ -740,6 +746,14 @@ function diffStreams(ctx: DiffContext, liveNow: Map<string, ApiStats["live"][num
   for (const ps of Object.values(state.players)) {
     if (ps.live && !liveNow.has(ps.id)) {
       push(streamEndEvent(ps, nowDate.getTime()));
+      // Merken: taucht derselbe Stream gleich wieder auf, war das nur ein Aussetzer der Twitch-Antwort
+      noteStreamEnd(ps.id, {
+        startedAt: ps.liveSince,
+        at: nowDate.getTime(),
+        liveSince: ps.liveSince,
+        livePeak: ps.livePeakViewers ?? 0,
+        endId: ctx.events[ctx.events.length - 1].id,
+      });
       ps.live = null;
       ps.liveSince = null;
       ps.livePeakViewers = 0;
@@ -864,7 +878,8 @@ function diffBoards(ctx: DiffContext, ext: Map<string, ExtPlayer>) {
       const delta = entry.value - prev;
       if (delta <= 0) continue;
       for (const m of MILESTONES[key] ?? []) {
-        if (prev < m && entry.value >= m) {
+        // Jede Marke nur einmal je Spieler: wechselnde Quellen (9.997 ↔ 10.001) überschritten sie sonst immer wieder
+        if (prev < m && entry.value >= m && !milestoneSeen(entry.id, key, m)) {
           push({
             type: "milestone",
             player: entry.id,
@@ -1269,6 +1284,8 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       for (const id of catchUp) if (ext.players.has(id) || ext.missing.has(id)) caughtUp.add(id);
       if (catchUp.length) console.log(`[tracker] ${catchUp.filter((id) => ext.players.has(id)).length} Offline-Spieler einmalig nachgeholt`);
       const first = state.latest === null;
+      // Bereits erreichte Meilensteine (einmal je Prozess), damit keiner doppelt entsteht (lib/eventDedupe.ts)
+      await loadReachedMilestones().catch((err: unknown) => console.warn("[tracker] Meilensteine nicht geladen:", err instanceof Error ? err.message : err));
       const events = diffSnapshot(state, stats, feed, now, ext.players, twitch, ext.loginOf, ext.missing, followers);
       snapshotApplied = true;
       // Geteilter Chat (Stream Together): mit Twitch-API je Session abfragen, sonst aus Chat erschlossene beenden.
@@ -1308,6 +1325,9 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       const retried = unsavedEvents.length - events.length - fromFeed.length;
       const inserted = await appendEvents(unsavedEvents);
       if (retried > 0) console.log(`[tracker] ${retried} zuvor nicht gespeicherte Ereignisse nachgetragen`);
+      // Stream nur kurz aus der Twitch-Antwort verschwunden: das vorschnelle „offline“ wieder entfernen
+      const flickers = await flushStreamFlickers().catch(() => 0);
+      if (flickers) console.log(`[tracker] ${flickers} vorschnelle Stream-Enden entfernt (Stream lief durch)`);
       unsavedEvents = [];
       state.eventCount += fromFeed.filter((e) => inserted.has(e.id)).length;
       markFeedSeen(unseen);
