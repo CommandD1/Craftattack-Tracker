@@ -12,7 +12,7 @@ import { getEventDetail } from "@/lib/eventDetail";
 import { getEventPair } from "@/lib/eventPair";
 import { EVENT_META, eventBadge, eventHref, eventPlayers } from "@/lib/events";
 import { getFeedFilter } from "@/lib/feedThresholds";
-import { dateTime, num } from "@/lib/format";
+import { dateTime, distance, duration, hearts, num } from "@/lib/format";
 import { previewEventHref, previewGate } from "@/lib/preview";
 import { findVodAt, vodLink } from "@/lib/twitch";
 import { BOARD_KEYS, type TrackerEvent } from "@/lib/types";
@@ -34,7 +34,8 @@ const localTime = (ms: number) => localParts.format(ms).replace(" ", "T");
 function relLabel(x: TrackerEvent): string {
   if (x.type === "rank") return `Platz ${x.value ?? "?"} bei „${String(x.meta?.label ?? "")}“`;
   if (x.type === "milestone") return `Meilenstein ${num(x.value ?? 0)}`;
-  if (x.type === "record") return `Rekord ${num(x.value ?? 0)}`;
+  if (x.type === "record") return `Rekord: ${num(x.value ?? 0)} ${String(x.meta?.label ?? "")}`.trim();
+  if (x.type === "join" || x.type === "first_join" || x.type === "stream_start" || x.type === "raid") return `${EVENT_META[x.type].label} von ${x.playerName ?? x.player ?? "?"}`;
   return `${EVENT_META[x.type].label} ${eventBadge(x) ?? ""}`.trim();
 }
 
@@ -91,6 +92,8 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
   const who = d.all.who.map(([wid]) => [wid, state.players[wid]?.name ?? wid, state.players[wid]?.uuid ?? ""] as [string, string, string]);
   // Stärke im Format des Zählers (Zuwachs bzw. Meilenstein), sonst als Zahl
   const intensityFormat = e.type === "rank" ? "rank" : d.stat && e.type !== "death" ? d.stat.format : "num";
+  // Zuwachs im Format des Zählers (km, Herzen, Zeit, Anzahl)
+  const fmtStat = (v: number) => (d.stat?.format === "distance" ? distance(v) : d.stat?.format === "duration" ? duration(v) : d.stat?.format === "hearts" ? `${hearts(v)} Herzen` : num(v));
   // Meilensteine und Ränge derselben Familie als Rauten im Verlauf (ohne dieses Ereignis selbst)
   const marks = (d.related ? [...d.related.ladder, ...d.related.together.filter((x) => x.type === "milestone" || x.type === "rank")] : [])
     .filter((x, i, a) => x.id !== e.id && a.findIndex((y) => y.id === x.id) === i)
@@ -187,8 +190,27 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
               </Link>
             </li>
           </ul>
-          {d.related && d.related.together.length > 0 && (
+          {d.related && (d.related.together.length > 0 || d.related.cause) && (
             <ul className="vs-rel" aria-label="Gehört zusammen">
+              {d.related.cause && (
+                <li>
+                  <a
+                    className="tag"
+                    data-tone="gold"
+                    href="#rohdaten"
+                    title="Der Zuwachs steht in den Rohdaten unten (dunkle Säule); er war zu klein für ein eigenes Ereignis"
+                  >
+                    ⇄ ausgelöst durch +{fmtStat(d.related.cause.d)} {d.related.label}{" "}
+                    <span className="muted">
+                      ({rel(d.related.cause.at - at).replace(/^0 Min (davor|danach)$/, "gleiche Minute")}
+                      {d.related.cause.eventMin !== null && d.related.cause.d < d.related.cause.eventMin
+                        ? `, unter der Ereignis-Schwelle von ${fmtStat(d.related.cause.eventMin)} – daher kein eigenes Ereignis`
+                        : ""}
+                      )
+                    </span>
+                  </a>
+                </li>
+              )}
               {d.related.together.map((x) => (
                 <li key={x.id}>
                   <Link className="tag" data-tone="gold" href={href(x)} title={`${relLabel(x)} · ${dayLong.format(Date.parse(x.at))} Uhr`}>
@@ -280,7 +302,7 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
           )}
 
           {d.stat && d.stat.hasSteps && d.stat.steps.length > 0 && (
-            <div className="box" data-tone="white">
+            <div className="box" data-tone="white" id="rohdaten">
               <h3 className="t-3">Rohdaten: {d.stat.label} je Messung</h3>
               <p className="muted" style={{ marginBottom: 8 }}>
                 {d.stat.key === "followers"
@@ -313,14 +335,15 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
             </div>
           )}
 
-          {d.related && e.player && (milestones.length > 0 || ranks.length > 0) && (
+          {d.related && e.player && ((milestones.length > 0 && e.type !== "milestone") || ranks.length > 0) && (
             <div className="box" data-tone="white">
               <h3 className="t-3">Zusammenhänge: {d.related.label}</h3>
               <p className="muted" style={{ marginBottom: 8 }}>
                 Meilensteine und Ränge von {name} in „{d.related.label}“ über die Staffel – sie entstehen aus denselben Zuwächsen wie
                 dieses Ereignis. Klick öffnet sie.
               </p>
-              {milestones.length > 0 && (
+              {/* Bei Meilensteinen zeigt „Wann noch“ dieselbe Treppe schon */}
+              {milestones.length > 0 && e.type !== "milestone" && (
                 <EventOccurrences
                   points={milestones.map((x, i) => [Date.parse(x.at), x.value ?? 0, -1, i] as [number, number, number, number])}
                   ids={milestones.map((x) => x.id)}

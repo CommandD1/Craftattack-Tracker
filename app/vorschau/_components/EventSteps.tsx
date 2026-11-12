@@ -109,6 +109,12 @@ export function EventSteps({
             />
           ) : null,
         )}
+        {/* Marke über der Säule dieses Ereignisses: auch winzige Zuwächse (z. B. +8 neben +2.000) bleiben auffindbar */}
+        {isEvent(near) && steps[near][1] > 0 && (
+          <path d={`M${x(steps[near][0])},${y(steps[near][1]) - 3} l-6,-9 h12 Z`} className="ews__pin">
+            <title>{`Dieses Ereignis: +${fmt(steps[near][1])}`}</title>
+          </path>
+        )}
         {eventMin !== null && (
           <g>
             <line x1={L} x2={W - R} y1={y(eventMin)} y2={y(eventMin)} className="ews__line" />

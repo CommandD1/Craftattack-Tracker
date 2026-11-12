@@ -71,7 +71,14 @@ export interface EventDetail {
   /** Dieselbe Art beim selben Spieler über die ganze Staffel */
   mine: Occurrences | null;
   /** Familie (Zähler/Kennzahl) mit Meilensteinen und Rängen des Spielers und dem, was in denselben Minuten dazugehört */
-  related: { family: string; label: string; ladder: TrackerEvent[]; together: TrackerEvent[] } | null;
+  related: {
+    family: string;
+    label: string;
+    ladder: TrackerEvent[];
+    together: TrackerEvent[];
+    /** Meilenstein/Rang ohne eigenes Zähler-Ereignis: der auslösende Zuwachs aus den Rohdaten */
+    cause: { at: number; d: number; eventMin: number | null } | null;
+  } | null;
   /**
    * Häufigkeit statt Stärke, wenn alle Ereignisse dieser Art gleich stark sind (Chat, Stream-Start, Join, …):
    * `days` = Berliner Tage der Staffel mit Ereignissen; `mine` = je Tag Anzahl und erstes Ereignis des Spielers;
@@ -132,6 +139,16 @@ function familyOf(e: TrackerEvent): { family: string; field: "board" | "key" | n
   if ((BOARD_KEYS as string[]).includes(e.type) || e.type in EXTRA_STATS) return { family: e.type, field: null };
   return null;
 }
+/** Rekord → Ereignis-Arten, die ihn auslösen können, und umgekehrt */
+const RECORD_CAUSES: Record<string, string[]> = { peakOnline: ["join", "first_join"], peakLive: ["stream_start"], peakViewers: ["raid", "stream_start"] };
+const RECORD_CAUSED_BY: Partial<Record<TrackerEvent["type"], string[]>> = {
+  join: ["peakOnline"],
+  first_join: ["peakOnline"],
+  stream_start: ["peakLive", "peakViewers"],
+  raid: ["peakViewers"],
+};
+const EVENT_LABEL_FALLBACK = "Rekord";
+
 /** Anzeigename einer Familie */
 function familyLabel(f: string): string {
   if ((BOARD_KEYS as string[]).includes(f)) return BOARD_LABEL[f as BoardKey];
@@ -394,7 +411,7 @@ export async function getEventDetail(id: string): Promise<EventDetail | null> {
   // Zusammenhänge in derselben Familie: Meilensteine und Ränge des Spielers über die Staffel, und was in denselben
   // Minuten dazugehört (der Zuwachs, der einen Meilenstein brachte; der Rang, den er kostete; …)
   let related: EventDetail["related"] = null;
-  if (fam) {
+  if (fam && fam.field !== "key") {
     const [ladderRows, togetherRows] = await Promise.all([
       p
         ? db.query<Row>(
@@ -405,16 +422,44 @@ export async function getEventDetail(id: string): Promise<EventDetail | null> {
       db.query<Row>(
         `SELECT ${COLS} FROM events
           WHERE at BETWEEN $1 AND $2 AND id <> $3 ${p ? "AND player = $6" : ""}
-            AND ((type IN ('milestone', 'rank') AND meta->>'board' = $4) OR (type = 'record' AND meta->>'key' = $4) OR type = $5)
+            AND ((type IN ('milestone', 'rank') AND meta->>'board' = $4) OR type = $5)
           ORDER BY at LIMIT 20`,
         [new Date(at - 2 * 60_000), new Date(at + 2 * 60_000), id, fam.family, counterType(fam.family), ...(p ? [p] : [])],
       ),
     ]);
+    const together = togetherRows.rows.map(toEvent).filter((x) => x.meta?.catchUp !== true);
+    // Meilenstein/Rang ohne eigenes Zähler-Ereignis: der Zuwachs unter der Schwelle, der ihn ausgelöst hat (Rohdaten)
+    let cause: { at: number; d: number; eventMin: number | null } | null = null;
+    if ((event.type === "milestone" || event.type === "rank") && !together.some((x) => x.type === counterType(fam.family)) && steps.length) {
+      let k = -1;
+      for (let i = 0; i < steps.length; i++) {
+        if (steps[i][1] <= 0 || Math.abs(steps[i][0] - at) > 3 * 60_000) continue;
+        if (k < 0 || Math.abs(steps[i][0] - at) < Math.abs(steps[k][0] - at)) k = i;
+      }
+      if (k >= 0) cause = { at: steps[k][0], d: steps[k][1], eventMin: stat?.eventMin ?? null };
+    }
+    related = { family: fam.family, label: familyLabel(fam.family), ladder: ladderRows ? ladderRows.rows.map(toEvent) : [], together, cause };
+  } else if (fam?.field === "key" || RECORD_CAUSED_BY[event.type]) {
+    // Rekord ↔ was ihn auslöste: neuer Höchstwert an Spielern online ← Join, Streams live ← Stream-Start,
+    // Zuschauer ← Raid/Stream-Start. Rekord: Auslöser bis 2 Min davor; Auslöser: Rekord bis 2 Min danach.
+    const isRecord = fam?.field === "key";
+    const rows = (
+      isRecord
+        ? await db.query<Row>(
+            `SELECT ${COLS} FROM events WHERE at BETWEEN $1 AND $2 AND type = ANY($3) ORDER BY at DESC LIMIT 12`,
+            [new Date(at - 2 * 60_000), new Date(at + 30_000), RECORD_CAUSES[fam!.family] ?? []],
+          )
+        : await db.query<Row>(
+            `SELECT ${COLS} FROM events WHERE at BETWEEN $1 AND $2 AND type = 'record' AND meta->>'key' = ANY($3) ORDER BY at LIMIT 6`,
+            [new Date(at - 30_000), new Date(at + 2 * 60_000), RECORD_CAUSED_BY[event.type] ?? []],
+          )
+    ).rows;
     related = {
-      family: fam.family,
-      label: familyLabel(fam.family),
-      ladder: ladderRows ? ladderRows.rows.map(toEvent) : [],
-      together: togetherRows.rows.map(toEvent).filter((x) => x.meta?.catchUp !== true),
+      family: isRecord ? fam!.family : event.type,
+      label: isRecord ? familyLabel(fam!.family) : EVENT_LABEL_FALLBACK,
+      ladder: [],
+      together: rows.map(toEvent).filter((x) => x.id !== id),
+      cause: null,
     };
   }
 
