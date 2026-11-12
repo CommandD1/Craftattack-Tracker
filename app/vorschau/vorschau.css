@@ -105,12 +105,6 @@
   white-space: nowrap;
   pointer-events: none;
 }
-.ewc__open {
-  display: block;
-  text-align: right;
-  margin-bottom: 4px;
-  font-size: 0.8125rem;
-}
 
 /* Rohdaten / Serie */
 .ews__bar {
@@ -304,4 +298,9 @@
 }
 .ewp__rev {
   stroke-dasharray: 3 3;
+}
+.ews__pin {
+  fill: var(--ink);
+  stroke: var(--white);
+  stroke-width: 1;
 }
