@@ -27,6 +27,14 @@ const localParts = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin",
 /** Zeitpunkt als `datetime-local`-Wert in deutscher Zeit („2026-11-10T23:02“), wie ihn /graph erwartet */
 const localTime = (ms: number) => localParts.format(ms).replace(" ", "T");
 
+/** Kurzname eines zugehörigen Ereignisses: „Meilenstein 200.000“, „Platz 1“, „Blöcke +2.707“ */
+function relLabel(x: TrackerEvent): string {
+  if (x.type === "rank") return `Platz ${x.value ?? "?"} bei „${String(x.meta?.label ?? "")}“`;
+  if (x.type === "milestone") return `Meilenstein ${num(x.value ?? 0)}`;
+  if (x.type === "record") return `Rekord ${num(x.value ?? 0)}`;
+  return `${EVENT_META[x.type].label} ${eventBadge(x) ?? ""}`.trim();
+}
+
 /** „vor 3 Min“ / „nach 2 Std 5 Min“ relativ zum Ereignis */
 function rel(ms: number) {
   const m = Math.round(Math.abs(ms) / 60_000);
@@ -75,7 +83,13 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
   // Köpfe und Namen für „Wann noch“
   const who = d.all.who.map(([wid]) => [wid, state.players[wid]?.name ?? wid, state.players[wid]?.uuid ?? ""] as [string, string, string]);
   // Stärke im Format des Zählers (Zuwachs bzw. Meilenstein), sonst als Zahl
-  const intensityFormat = d.stat && e.type !== "death" ? d.stat.format : "num";
+  const intensityFormat = e.type === "rank" ? "rank" : d.stat && e.type !== "death" ? d.stat.format : "num";
+  // Meilensteine und Ränge derselben Familie als Rauten im Verlauf (ohne dieses Ereignis selbst)
+  const marks = (d.related ? [...d.related.ladder, ...d.related.together.filter((x) => x.type === "milestone" || x.type === "rank")] : [])
+    .filter((x, i, a) => x.id !== e.id && a.findIndex((y) => y.id === x.id) === i)
+    .map((x) => ({ t: Date.parse(x.at), label: `${relLabel(x)} · ${dayLong.format(Date.parse(x.at))} Uhr`, href: href(x) }));
+  const milestones = d.related ? d.related.ladder.filter((x) => x.type === "milestone") : [];
+  const ranks = d.related ? d.related.ladder.filter((x) => x.type === "rank") : [];
   const detailBase = `${root}/ereignis/`;
   const playersWithSame = new Set(d.all.points.map((x) => x[2])).size;
 
@@ -130,6 +144,17 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
               </Link>
             </li>
           </ul>
+          {d.related && d.related.together.length > 0 && (
+            <ul className="vs-rel" aria-label="Gehört zusammen">
+              {d.related.together.map((x) => (
+                <li key={x.id}>
+                  <Link className="tag" data-tone="gold" href={href(x)} title={`${relLabel(x)} · ${dayLong.format(Date.parse(x.at))} Uhr`}>
+                    ⇄ {relLabel(x)} <span className="muted">({rel(Date.parse(x.at) - at).replace(/^0 Min (davor|danach)$/, "gleiche Minute")})</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
           {others.length > 0 && (
             <p style={{ marginTop: 12 }}>
               Beteiligt:{" "}
@@ -170,12 +195,24 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
               {d.stat && (
                 <div className="box" data-tone="white">
                   <h3 className="t-3">
-                    {d.stat.label} von {name}
+                    {d.stat.label}
+                    {e.player ? ` von ${name}` : ""}
                   </h3>
                   <p className="muted" style={{ marginBottom: 8 }}>
-                    3 Stunden davor bis 3 Stunden danach, gestrichelt: das Ereignis.
+                    3 Stunden davor bis 3 Stunden danach, gestrichelt: das Ereignis{marks.length ? "; Rauten: Meilensteine und Ränge derselben Art" : ""}.
                   </p>
-                  <EventWindowChart points={d.stat.points} from={d.window.from} to={d.window.to} at={at} label={`${d.stat.label} von ${name} rund um das Ereignis`} format={d.stat.format} tone="var(--presence)" step href={e.player ? graph(d.stat.metric, [e.player]) : undefined} />
+                  <EventWindowChart
+                    points={d.stat.points}
+                    from={d.window.from}
+                    to={d.window.to}
+                    at={at}
+                    label={`${d.stat.label}${e.player ? ` von ${name}` : ""} rund um das Ereignis`}
+                    format={d.stat.format}
+                    tone="var(--presence)"
+                    step
+                    href={graph(d.stat.metric, e.player ? [e.player] : [])}
+                    marks={marks}
+                  />
                 </div>
               )}
               {d.viewers.length > 0 && (
@@ -187,7 +224,7 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
                   <EventWindowChart points={d.viewers} from={d.window.from} to={d.window.to} at={at} label={`Zuschauer von ${name} rund um das Ereignis`} tone="var(--twitch)" href={e.player ? graph("viewers", [e.player]) : undefined} />
                 </div>
               )}
-              {d.online.length > 1 && (
+              {d.online.length > 1 && d.stat?.metric !== "onlineCount" && (
                 <div className="box" data-tone="white">
                   <h3 className="t-3">Spieler auf dem Server</h3>
                   <p className="muted" style={{ marginBottom: 8 }}>
@@ -233,6 +270,43 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
             </div>
           )}
 
+          {d.related && e.player && (milestones.length > 0 || ranks.length > 0) && (
+            <div className="box" data-tone="white">
+              <h3 className="t-3">Zusammenhänge: {d.related.label}</h3>
+              <p className="muted" style={{ marginBottom: 8 }}>
+                Meilensteine und Ränge von {name} in „{d.related.label}“ über die Staffel – sie entstehen aus denselben Zuwächsen wie
+                dieses Ereignis. Klick öffnet sie.
+              </p>
+              {milestones.length > 0 && (
+                <EventOccurrences
+                  points={milestones.map((x, i) => [Date.parse(x.at), x.value ?? 0, -1, i] as [number, number, number, number])}
+                  ids={milestones.map((x) => x.id)}
+                  who={[]}
+                  current={e.id}
+                  hrefBase={detailBase}
+                  format={d.stat?.format ?? "num"}
+                  label={`Meilensteine von ${name} in ${d.related.label}`}
+                />
+              )}
+              {ranks.length > 0 && (
+                <>
+                  <p className="eyebrow" style={{ marginTop: 12 }}>
+                    Ränge in „{String(ranks[0].meta?.label ?? d.related.label)}“
+                  </p>
+                  <ul className="vs-rel">
+                    {ranks.map((x) => (
+                      <li key={x.id}>
+                        <Link className="tag" data-tone={x.id === e.id ? "ink" : x.value === 1 ? "gold" : "white"} href={href(x)} aria-current={x.id === e.id ? "true" : undefined}>
+                          Platz {x.value} <span className="muted">(vorher {String(x.meta?.before ?? "–")}) · {dayLong.format(Date.parse(x.at)).split(" um ")[0]}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
+
           <div className="stack">
             {d.mine && e.player && (
               <div className="box" data-tone="white">
@@ -244,11 +318,22 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
               </div>
             )}
             <div className="box" data-tone="white">
-              <h3 className="t-3">Bei allen Spielern</h3>
-              <p className="muted" style={{ marginBottom: 8 }}>
-                Die {num(d.all.points.length)} stärksten „{label}“ von {num(playersWithSame)} Spielern, die 60 stärksten mit Kopf. Dieses ist auf Platz {num(d.all.rank)} von {num(d.all.total)}.
-              </p>
-              <EventOccurrences points={d.all.points} ids={d.all.ids} who={who} current={e.id} hrefBase={detailBase} format={intensityFormat} label={`Die stärksten „${label}“ aller Spieler`} heads />
+              {e.type === "record" ? (
+                <>
+                  <h3 className="t-3">Verlauf dieses Rekords</h3>
+                  <p className="muted" style={{ marginBottom: 8 }}>
+                    Jeder neue Rekord „{String(e.meta?.label ?? label)}“ der Staffel ({num(d.all.total)}), Höhe = Rekordwert. Klick öffnet ihn.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3 className="t-3">Bei allen Spielern</h3>
+                  <p className="muted" style={{ marginBottom: 8 }}>
+                    Die {num(d.all.points.length)} stärksten „{label}“ von {num(playersWithSame)} Spielern, die 60 stärksten mit Kopf. Dieses ist auf Platz {num(d.all.rank)} von {num(d.all.total)}.
+                  </p>
+                </>
+              )}
+              <EventOccurrences points={d.all.points} ids={d.all.ids} who={who} current={e.id} hrefBase={detailBase} format={intensityFormat} label={e.type === "record" ? `Verlauf des Rekords ${String(e.meta?.label ?? "")}` : `Die stärksten „${label}“ aller Spieler`} heads={e.type !== "record"} />
             </div>
           </div>
 

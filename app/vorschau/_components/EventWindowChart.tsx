@@ -32,6 +32,7 @@ export function EventWindowChart({
   tone = "var(--twitch)",
   step = false,
   href,
+  marks = [],
 }: {
   points: [number, number | null][];
   from: number;
@@ -45,6 +46,8 @@ export function EventWindowChart({
   step?: boolean;
   /** Klick öffnet diesen Verlauf im Graphen (/graph) */
   href?: string;
+  /** Zugehörige Ereignisse (Meilensteine, Ränge) als anklickbare Rauten oben im Diagramm */
+  marks?: { t: number; label: string; href: string }[];
 }) {
   const ref = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -113,6 +116,15 @@ export function EventWindowChart({
           </text>
         ))}
         <line x1={x(at)} x2={x(at)} y1={T} y2={H - B} className="ewc__mark" />
+        {marks
+          .filter((m) => m.t >= from && m.t <= to)
+          .map((m) => (
+            <a key={`${m.t}-${m.label}`} href={m.href} onClick={(ev) => ev.stopPropagation()}>
+              <title>{m.label}</title>
+              <line x1={x(m.t)} x2={x(m.t)} y1={T + 6} y2={H - B} className="ewc__rel" />
+              <path d={`M${x(m.t)},${T - 4} l6,6 l-6,6 l-6,-6 Z`} className="ewc__diamond" />
+            </a>
+          ))}
         <path d={d} fill="none" stroke={tone} strokeWidth={2} strokeLinejoin="round" />
         {atVal && <circle cx={x(atVal[0])} cy={y(atVal[1])} r={4.5} fill={tone} className="ewc__dot" />}
         {h && (

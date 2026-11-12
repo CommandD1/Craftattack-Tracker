@@ -9,8 +9,9 @@ import { distance, duration, headUrl, hearts, num } from "@/lib/format";
  * übrigen nicht plattdrücken). Beim Spieler als Punkte, bei allen mit Kopf des Spielers als Marke (die stärksten),
  * dieses Ereignis mit Ring. Überfahren zeigt Wert und Zeit, Klick öffnet die Seite des anderen Ereignisses.
  */
-type Format = "num" | "distance" | "duration" | "hearts";
-const FMT: Record<Format, (v: number) => string> = { num, distance, duration, hearts: (v) => `${hearts(v)} Herzen` };
+type Format = "num" | "distance" | "duration" | "hearts" | "rank";
+// Rang: Stärke = 4 − Platz (lib/eventDetail.ts), angezeigt als Platz
+const FMT: Record<Format, (v: number) => string> = { num, distance, duration, hearts: (v) => `${hearts(v)} Herzen`, rank: (v) => `Platz ${Math.round(4 - v)}` };
 const dayFmt = new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "numeric", timeZone: "Europe/Berlin" });
 const tipFmt = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 const dayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" });
