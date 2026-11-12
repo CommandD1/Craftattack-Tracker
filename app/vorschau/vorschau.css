@@ -346,3 +346,45 @@
 .vs-hero__text {
   overflow-wrap: anywhere;
 }
+
+/* Raids je Tageszeit */
+.rh__in {
+  fill: var(--mig-c1, #2a78d6);
+}
+.rh__out {
+  fill: var(--mig-c2, #eb6834);
+}
+.rh__ext {
+  fill: var(--mig-c0, #b5b3ad);
+}
+.rh__rate {
+  fill: var(--ink);
+  opacity: 0.55;
+}
+.rh__hover {
+  fill: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+.vs-compare {
+  display: grid;
+  grid-template-columns: minmax(0, 9em) minmax(0, 1fr) 5.5em;
+  gap: 6px 10px;
+  align-items: center;
+  margin: 0;
+}
+.vs-compare__bar {
+  position: relative;
+  height: 14px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.vs-compare__bar span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--presence);
+}
+.vs-compare__bar i {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 3px;
+  background: var(--ink);
+}
