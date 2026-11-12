@@ -57,6 +57,10 @@ export interface EventDetail {
     feedMin: number | null;
     /** Mehrere Messungen in Folge über der Ereignis-Schwelle, dieses Ereignis mittendrin */
     streak: { count: number; from: number; to: number; sum: number } | null;
+    /** Einheit der Säulen, z. B. „/Min“ */
+    per: string | null;
+    /** false = nur Verlauf (z. B. online ja/nein), keine Rohdaten-Säulen */
+    hasSteps: boolean;
   } | null;
   /** Zuschauer des Spielers (null = nicht live) */
   viewers: ChartPoint[];
@@ -123,17 +127,64 @@ const BOARD_LABEL: Record<BoardKey, string> = {
 const BOARD_FORMAT: Partial<Record<BoardKey, ChartFormat>> = { playtimeSeconds: "duration", distance: "distance", damageDealt: "hearts" };
 
 /** Welcher Zähler zu einem Ereignis gehört (Spalte aus fester Liste, nie aus der Anfrage) */
-function statOf(e: TrackerEvent) {
-  const k = e.type === "milestone" || e.type === "record" ? String(e.meta?.board ?? "") : e.type === "death" ? "deaths" : e.type;
+/**
+ * Datenquelle des Verlaufs: `history` = Spalte in player_history (Zuwachs je Messung), `rate` = ebenso, aber die
+ * Säulen als Zuwachs je Minute (die Tracker-Schwelle ist eine Rate), `subs`/`cheers` = Twitch-Tabellen,
+ * `state` = nur Verlauf ohne Säulen (z. B. online ja/nein).
+ */
+type StatSource = "history" | "rate" | "subs" | "cheers" | "state";
+interface StatDef {
+  key: string;
+  metric: string;
+  label: string;
+  format: ChartFormat;
+  source: StatSource;
+  /** SQL-Ausdruck auf player_history (nur history/rate/state) */
+  sql: string;
+  eventMin: number | null;
+  /** Ereignis ist ein Zuwachs dieses Werts (dann gilt die Feed-Schwelle) */
+  isStep: boolean;
+  maxStepMs: number;
+  /** Text hinter dem Säulen-Wert, z. B. „/Min“ */
+  per?: string;
+  /** Feed-Schwelle unter diesem Typ nachsehen (Abo-Geschenke zählen wie Abos) */
+  feedType?: TrackerEvent["type"];
+}
+
+function statOf(e: TrackerEvent): StatDef | null {
+  // Twitch und Anwesenheit: eigene Quellen
+  switch (e.type) {
+    case "follower_burst":
+      // Tracker: mehr als 20 neue Follower je Minute, während der Streamer auf dem Server ist
+      return { key: "followers", metric: "followers", label: "Neue Follower auf dem Server", format: "num", source: "rate", sql: "followers_on_server", eventMin: 20, isStep: false, maxStepMs: 10 * 60_000, per: "/Min" };
+    case "subscription":
+    case "subscription_gift":
+      return { key: "twitchSubs", metric: "twitchSubs", label: "Abos im Kanal", format: "num", source: "subs", sql: "", eventMin: 1, isStep: true, maxStepMs: 0, per: "/Min", feedType: "subscription" };
+    case "cheer":
+      // Tracker: einzelner Cheer ab 1.000 Bits, während der Streamer auf dem Server ist (CA_CHEER_EVENT_MIN)
+      return { key: "twitchBits", metric: "twitchBits", label: "Bits im Kanal", format: "num", source: "cheers", sql: "", eventMin: Number(process.env.CA_CHEER_EVENT_MIN ?? 1000), isStep: false, maxStepMs: 0 };
+    case "join":
+    case "leave":
+    case "first_join":
+      return { key: "online", metric: "online", label: "Auf dem Server (1 = ja)", format: "num", source: "state", sql: "(CASE WHEN online THEN 1 ELSE 0 END)", eventMin: null, isStep: false, maxStepMs: 0 };
+  }
+  const k =
+    e.type === "milestone" || e.type === "record" || e.type === "rank"
+      ? String(e.meta?.board ?? "")
+      : e.type === "death"
+        ? "deaths"
+        : e.type.startsWith("afk_")
+          ? "afkSeconds"
+          : e.type;
   // Zuwachs-Ereignis dieses Zählers (bei Meilensteinen gibt es keine Feed-Schwelle für den Meilenstein selbst)
   const isStep = e.type === k || (e.type === "death" && k === "deaths");
   if ((BOARD_KEYS as string[]).includes(k)) {
     const b = k as BoardKey;
-    return { key: b, metric: b, label: BOARD_LABEL[b], format: BOARD_FORMAT[b] ?? "num", sql: BOARD_COL[b], eventMin: COUNTER_EVENT_MIN[b] ?? 1, isStep, maxStepMs: 5 * 60_000 };
+    return { key: b, metric: b, label: BOARD_LABEL[b], format: BOARD_FORMAT[b] ?? "num", source: "history", sql: BOARD_COL[b], eventMin: COUNTER_EVENT_MIN[b] ?? 1, isStep, maxStepMs: 5 * 60_000 };
   }
   if (k in EXTRA_STATS && (EXTRA_HISTORY_KEYS as readonly string[]).includes(k)) {
     const x = EXTRA_STATS[k as ExtraStatKey];
-    return { key: k, metric: x.metric as string, label: x.label as string, format: x.format as ChartFormat, sql: extraStatSql(k as ExtraStatKey), eventMin: EXTRA_EVENT_MIN[k as ExtraStatKey] ?? null, isStep, maxStepMs: 30 * 60_000 };
+    return { key: k, metric: x.metric as string, label: x.label as string, format: x.format as ChartFormat, source: "history", sql: extraStatSql(k as ExtraStatKey), eventMin: EXTRA_EVENT_MIN[k as ExtraStatKey] ?? null, isStep, maxStepMs: 30 * 60_000 };
   }
   return null;
 }
@@ -174,7 +225,7 @@ export async function getEventDetail(id: string): Promise<EventDetail | null> {
     ),
     p
       ? db.query<{ at: Date; online: boolean; viewers: number | null; v: number | null }>(
-          `SELECT at, online, viewers, ${stat ? stat.sql : "NULL"} AS v FROM player_history WHERE player = $1 AND at BETWEEN $2 AND $3 ORDER BY at`,
+          `SELECT at, online, viewers, ${stat?.sql ? stat.sql : "NULL"} AS v FROM player_history WHERE player = $1 AND at BETWEEN $2 AND $3 ORDER BY at`,
           [p, new Date(from), new Date(to)],
         )
       : null,
@@ -225,12 +276,41 @@ export async function getEventDetail(id: string): Promise<EventDetail | null> {
     if (lastStat && ms - lastStat[0] > 15 * 60_000) statPoints.push([lastStat[0] + 60_000, null]);
     statPoints.push([ms, v]);
     // Zuwachs je Messung (wie der Tracker ihn sieht; nach langen Pausen keiner, das wäre ein Sammel-Sprung)
-    if (lastStat && ms - lastStat[0] <= stat.maxStepMs) steps.push([ms, Math.max(0, v - lastStat[1])]);
+    // „rate“: als Zuwachs je Minute (die Schwelle des Trackers ist eine Rate); „state“: keine Säulen
+    if (stat.source !== "state" && lastStat && ms - lastStat[0] <= stat.maxStepMs) {
+      const d = Math.max(0, v - lastStat[1]);
+      steps.push([ms, stat.source === "rate" ? d / Math.max(1, (ms - lastStat[0]) / 60_000) : d]);
+    }
     lastStat = [ms, v];
   }
 
+  // Twitch: Summe im Ausschnitt als Linie, Abos je Minute bzw. jeder Cheer als Säule. Abos aus den Minuten-Ereignissen
+  // („subscription“, Anzahl je Minute im Kanal, auch unter der Feed-Schwelle) – twitch_subs ist nicht für die ganze
+  // Staffel gefüllt.
+  if (p && (stat?.source === "subs" || stat?.source === "cheers")) {
+    const rows = (
+      stat.source === "subs"
+        ? await db.query<{ at: Date; n: string }>(
+            `SELECT at, coalesce(value, delta, 0) AS n FROM events WHERE player = $1 AND type = 'subscription' AND at BETWEEN $2 AND $3 ORDER BY at`,
+            [p, new Date(from), new Date(to)],
+          )
+        : await db.query<{ at: Date; n: string }>(`SELECT at, bits AS n FROM twitch_cheers WHERE channel_id = $1 AND at BETWEEN $2 AND $3 ORDER BY at`, [p, new Date(from), new Date(to)])
+    ).rows;
+    let sum = 0;
+    statPoints.push([from, 0]);
+    for (const r of rows) {
+      const n = Number(r.n);
+      if (n <= 0) continue;
+      statPoints.push([r.at.getTime(), sum]);
+      sum += n;
+      statPoints.push([r.at.getTime(), sum]);
+      steps.push([r.at.getTime(), n]);
+    }
+    statPoints.push([Math.min(to, Date.now()), sum]);
+  }
+
   // Der Zuwachs des Ereignisses selbst fehlt, wenn die Messungen davor eine Pause hatten: aus dem Ereignis ergänzen
-  if (stat?.isStep && event.delta !== undefined && !steps.some(([ms, dd]) => Math.abs(ms - at) < 30_000 && dd > 0)) {
+  if (stat?.isStep && stat.source === "history" && event.delta !== undefined && !steps.some(([ms, dd]) => Math.abs(ms - at) < 30_000 && dd > 0)) {
     const dup = steps.findIndex(([ms]) => Math.abs(ms - at) < 30_000);
     if (dup >= 0) steps.splice(dup, 1);
     steps.push([at, event.delta]);
@@ -278,7 +358,9 @@ export async function getEventDetail(id: string): Promise<EventDetail | null> {
         points: statPoints,
         steps,
         eventMin: stat.eventMin,
-        feedMin: stat.isStep ? (feedMin(event.type, event.at) ?? null) : null,
+        feedMin: stat.isStep ? (feedMin(stat.feedType ?? event.type, event.at) ?? null) : null,
+        per: stat.per ?? null,
+        hasSteps: stat.source !== "state",
         streak,
       }
     : null;

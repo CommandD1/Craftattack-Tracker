@@ -199,11 +199,17 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
             </div>
           )}
 
-          {d.stat && d.stat.steps.length > 0 && (
+          {d.stat && d.stat.hasSteps && d.stat.steps.length > 0 && (
             <div className="box" data-tone="white">
               <h3 className="t-3">Rohdaten: {d.stat.label} je Messung</h3>
               <p className="muted" style={{ marginBottom: 8 }}>
-                Jede Säule ist der Zuwachs zwischen zwei Messungen ({(BOARD_KEYS as string[]).includes(d.stat.key) ? "etwa jede Minute" : "etwa alle 5 Minuten"}) – auch der, der kein Ereignis wurde.
+                {d.stat.key === "followers"
+                  ? "Jede Säule: neue Follower je Minute zwischen zwei Messungen, während der Streamer auf dem Server war – auch, wenn es kein Ereignis wurde."
+                  : d.stat.key === "twitchSubs"
+                    ? "Jede Säule: Abos in dieser Minute im Kanal, während der Streamer auf dem Server war – auch die kleinen Minuten, die es nicht in den Feed geschafft haben."
+                    : d.stat.key === "twitchBits"
+                      ? "Jede Säule ist ein Cheer im Kanal – auch die kleinen, die kein Ereignis wurden."
+                      : `Jede Säule ist der Zuwachs zwischen zwei Messungen (${(BOARD_KEYS as string[]).includes(d.stat.key) ? "etwa jede Minute" : "etwa alle 5 Minuten"}) – auch der, der kein Ereignis wurde.`}
                 {d.stat.eventMin !== null ? " Über der gestrichelten Linie legt der Tracker ein Ereignis an." : " Für diesen Wert gibt es nur Meilensteine, keine Zuwachs-Ereignisse."}
               </p>
               {d.stat.streak && (
@@ -222,6 +228,7 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
                 streak={d.stat.streak}
                 format={d.stat.format}
                 label={`Zuwachs ${d.stat.label} je Messung rund um das Ereignis`}
+                per={d.stat.per}
               />
             </div>
           )}
