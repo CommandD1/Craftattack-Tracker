@@ -9,6 +9,7 @@ import { ShowMore } from "@/components/ShowMore";
 import { EVENT_ICON, Icon } from "@/components/Icons";
 import { loadTracker } from "@/lib/data";
 import { getEventDetail } from "@/lib/eventDetail";
+import { getEventPair } from "@/lib/eventPair";
 import { EVENT_META, eventBadge, eventHref, eventPlayers } from "@/lib/events";
 import { getFeedFilter } from "@/lib/feedThresholds";
 import { dateTime, num } from "@/lib/format";
@@ -19,6 +20,7 @@ import { EventWindowChart } from "../../../_components/EventWindowChart";
 import { EventSteps } from "../../../_components/EventSteps";
 import { EventOccurrences } from "../../../_components/EventOccurrences";
 import { EventMatrix } from "../../../_components/EventMatrix";
+import { PairMatrix } from "../../../_components/PairMatrix";
 
 export const metadata: Metadata = { title: "Ereignis" };
 
@@ -50,6 +52,10 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
   const [d, { state }, isShown] = await Promise.all([getEventDetail(id), loadTracker(), getFeedFilter()]);
   if (!d) notFound();
   const e = d.event;
+  const pair = await getEventPair(e);
+  const pname = (pid: string) => state.players[pid]?.name ?? pid;
+  const puuid = (pid: string) => state.players[pid]?.uuid ?? "";
+  const names: Record<string, [string, string]> = Object.fromEntries(Object.values(state.players).map((x) => [x.id, [x.name, x.uuid]]));
   const at = Date.parse(e.at);
   const meta = EVENT_META[e.type];
   const IconCmp = Icon[EVENT_ICON[e.type]];
@@ -104,13 +110,47 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
             Vorschau · <Link href={`${root}/ereignisse`}>Ereignisse</Link> · {label}
           </p>
           <div className="vs-hero">
-            {e.player && <Head id={e.player} uuid={e.uuid ?? p?.uuid} name={name} size={72} src={128} decorative />}
+            {e.player && !pair && <Head id={e.player} uuid={e.uuid ?? p?.uuid} name={name} size={72} src={128} decorative />}
             <div>
               <h1 className="t-1" style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <IconCmp width={36} height={36} aria-hidden="true" /> {label}
                 {badge ? <span className="num">{badge}</span> : null}
               </h1>
-              <p className="vs-hero__text">{sentence}</p>
+              {pair ? (
+                <div className="vs-pair" style={{ marginTop: 12 }}>
+                  <Link className="vs-pair__side" href={`/spieler/${encodeURIComponent(pair.giver)}`}>
+                    <Head id={pair.giver} uuid={puuid(pair.giver)} name={pname(pair.giver)} size={56} src={64} decorative />
+                    <span>
+                      <b>{pname(pair.giver)}</b>
+                      <span className="vs-pair__role">{pair.gives}</span>
+                    </span>
+                  </Link>
+                  <span className="vs-pair__arrow" aria-hidden="true">
+                    →
+                  </span>
+                  <Link className="vs-pair__side" href={`/spieler/${encodeURIComponent(pair.receiver)}`}>
+                    <Head id={pair.receiver} uuid={puuid(pair.receiver)} name={pname(pair.receiver)} size={56} src={64} decorative />
+                    <span>
+                      <b>{pname(pair.receiver)}</b>
+                      <span className="vs-pair__role">
+                        {pair.gets} {pname(pair.giver)}
+                      </span>
+                    </span>
+                  </Link>
+                </div>
+              ) : null}
+              {e.type === "chat" && typeof e.meta?.message === "string" ? (
+                <blockquote className="vs-talk__bubble" style={{ marginTop: 14, fontSize: "1.125rem", color: "var(--ink)" }}>
+                  {e.meta.message}
+                </blockquote>
+              ) : (
+                <p className="vs-hero__text">{sentence}</p>
+              )}
+              {pair && (
+                <p className="muted" style={{ marginTop: 8 }}>
+                  {num(pair.together)} {pair.noun} von {pname(pair.giver)} an {pname(pair.receiver)} in der Staffel, {num(pair.reverse)} in die andere Richtung.
+                </p>
+              )}
             </div>
           </div>
           <ul className="vs-facts">
@@ -158,7 +198,7 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
               ))}
             </ul>
           )}
-          {others.length > 0 && (
+          {others.length > 0 && !pair && (
             <p style={{ marginTop: 12 }}>
               Beteiligt:{" "}
               {others.map((o, i) => (
@@ -310,6 +350,71 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
             </div>
           )}
 
+          {pair && pair.talk.length > 0 && (
+            <div className="box" data-tone="white">
+              <h3 className="t-3">Unterhaltung</h3>
+              <p className="muted" style={{ marginBottom: 12 }}>
+                Was erfasste Spieler 45 Minuten davor bis danach im Chat von {pname(pair.receiver)} geschrieben haben – und was {pname(pair.receiver)} bei{" "}
+                {pname(pair.giver)} zurückschrieb (lila). Klick öffnet die Nachricht.
+              </p>
+              <ShowMore height={640} label="Nachrichten">
+                <ul className="vs-talk">
+                  {pair.talk.map((m) => {
+                    const from = m.player ?? "";
+                    const back = from === pair.receiver;
+                    return (
+                      <li key={m.id} data-cur={m.id === e.id ? "" : undefined} data-in={back ? "" : undefined}>
+                        <Head id={from} uuid={puuid(from)} name={pname(from)} size={32} />
+                        <Link className="vs-talk__bubble" href={href(m)}>
+                          <span className="vs-talk__meta">
+                            <b>{pname(from)}</b>
+                            {back ? ` bei ${pname(pair.giver)}` : ""} · {dayLong.format(Date.parse(m.at)).split(" um ")[1] ?? ""}
+                            {m.id === e.id ? " · diese Nachricht" : ""}
+                          </span>
+                          {String(m.meta?.message ?? "")}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </ShowMore>
+            </div>
+          )}
+
+          {pair && (
+            <>
+              <div className="vs-two">
+                {[
+                  { id: pair.giver, days: pair.giverDays, text: `${pname(pair.giver)} ${pair.gives} …` },
+                  { id: pair.receiver, days: pair.receiverDays, text: `${pname(pair.receiver)} ${pair.gets} …` },
+                ].map((side) => (
+                  <div className="box" data-tone="white" key={side.id}>
+                    <h3 className="t-3">{side.text}</h3>
+                    <p className="muted" style={{ marginBottom: 8 }}>
+                      … jemandem bzw. von jemandem, je Tag ({num(side.days.reduce((s, x) => s + x.n, 0))} insgesamt). Klick öffnet das erste des Tages.
+                    </p>
+                    <EventOccurrences
+                      points={side.days.map((x, i) => [Date.parse(`${x.day}T12:00:00Z`), x.n, -1, i] as [number, number, number, number])}
+                      ids={side.days.map((x) => x.first)}
+                      who={[]}
+                      current={side.days.find((x) => x.day === eventDay)?.first ?? ""}
+                      hrefBase={detailBase}
+                      format="num"
+                      label={`${side.text} je Tag`}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="box" data-tone="white">
+                <h3 className="t-3">Wer → wen</h3>
+                <p className="muted" style={{ marginBottom: 8 }}>
+                  {pair.noun} zwischen allen Spielern: Zeilen geben, Spalten bekommen, Kreisfläche = Anzahl. Ring: {pname(pair.giver)} → {pname(pair.receiver)}, gestrichelt: zurück.
+                </p>
+                <PairMatrix matrix={pair.matrix} names={names} giver={pair.giver} receiver={pair.receiver} hrefBase={detailBase} noun={pair.noun} />
+              </div>
+            </>
+          )}
+
           {d.frequency ? (
             <div className="stack">
               {e.player && d.frequency.mine.length > 0 && (
@@ -384,13 +489,31 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
                 <p className="muted" style={{ marginBottom: 8 }}>
                   Die letzten Ereignisse vor diesem, neuestes zuletzt.
                 </p>
-                <EventFeed events={d.before} focus={e.player} isShown={isShown} hrefFor={href} empty="Davor nichts." />
+                <EventFeed events={d.before} focus={e.player} isShown={isShown} hrefFor={href} richTips empty="Davor nichts." />
                 <p className="vs-now">▼ {label} · {dayLong.format(at)}</p>
               </div>
               <div className="box" data-tone="white">
                 <h3 className="t-3">Danach bei {name}</h3>
                 <p className="vs-now">▲ {label} · {dayLong.format(at)}</p>
-                <EventFeed events={d.after} focus={e.player} isShown={isShown} hrefFor={href} empty="Danach (noch) nichts." />
+                <EventFeed events={d.after} focus={e.player} isShown={isShown} hrefFor={href} richTips empty="Danach (noch) nichts." />
+              </div>
+            </div>
+          )}
+
+          {pair && (
+            <div className="vs-two">
+              <div className="box" data-tone="white">
+                <h3 className="t-3">Davor bei {pname(pair.other.id)}</h3>
+                <p className="muted" style={{ marginBottom: 8 }}>
+                  Die andere Seite: was {pname(pair.other.id)} vorher erlebte.
+                </p>
+                <EventFeed events={pair.other.before} focus={pair.other.id} isShown={isShown} hrefFor={href} richTips empty="Davor nichts." />
+                <p className="vs-now">▼ {label} · {dayLong.format(at)}</p>
+              </div>
+              <div className="box" data-tone="white">
+                <h3 className="t-3">Danach bei {pname(pair.other.id)}</h3>
+                <p className="vs-now">▲ {label} · {dayLong.format(at)}</p>
+                <EventFeed events={pair.other.after} focus={pair.other.id} isShown={isShown} hrefFor={href} richTips empty="Danach (noch) nichts." />
               </div>
             </div>
           )}
@@ -401,7 +524,7 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
               Ereignisse anderer Spieler 15 Minuten davor bis 15 Minuten danach, der Reihe nach ({num(d.around.length)}).
             </p>
             <ShowMore height={700} label="Ereignisse">
-              <EventFeed events={d.around} isShown={isShown} hrefFor={href} empty="Sonst passierte in dieser Zeit nichts." />
+              <EventFeed events={d.around} isShown={isShown} hrefFor={href} richTips empty="Sonst passierte in dieser Zeit nichts." />
             </ShowMore>
           </div>
 

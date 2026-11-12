@@ -213,3 +213,95 @@
 .ewm__dot--cur {
   fill: var(--ink);
 }
+
+/* Ausführlicher Hover-Text der Kacheln (EventFeed richTips): ganzer Satz, Chat-Nachricht vollständig */
+.tile[data-full]:hover::after,
+.tile[data-full]:focus-within::after {
+  content: attr(data-full);
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  width: max-content;
+  max-width: min(420px, 80vw);
+  padding: 8px 10px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-body, inherit);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  box-shadow: var(--outline);
+  pointer-events: none;
+}
+
+/* Zwei Spieler: wer gibt, wer bekommt */
+.vs-pair {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.vs-pair__side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.vs-pair__role {
+  display: block;
+  font-size: 0.8125rem;
+  opacity: 0.8;
+}
+.vs-pair__arrow {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+/* Unterhaltung (Chat) */
+.vs-talk {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.vs-talk li {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+.vs-talk__bubble {
+  display: block;
+  padding: 8px 12px;
+  border: 2px solid color-mix(in srgb, var(--ink) 15%, transparent);
+  background: var(--white);
+  max-width: 62ch;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  color: inherit;
+  text-decoration: none;
+}
+.vs-talk li[data-in] .vs-talk__bubble {
+  background: color-mix(in srgb, var(--twitch) 9%, var(--white));
+}
+.vs-talk li[data-cur] .vs-talk__bubble {
+  border-color: var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+.vs-talk__meta {
+  display: block;
+  font-size: 0.75rem;
+  opacity: 0.7;
+  margin-bottom: 2px;
+}
+.ewp__row,
+.ewp__col {
+  fill: color-mix(in srgb, var(--gold) 22%, transparent);
+}
+.ewp__rev {
+  stroke-dasharray: 3 3;
+}
