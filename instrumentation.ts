@@ -28,6 +28,9 @@ export async function register() {
     // Ereignisse und Meilensteine für die Zusatzwerte (platzierte Blöcke, Handel, Angeln, …), auch rückwirkend
     const { startExtraEvents } = await import("./lib/extraEvents");
     startExtraEvents();
+    // Follower-Schübe, die live wegen fehlgeschlagener Abfragen fehlten, aus dem Minutenverlauf nachtragen
+    const { startFollowerBursts } = await import("./lib/followerBursts");
+    startFollowerBursts();
     // Sammel-Sprünge (nach Lücken, veraltete Werte, Zeit offline) markieren, Feeds blenden sie aus
     const { startEventQuality } = await import("./lib/eventQuality");
     startEventQuality();
