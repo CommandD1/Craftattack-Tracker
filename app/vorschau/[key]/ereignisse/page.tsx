@@ -103,7 +103,7 @@ async function Events({ params, searchParams }: { params: PageProps<"/vorschau/[
           <p className="eyebrow">Vorschau · Chronik</p>
           <h1 className="t-1">Ereignisse</h1>
           <p>
-            Jede Änderung, die der Tracker in den offiziellen Stats oder im Twitch-Chat entdeckt hat – mit Uhrzeit. Neu in dieser Vorschau: Ein Klick auf ein Ereignis öffnet seine eigene Seite mit Vorher, Nachher und Verläufen.
+            Jede Änderung, die der Tracker in den offiziellen Stats oder im Twitch-Chat entdeckt hat – mit Uhrzeit. Neu in dieser Vorschau: Ein Klick auf ein Ereignis öffnet seine eigene Seite mit Vorher, Nachher und Verläufen. Außerdem: <Link href={`${root}/raids`}>Wer raidet wen?</Link>
           </p>
         </div>
       </section>
