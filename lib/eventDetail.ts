@@ -72,6 +72,19 @@ export interface EventDetail {
   mine: Occurrences | null;
   /** Familie (Zähler/Kennzahl) mit Meilensteinen und Rängen des Spielers und dem, was in denselben Minuten dazugehört */
   related: { family: string; label: string; ladder: TrackerEvent[]; together: TrackerEvent[] } | null;
+  /**
+   * Häufigkeit statt Stärke, wenn alle Ereignisse dieser Art gleich stark sind (Chat, Stream-Start, Join, …):
+   * `days` = Berliner Tage der Staffel mit Ereignissen; `mine` = je Tag Anzahl und erstes Ereignis des Spielers;
+   * `matrix` = die aktivsten Spieler (und dieser) je Tag.
+   */
+  frequency: {
+    days: string[];
+    mine: { day: string; n: number; first: string }[];
+    players: string[];
+    /** [Index in players, Index in days, Anzahl, erstes Ereignis an diesem Tag] */
+    cells: [number, number, number, string][];
+    total: number;
+  } | null;
   /** Dieselbe Art bei allen Spielern (die stärksten) */
   all: Occurrences;
 }
@@ -231,6 +244,8 @@ const HOUR = 3600_000;
 const AROUND = 15 * 60_000;
 const MINE_LIMIT = 2500;
 const ALL_LIMIT = 300;
+/** Häufigkeits-Matrix: so viele der aktivsten Spieler als Zeilen */
+const FREQ_PLAYERS = 25;
 
 export async function getEventDetail(id: string): Promise<EventDetail | null> {
   const db = await getDb();
@@ -403,6 +418,46 @@ export async function getEventDetail(id: string): Promise<EventDetail | null> {
     };
   }
 
+  // Alle gleich stark (z. B. Chat: immer 1)? Dann zählt, wie oft – je Tag und Spieler
+  let frequency: EventDetail["frequency"] = null;
+  const spread = (
+    await db.query<{ lo: number | null; hi: number | null }>(
+      `SELECT min(${INTENSITY}) AS lo, max(${INTENSITY}) AS hi FROM events WHERE ${sameSql(2)}`,
+      [event.type, ...sameArgs],
+    )
+  ).rows[0];
+  if (spread && spread.lo !== null && Number(spread.lo) === Number(spread.hi)) {
+    const rows = (
+      await db.query<{ player: string; day: string; n: string; first: string }>(
+        `WITH d AS (
+           SELECT player, to_char(at AT TIME ZONE 'Europe/Berlin', 'YYYY-MM-DD') AS day, count(*) AS n,
+                  (array_agg(id ORDER BY at))[1] AS first
+             FROM events WHERE ${sameSql(2)} AND player IS NOT NULL GROUP BY 1, 2
+         ), top AS (
+           SELECT player FROM d GROUP BY 1 ORDER BY sum(n) DESC LIMIT ${FREQ_PLAYERS}
+         )
+         SELECT d.player, d.day, d.n, d.first FROM d
+          WHERE d.player IN (SELECT player FROM top) OR d.player = $${board ? 3 : 2}
+          ORDER BY d.day`,
+        [event.type, ...sameArgs, p ?? ""],
+      )
+    ).rows;
+    const days = [...new Set(rows.map((r) => r.day))].sort();
+    // Zeilen: nach Anzahl insgesamt, dieser Spieler immer dabei
+    const sums = new Map<string, number>();
+    for (const r of rows) sums.set(r.player, (sums.get(r.player) ?? 0) + Number(r.n));
+    const players = [...sums.keys()].sort((a, b) => sums.get(b)! - sums.get(a)!);
+    const pi = new Map(players.map((x, i) => [x, i]));
+    const di = new Map(days.map((x, i) => [x, i]));
+    frequency = {
+      days,
+      mine: rows.filter((r) => r.player === p).map((r) => ({ day: r.day, n: Number(r.n), first: r.first })),
+      players,
+      cells: rows.map((r) => [pi.get(r.player)!, di.get(r.day)!, Number(r.n), r.first] as [number, number, number, string]),
+      total: Number(counts.rows[0]?.total ?? 0),
+    };
+  }
+
   const occ = (rows: { id: string; at: Date; i: number; player?: string | null }[], rank: { rank: string; total: string } | undefined, withWho: boolean, limit: number): Occurrences => {
     const list = rows.some((r) => r.id === id) ? rows : [...rows, { id, at: t, i: intensity, player: p }];
     const whoIdx = new Map<string, number>();
@@ -457,5 +512,6 @@ export async function getEventDetail(id: string): Promise<EventDetail | null> {
     mine: mineRows ? occ(mineRows.rows, mineRank?.rows[0], false, MINE_LIMIT) : null,
     all: occ(allRows.rows, allRank.rows[0], true, ALL_LIMIT),
     related,
+    frequency,
   };
 }
