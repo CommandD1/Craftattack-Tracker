@@ -9,9 +9,9 @@ import { distance, duration, headUrl, hearts, num } from "@/lib/format";
  * übrigen nicht plattdrücken). Beim Spieler als Punkte, bei allen mit Kopf des Spielers als Marke (die stärksten),
  * dieses Ereignis mit Ring. Überfahren zeigt Wert und Zeit, Klick öffnet die Seite des anderen Ereignisses.
  */
-type Format = "num" | "distance" | "duration" | "hearts" | "rank";
+type Format = "num" | "distance" | "duration" | "hearts" | "rank" | "nth";
 // Rang: Stärke = 4 − Platz (lib/eventDetail.ts), angezeigt als Platz
-const FMT: Record<Format, (v: number) => string> = { num, distance, duration, hearts: (v) => `${hearts(v)} Herzen`, rank: (v) => `Platz ${Math.round(4 - v)}` };
+const FMT: Record<Format, (v: number) => string> = { num, distance, duration, hearts: (v) => `${hearts(v)} Herzen`, rank: (v) => `Platz ${Math.round(4 - v)}`, nth: (v) => `als ${Math.round(v)}.` };
 const dayFmt = new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "numeric", timeZone: "Europe/Berlin" });
 const tipFmt = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 const dayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" });
@@ -28,6 +28,7 @@ export function EventOccurrences({
   format = "num",
   label,
   heads = false,
+  maxHeads = HEADS,
 }: {
   /** [Zeitpunkt ms, Stärke, Index in `who` oder -1, Index in `ids`] */
   points: [number, number, number, number][];
@@ -41,6 +42,8 @@ export function EventOccurrences({
   label: string;
   /** Köpfe statt Punkte (alle Spieler) */
   heads?: boolean;
+  /** Höchstens so viele Köpfe (die stärksten), der Rest als Punkte */
+  maxHeads?: number;
 }) {
   const router = useRouter();
   const ref = useRef<SVGSVGElement>(null);
@@ -83,7 +86,7 @@ export function EventOccurrences({
     return out;
   }, [t0, t1]);
   const every = Math.max(1, Math.ceil(days.length / 10));
-  const strongest = useMemo(() => new Set([...points].sort((a, b) => b[1] - a[1]).slice(0, HEADS).map((p) => p[3])), [points]);
+  const strongest = useMemo(() => new Set([...points].sort((a, b) => b[1] - a[1]).slice(0, maxHeads).map((p) => p[3])), [points, maxHeads]);
   const cur = points.find((p) => ids[p[3]] === current);
   const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!ref.current) return;

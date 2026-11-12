@@ -304,3 +304,45 @@
   stroke: var(--white);
   stroke-width: 1;
 }
+.vs-face {
+  display: inline-block;
+  line-height: 0;
+}
+.vs-face:hover img,
+.vs-face:focus-visible img {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
+/* Rang: überholte Spieler im Verlauf */
+.ewc__other {
+  stroke: var(--mig-c2, #eb6834);
+  stroke-width: 1.75;
+  stroke-dasharray: 5 3;
+  stroke-linejoin: round;
+}
+.ewc__other-label {
+  fill: var(--mig-c2, #eb6834);
+  font-weight: 700;
+}
+/* Kopfbereich: lange Titel („Achievement“ in Pixelschrift) dürfen schrumpfen und umbrechen statt überzustehen */
+.vs-hero > div {
+  min-width: 0;
+  flex: 1 1 240px;
+}
+/* Breite Diagramme (Matrizen) scrollen in ihrer Box, statt die Seite zu verbreitern */
+.vs .stack > *,
+.vs .box {
+  min-width: 0;
+}
+.vs .ewc > div[style*="overflow"] {
+  max-width: 100%;
+}
+.vs .ewc {
+  min-width: 0;
+  max-width: 100%;
+}
+/* Lange Wörter ohne Leerzeichen (z. B. „minecraft:adventure/trim_with_any_armor_pattern“) umbrechen */
+.vs .page-head,
+.vs-hero__text {
+  overflow-wrap: anywhere;
+}
