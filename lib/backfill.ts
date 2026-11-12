@@ -4,6 +4,7 @@ import { assignEventPlayer, backfillChatEvents, deleteBackfilledEvents, deleteEv
 import { loadAfkSpans } from "./analytics";
 import { AFK_MS, UNKNOWN_DEATH_GRACE_MS } from "./tracker";
 import { trackedSecondsOf } from "./playtime";
+import { removeDuplicateHistory } from "./eventDedupe";
 import type { EventType, TrackerEvent } from "./types";
 
 /** Eine Phase, die bis kurz vor „jetzt“ reicht und deren Spieler online ist, läuft noch – die übernimmt der Live-Tracker. */
@@ -63,9 +64,10 @@ const overlaps = (phases: Map<string, [number, number][]>, player: string, a: nu
 /**
  * Aktuelle Stufe der einmaligen Verlaufs-Korrekturen (tracker_meta.history_fix):
  * 1 = Zähler ohne ext und Spielzeit korrigiert, 2 = AFK-Farm-Ereignisse nach Minuten-Rate neu bewertet,
- * 3 = alle AFK-Ereignisse mit der aktuellen AFK-Schwelle aus dem Verlauf neu aufgebaut
+ * 3 = alle AFK-Ereignisse mit der aktuellen AFK-Schwelle aus dem Verlauf neu aufgebaut,
+ * 4 = doppelte Meilensteine und Stream-Flackern (vorschnelles Ende + erneuter Start) entfernt (lib/eventDedupe.ts)
  */
-const HISTORY_FIX_LEVEL = 3;
+const HISTORY_FIX_LEVEL = 4;
 
 /** Alle Nachträge beim Prozessstart, in der richtigen Reihenfolge. */
 export async function runBackfills(): Promise<void> {
@@ -178,6 +180,10 @@ async function fixHistoryOnce(): Promise<void> {
     }
     const gone = await deleteEvents(AFK_TYPES);
     console.log(`[tracker] ${gone} alte AFK-Ereignisse zur Neubewertung entfernt`);
+  }
+  if (level < 4) {
+    const gone = await removeDuplicateHistory();
+    console.log(`[tracker] Doppelte entfernt: ${gone.milestones} Meilensteine, ${gone.streams} Stream-Start/-Ende (Flackern)`);
   }
   await db.query(`UPDATE tracker_meta SET history_fix = $1 WHERE id = 1`, [HISTORY_FIX_LEVEL]);
 }
