@@ -22,6 +22,7 @@ export function EventSteps({
   streak,
   format = "num",
   label,
+  per = null,
 }: {
   steps: [number, number][];
   from: number;
@@ -32,10 +33,13 @@ export function EventSteps({
   streak: { from: number; to: number } | null;
   format?: Format;
   label: string;
+  /** Einheit hinter den Werten, z. B. „/Min“ */
+  per?: string | null;
 }) {
   const ref = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
-  const fmt = FMT[format];
+  const fmt0 = FMT[format];
+  const fmt = (v: number) => `${fmt0(v)}${per ?? ""}`;
   if (!steps.length) return <p className="muted">In diesem Zeitraum keine Messungen.</p>;
   const W = 900;
   const H = 210;
