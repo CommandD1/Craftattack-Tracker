@@ -113,10 +113,15 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
             Vorschau · <Link href={`${root}/ereignisse`}>Ereignisse</Link> · {label}
           </p>
           <div className="vs-hero">
-            {e.player && !pair && <Head id={e.player} uuid={e.uuid ?? p?.uuid} name={name} size={72} src={128} decorative />}
+            {/* Kopf öffnet das Profil (statt eines eigenen „Profil von …“-Knopfs) */}
+            {e.player && !pair && (
+              <Link href={`/spieler/${encodeURIComponent(e.player)}`} className="vs-face" title={`Profil von ${name}`}>
+                <Head id={e.player} uuid={e.uuid ?? p?.uuid} name={name} size={72} src={128} decorative />
+              </Link>
+            )}
             <div>
-              <h1 className="t-1" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <IconCmp width={36} height={36} aria-hidden="true" /> {label}
+              <h1 className="t-1" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", overflowWrap: "anywhere", minWidth: 0 }}>
+                <IconCmp width={36} height={36} aria-hidden="true" style={{ flex: "none" }} /> <span style={{ minWidth: 0, overflowWrap: "anywhere", hyphens: "auto" }}>{label}</span>
                 {badge ? <span className="num">{badge}</span> : null}
               </h1>
               {pair ? (
@@ -175,13 +180,6 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
                 <a className="tag" data-tone="twitch" href={vod} target="_blank" rel="noopener noreferrer">
                   ▶ Im VOD ansehen
                 </a>
-              </li>
-            )}
-            {e.player && (
-              <li>
-                <Link className="tag" data-tone="white" href={`/spieler/${encodeURIComponent(e.player)}`}>
-                  Profil von {name}
-                </Link>
               </li>
             )}
             <li>
@@ -264,7 +262,8 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
                     {e.player ? ` von ${name}` : ""}
                   </h3>
                   <p className="muted" style={{ marginBottom: 8 }}>
-                    3 Stunden davor bis 3 Stunden danach, gestrichelt: das Ereignis{marks.length ? "; Rauten: Meilensteine und Ränge derselben Art" : ""}.
+                    3 Stunden davor bis 3 Stunden danach, gestrichelt: das Ereignis{marks.length ? "; Rauten: Meilensteine und Ränge derselben Art" : ""}
+                    {d.rivals.length > 0 ? `; orange: überholt – ${d.rivals.map((r) => pname(r.id)).join(", ")}` : ""}.
                   </p>
                   <EventWindowChart
                     points={d.stat.points}
@@ -277,6 +276,7 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
                     step
                     href={graph(d.stat.metric, e.player ? [e.player] : [])}
                     marks={marks}
+                    others={d.rivals.map((r) => ({ name: pname(r.id), points: r.points.filter((x): x is [number, number] => x[1] !== null) }))}
                   />
                 </div>
               )}
@@ -387,7 +387,9 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
                     const back = from === pair.receiver;
                     return (
                       <li key={m.id} data-cur={m.id === e.id ? "" : undefined} data-in={back ? "" : undefined}>
-                        <Head id={from} uuid={puuid(from)} name={pname(from)} size={32} />
+                        <Link href={`/spieler/${encodeURIComponent(from)}`} title={`Profil von ${pname(from)}`}>
+                          <Head id={from} uuid={puuid(from)} name={pname(from)} size={32} decorative />
+                        </Link>
                         <Link className="vs-talk__bubble" href={href(m)}>
                           <span className="vs-talk__meta">
                             <b>{pname(from)}</b>
@@ -436,6 +438,29 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
                 <PairMatrix matrix={pair.matrix} names={names} giver={pair.giver} receiver={pair.receiver} hrefBase={detailBase} noun={pair.noun} />
               </div>
             </>
+          )}
+
+          {d.sameAchievement.length > 0 && (
+            <div className="box" data-tone="white">
+              <h3 className="t-3">Wer hat „{String(e.meta?.title ?? label)}“ noch geschafft?</h3>
+              <p className="muted" style={{ marginBottom: 8 }}>
+                {(() => {
+                  const pos = d.sameAchievement.findIndex((x) => x.player === e.player) + 1;
+                  return `${num(d.sameAchievement.length)} Spieler, ${pos > 0 ? `${name} als ${pos}.` : ""} Jeder Kopf steht da, wo er den Fortschritt erreicht hat (Höhe = Reihenfolge). Nur vom Server gemeldete Erfolge, keine Vermutungen. Klick öffnet ihn.`;
+                })()}
+              </p>
+              <EventOccurrences
+                points={d.sameAchievement.map((x, i) => [x.at, i + 1, i, i] as [number, number, number, number])}
+                ids={d.sameAchievement.map((x) => x.id)}
+                who={d.sameAchievement.map((x) => [x.player, pname(x.player), puuid(x.player)] as [string, string, string])}
+                current={d.sameAchievement.find((x) => x.player === e.player)?.id ?? e.id}
+                hrefBase={detailBase}
+                format="nth"
+                label={`Wer „${String(e.meta?.title ?? label)}“ wann geschafft hat`}
+                heads
+                maxHeads={200}
+              />
+            </div>
           )}
 
           {d.frequency ? (

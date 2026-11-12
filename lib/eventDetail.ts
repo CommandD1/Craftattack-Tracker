@@ -68,6 +68,10 @@ export interface EventDetail {
   online: ChartPoint[];
   /** Wer in diesem Moment da war: id → online/live/Zuschauer */
   present: { id: string; online: boolean; viewers: number | null }[];
+  /** Rang: die überholten Spieler mit ihrem Verlauf desselben Zählers (für das Diagramm) */
+  rivals: { id: string; points: ChartPoint[] }[];
+  /** Erfolg: wer denselben Fortschritt sonst geschafft hat (nur gemeldete, keine Vermutungen), in Reihenfolge */
+  sameAchievement: { id: string; player: string; at: number }[];
   /** Dieselbe Art beim selben Spieler über die ganze Staffel */
   mine: Occurrences | null;
   /** Familie (Zähler/Kennzahl) mit Meilensteinen und Rängen des Spielers und dem, was in denselben Minuten dazugehört */
@@ -463,6 +467,59 @@ export async function getEventDetail(id: string): Promise<EventDetail | null> {
     };
   }
 
+  // Rang: wer überholt wurde – vorher vor dem Spieler, danach nicht mehr (Werte desselben Zählers ±10 Min)
+  let rivals: EventDetail["rivals"] = [];
+  if (event.type === "rank" && p && stat?.source === "history") {
+    const col = stat.sql;
+    const cmp = (
+      await db.query<{ player: string; b: number; a: number }>(
+        `WITH b AS (
+           SELECT DISTINCT ON (player) player, v FROM (
+             SELECT player, at, ${col} AS v FROM player_history WHERE at BETWEEN $1 AND $2 AND ${col} IS NOT NULL
+           ) x ORDER BY player, at DESC
+         ), a AS (
+           SELECT DISTINCT ON (player) player, v FROM (
+             SELECT player, at, ${col} AS v FROM player_history WHERE at BETWEEN $2 AND $3 AND ${col} IS NOT NULL
+           ) x ORDER BY player, at
+         )
+         SELECT b.player, b.v::float AS b, a.v::float AS a FROM b JOIN a USING (player)`,
+        [new Date(at - 10 * 60_000), new Date(at - 20_000), new Date(at + 10 * 60_000)],
+      )
+    ).rows;
+    const me = cmp.find((r) => r.player === p);
+    if (me) {
+      const overtaken = cmp
+        .filter((r) => r.player !== p && r.b > me.b && r.a <= me.a)
+        .sort((x, y) => y.b - x.b)
+        .slice(0, 3)
+        .map((r) => r.player);
+      if (overtaken.length) {
+        const rows = (
+          await db.query<{ player: string; at: Date; v: number }>(
+            `SELECT player, at, ${col}::float AS v FROM player_history WHERE player = ANY($1) AND at BETWEEN $2 AND $3 AND ${col} IS NOT NULL ORDER BY player, at`,
+            [overtaken, new Date(from), new Date(to)],
+          )
+        ).rows;
+        rivals = overtaken.map((rid) => ({ id: rid, points: rows.filter((r) => r.player === rid).map((r) => [r.at.getTime(), Number(r.v)] as ChartPoint) }));
+      }
+    }
+  }
+
+  // Erfolg: wer denselben Fortschritt geschafft hat, in Reihenfolge (nur gemeldete Erfolge, keine Vermutungen)
+  let sameAchievement: EventDetail["sameAchievement"] = [];
+  if (event.type === "achievement" && typeof event.meta?.advancement === "string") {
+    sameAchievement = (
+      await db.query<{ id: string; player: string; at: Date }>(
+        `SELECT DISTINCT ON (player) id, player, at FROM events
+          WHERE type = 'achievement' AND meta->>'advancement' = $1 AND player IS NOT NULL
+          ORDER BY player, at`,
+        [event.meta.advancement],
+      )
+    ).rows
+      .map((r) => ({ id: r.id, player: r.player, at: r.at.getTime() }))
+      .sort((x, y) => x.at - y.at);
+  }
+
   // Alle gleich stark (z. B. Chat: immer 1)? Dann zählt, wie oft – je Tag und Spieler
   let frequency: EventDetail["frequency"] = null;
   const spread = (
@@ -554,6 +611,8 @@ export async function getEventDetail(id: string): Promise<EventDetail | null> {
     viewers: viewers.some(([, v]) => v !== null) ? viewers : [],
     online: srv.rows.map((r) => [r.at.getTime(), r.online_count] as ChartPoint),
     present: present.rows.map((r) => ({ id: r.player, online: r.online, viewers: r.viewers })),
+    rivals,
+    sameAchievement,
     mine: mineRows ? occ(mineRows.rows, mineRank?.rows[0], false, MINE_LIMIT) : null,
     all: occ(allRows.rows, allRank.rows[0], true, ALL_LIMIT),
     related,

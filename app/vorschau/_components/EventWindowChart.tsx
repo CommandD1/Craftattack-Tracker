@@ -33,6 +33,7 @@ export function EventWindowChart({
   step = false,
   href,
   marks = [],
+  others = [],
 }: {
   points: [number, number | null][];
   from: number;
@@ -48,6 +49,8 @@ export function EventWindowChart({
   href?: string;
   /** Zugehörige Ereignisse (Meilensteine, Ränge) als anklickbare Rauten oben im Diagramm */
   marks?: { t: number; label: string; href: string }[];
+  /** Weitere Spieler zum Vergleich (z. B. beim Rang die Überholten), gestrichelt in der zweiten Farbe */
+  others?: { name: string; points: [number, number][] }[];
 }) {
   const ref = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -58,7 +61,7 @@ export function EventWindowChart({
   const R = 10;
   const T = 12;
   const B = 24;
-  const vals = points.map(([, v]) => v).filter((v): v is number => v !== null);
+  const vals = [...points.map(([, v]) => v), ...others.flatMap((o) => o.points.map(([, v]) => v))].filter((v): v is number => v !== null);
   if (vals.length < 2) return <p className="muted">In diesem Zeitraum keine Werte.</p>;
   const lo = Math.min(...vals);
   const hi = Math.max(...vals);
@@ -121,6 +124,19 @@ export function EventWindowChart({
               <path d={`M${x(m.t)},${T - 4} l6,6 l-6,6 l-6,-6 Z`} className="ewc__diamond" />
             </a>
           ))}
+        {others.map((o) => {
+          if (o.points.length < 1) return null;
+          const od = o.points.map(([t, v], i) => `${i ? (step ? `H${x(t).toFixed(1)}V` : `L${x(t).toFixed(1)},`) : `M${x(t).toFixed(1)},`}${y(v).toFixed(1)}`).join("");
+          const last = o.points[o.points.length - 1];
+          return (
+            <g key={o.name}>
+              <path d={od} fill="none" className="ewc__other" />
+              <text x={Math.min(W - R - 4, x(last[0]))} y={y(last[1]) - 5} textAnchor="end" className="ewc__tick ewc__other-label">
+                {o.name}
+              </text>
+            </g>
+          );
+        })}
         <path d={d} fill="none" stroke={tone} strokeWidth={2} strokeLinejoin="round" />
         {atVal && <circle cx={x(atVal[0])} cy={y(atVal[1])} r={4.5} fill={tone} className="ewc__dot" />}
         {h && (
@@ -135,6 +151,15 @@ export function EventWindowChart({
           <b>{fmt(h[1])}</b> {tf.format(h[0])} Uhr
           {Math.abs(h[0] - at) < 90_000 ? " · Ereignis" : h[0] < at ? ` · ${Math.round((at - h[0]) / 60_000)} Min davor` : ` · ${Math.round((h[0] - at) / 60_000)} Min danach`}
           {href ? " · Klick: im Graphen öffnen" : ""}
+          {others.map((o) => {
+            // Wert des anderen Spielers zur selben Zeit (letzte Messung davor)
+            const v = o.points.reduce<number | null>((m, [t, val]) => (t <= h[0] + 30_000 ? val : m), null);
+            return v === null ? null : (
+              <span key={o.name} style={{ display: "block" }}>
+                {o.name}: {fmt(v)}
+              </span>
+            );
+          })}
         </div>
       )}
     </div>
