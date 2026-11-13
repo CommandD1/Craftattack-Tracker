@@ -142,7 +142,7 @@ bestehende Daten bleiben.
 | `player_top_history` | Top-Listen je Spieler: geänderte Einträge jede Minute, stündlich ein vollständiger Anker |
 | `twitch_chat_messages` | Nachrichten zwischen Spielern (im geteilten Chat einmal je Nachricht) |
 | `shared_chat_sessions` | Geteilte Chats mit Beteiligten, Beginn und Ende |
-| `costream_sessions` | „Gemeinsam streamen“ (Twitch Stream Together) der Spieler-Kanäle: Host, alle Beteiligten, Beginn, zuletzt gesehen, Ende (jede Minute über die Twitch-Web-Schnittstelle, `lib/costream.ts`); zusätzlich `twitch_clips.costream_session/costream_guests`: wer beim Clippen mitgestreamt hat (rückwirkend für alle Clips) |
+| `costream_sessions` | „Gemeinsam streamen“ (Twitch Stream Together) der Spieler-Kanäle: Host, alle Beteiligten, Beginn, zuletzt gesehen, Ende (jede Minute über die Twitch-Web-Schnittstelle, `lib/costream.ts`); `costream_presence`: je Beteiligtem Kommen und Gehen (minutengenau); zusätzlich `twitch_clips.costream_session/costream_guests`: wer zur Zeit des Clip-Inhalts mitgestreamt hat (VOD-Start + vod_offset, nicht Erstellzeit; rückwirkend für alle Clips) |
 
 ## Werkzeuge
 

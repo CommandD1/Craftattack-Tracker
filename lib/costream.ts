@@ -11,8 +11,11 @@ import { getState } from "./store";
  * Abfragen nutzen wir hier (inoffiziell: kann sich ohne Ankündigung ändern; dann fehlen nur diese Daten).
  *
  * - Live: jede Minute ein Batch für alle Spieler-Kanäle (`guestStarCollaborationStatuses`, wie die Seitenleiste
- *   von twitch.tv). Ergebnis in `costream_sessions` (Beginn, zuletzt gesehen, Ende, Host, alle Beteiligten).
- * - Rückwirkend: jeder Clip speichert, wer beim Clippen mitgestreamt hat (`clip.guestStarParticipants`). Alle Clips
+ *   von twitch.tv). Ergebnis in `costream_sessions` (Beginn, zuletzt gesehen, Ende, Host, alle Beteiligten) und
+ *   `costream_presence` (je Beteiligtem: wann dazugekommen, wann gegangen – minutengenau).
+ * - Rückwirkend: jeder Clip speichert, wer zur Zeit des Clip-INHALTS mitgestreamt hat (`clip.guestStarParticipants`;
+ *   gilt für VOD-Start + vod_offset, nicht für die Erstellzeit – aus dem VOD nachträglich erstellte Clips tragen die
+ *   damalige Session). Gäste ohne den Clip-Kanal selbst; Session ohne Gäste = allein; gar keine Session = unbekannt. Alle Clips
  *   in `twitch_clips` werden einmal nachgeschlagen (35 je Anfrage, 1 Anfrage/s) → Spalten `costream_*`.
  * Es werden nur beobachtete Daten gespeichert, nichts geschätzt.
  */
@@ -25,6 +28,8 @@ const CLIP_PAUSE_MS = 1_000;
 const CLIP_CHECK_MS = 30 * 60_000;
 const ID_CACHE_MS = 6 * 3600_000;
 const CHANNELS_PER_QUERY = 100;
+/** Länger nicht gesehen (Neustart, Abfragefehler) → neuer Anwesenheits-Zeitraum statt Überbrückung */
+const PRESENCE_GAP_MS = 3 * 60_000;
 
 type Gql = { data?: Record<string, unknown>; errors?: { message: string }[] };
 
@@ -134,6 +139,35 @@ async function syncLive() {
   }
   // Nicht mehr gemeldet: beendet (Ende = zuletzt gesehen)
   await db.query(`UPDATE costream_sessions SET ended_at = last_seen_at WHERE ended_at IS NULL AND NOT (key = ANY($1))`, [live.map((s) => s.key)]);
+
+  // Anwesenheit je Beteiligtem: offene Zeiträume verlängern, neue beginnen, nicht mehr gemeldete beenden.
+  // Nach einer Lücke (z. B. Tracker-Neustart) länger als PRESENCE_GAP_MS beginnt ein neuer Zeitraum.
+  await db.query(`UPDATE costream_presence SET ended_at = last_seen_at WHERE ended_at IS NULL AND last_seen_at < $1`, [new Date(now.getTime() - PRESENCE_GAP_MS)]);
+  const keys: string[] = [];
+  const logins: string[] = [];
+  const pids: (string | null)[] = [];
+  const hosts: string[] = [];
+  for (const s of live)
+    for (const l of s.logins) {
+      keys.push(s.key);
+      logins.push(l);
+      pids.push(players.get(l) ?? null);
+      hosts.push(s.host);
+    }
+  if (keys.length) {
+    await db.query(
+      `INSERT INTO costream_presence (session_key, login, player, host_login, started_at, last_seen_at)
+       SELECT k, l, p, h, $5, $5 FROM unnest($1::text[], $2::text[], $3::text[], $4::text[]) AS x(k, l, p, h)
+       ON CONFLICT (session_key, login) WHERE ended_at IS NULL DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at`,
+      [keys, logins, pids, hosts, now],
+    );
+  }
+  await db.query(
+    `UPDATE costream_presence c SET ended_at = c.last_seen_at
+      WHERE c.ended_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM unnest($1::text[], $2::text[]) AS x(k, l) WHERE x.k = c.session_key AND x.l = c.login)`,
+    [keys, logins],
+  );
 }
 
 /* ---------- Rückwirkend aus Clips ---------- */
