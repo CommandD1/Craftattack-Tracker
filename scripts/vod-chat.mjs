@@ -379,7 +379,8 @@ async function main() {
       await loadPlayers();
       // Genau bekannte Lücken des Live-Chats zuerst (alle Kanäle gleichauf, mit Zuschauerwanderung)
       await fillGaps().catch((e) => log("[lücken] Fehler:", e.message));
-      work = (await plan()).filter((w) => w.ranges.length || w.finished);
+      await fillRejoins().catch((e) => log("[wiedereinstieg] Fehler:", e.message));
+      work =(await plan()).filter((w) => w.ranges.length || w.finished);
       // VODs ohne Abschnitte (alles vom Live-Chat abgedeckt, fertig gesendet) gleich als erledigt markieren
       for (const w of work.filter((x) => !x.ranges.length && x.finished))
         await q(`INSERT INTO vod_chat_progress (vod_id, player, position_s, done) VALUES ($1, $2, $3, true) ON CONFLICT (vod_id) DO UPDATE SET done = true, updated_at = now()`, [w.id, w.player, w.duration_s]);
@@ -832,6 +833,38 @@ async function fillGaps() {
     log(`[lücken] ${new Date(a).toISOString().slice(0, 16)}–${new Date(b).toISOString().slice(11, 16)} (${G.size} Kanäle${withFlow ? "" : ", ohne Wanderung"}): ${requests} Anfragen, ${what}`);
   }
   await markChecked();
+  return total;
+}
+
+/**
+ * Wiedereinstiege des Live-Chats (irc_rejoin, lib/ircCoverage.ts): nach einem Neustart des Trackers oder einem
+ * Verbindungsabbruch fehlen je Kanal bis zu ~1 Min, bis alle Kanäle wieder beigetreten sind. Das Fenster wird aus den
+ * VODs der dann live gewesenen Kanäle gelesen; was der Live-Chat schon hatte, erkennt handle(). OHNE
+ * Zuschauerwanderung: viewer_chat_moves wird aufaddiert, und der Live-Chat hat das Fenster zum Teil schon gezählt.
+ */
+async function fillRejoins() {
+  await q(`CREATE TABLE IF NOT EXISTS irc_rejoin (from_ms bigint PRIMARY KEY, to_ms bigint NOT NULL, done boolean NOT NULL DEFAULT false)`);
+  const rows = (await q(`SELECT from_ms, to_ms FROM irc_rejoin WHERE NOT done AND to_ms < $1 ORDER BY from_ms`, [Date.now() - RECENT_MS])).rows;
+  if (!rows.length) return 0;
+  log(`[wiedereinstieg] ${rows.length} Fenster offen`);
+  let total = 0;
+  for (const r of rows) {
+    // Etwas Rand: Zeitstempel im VOD-Chat und Prozessstart weichen um Sekunden ab
+    const a = Number(r.from_ms) - 15_000;
+    const b = Number(r.to_ms) + 15_000;
+    const vods = await vodsBetween(a, b);
+    const found = {};
+    const requests = await readSlices(vods, a, b, async (items) => {
+      for (const { chan, node } of items) {
+        const owner = players.get(chan);
+        if (owner) await handle(owner, node, found).catch((e) => log("[wiedereinstieg] Zeile übersprungen:", e.message));
+      }
+    });
+    await q(`UPDATE irc_rejoin SET done = true WHERE from_ms = $1`, [r.from_ms]);
+    total += requests;
+    const what = Object.entries(found).filter(([, v]) => v).map(([k, v]) => `${v} ${k}`).join(", ") || "nichts Neues";
+    log(`[wiedereinstieg] ${new Date(a).toISOString().slice(0, 19)} (${Math.round((b - a) / 1000)} s, ${vods.length} VODs): ${requests} Anfragen, ${what}`);
+  }
   return total;
 }
 

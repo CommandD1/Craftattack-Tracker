@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { appendLiveEvent, chatEvent, getEvents, getState, incrementLiveSubscriptionEvent, saveTwitchCheer, saveTwitchChatMessage, saveTwitchSub } from "./store";
 import { observeSharedChatPair } from "./sharedChat";
 import { noteChatter } from "./chatMoves";
-import { noteIrcAlive, noteIrcLost } from "./ircCoverage";
+import { noteIrcAlive, noteIrcLost, noteIrcRejoin } from "./ircCoverage";
 import { KNOWN_LOGINS } from "./tracker";
 import type { PlayerState, TrackerEvent } from "./types";
 
@@ -115,6 +115,8 @@ interface IrcState {
   /** Chat-Nachrichten und Notices, deren Speichern fehlschlug (z. B. Datenbank kurz weg), mit Zahl der Versuche */
   retry: { socket: WebSocket; line: string; tries: number }[];
   retryTimer: ReturnType<typeof setTimeout> | null;
+  /** Seit wann der Chat nicht in allen Kanälen mitliest (Prozessstart oder Abbruch); null = alle beigetreten */
+  outageSince: number | null;
 }
 
 type Globals = typeof globalThis & { __acTwitchIrc?: IrcState };
@@ -140,6 +142,8 @@ function state(): IrcState {
       roomIds: new Map(),
       retry: [],
       retryTimer: null,
+      // Der alte Prozess endete Sekundenbruchteile vor diesem Start; etwas Vorlauf, damit nichts durchrutscht
+      outageSince: Date.now() - 10_000,
     };
   }
   gl.__acTwitchIrc.roomIds ??= new Map();
@@ -292,6 +296,7 @@ function connect(irc: IrcState) {
       }
     });
     socket.addEventListener("close", () => {
+      irc.outageSince ??= Date.now();
       if (irc.socket === socket) irc.socket = null;
       irc.registered = false;
       irc.joined.clear();
@@ -694,6 +699,15 @@ export function startTwitchIrc() {
   irc.aliveTimer ??= setInterval(() => {
     const socket = irc.socket;
     if (!socket || socket.readyState !== WebSocket.OPEN || !irc.registered || Date.now() - irc.lastLineAt > 7 * 60_000) return;
+    // Wiedereinstieg abgeschlossen (alle Kanäle bestätigt, spätestens nach 10 Min) → Fenster für die VOD-Nachlese
+    if (irc.outageSince !== null && irc.desired.size) {
+      const now = Date.now();
+      const all = [...irc.desired.keys()].every((c) => irc.confirmed.has(c));
+      if (all || now - irc.outageSince > 10 * 60_000) {
+        void noteIrcRejoin(irc.outageSince, now);
+        irc.outageSince = null;
+      }
+    }
     const ids: string[] = [];
     for (const channel of irc.confirmed) {
       const owner = irc.desired.get(channel);
