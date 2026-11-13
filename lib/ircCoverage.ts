@@ -38,6 +38,24 @@ export function noteIrcLost(at: number) {
   if (Number.isFinite(at)) mem().lost.add(Math.floor(at / 60_000));
 }
 
+/**
+ * Fenster, in dem der Chat nach einem Neustart oder Verbindungsabbruch noch nicht in allen Kanälen mitlas (Twitch
+ * erlaubt 20 JOINs je 10 s, 107 Kanäle brauchen also ~1 Min). Solche Lücken sind kürzer als eine Minute je Kanal und
+ * fallen in irc_uptime nicht auf; scripts/vod-chat.mjs liest sie aus den VODs nach.
+ */
+export async function noteIrcRejoin(fromMs: number, toMs: number) {
+  if (!(toMs > fromMs)) return;
+  try {
+    const db = await getDb();
+    await db.query(`INSERT INTO irc_rejoin (from_ms, to_ms) VALUES ($1, $2) ON CONFLICT (from_ms) DO UPDATE SET to_ms = GREATEST(irc_rejoin.to_ms, EXCLUDED.to_ms)`, [
+      Math.floor(fromMs),
+      Math.ceil(toMs),
+    ]);
+  } catch (e) {
+    console.error("[irc-coverage] Wiedereinstieg nicht gespeichert:", e instanceof Error ? e.message : e);
+  }
+}
+
 export async function flushIrcCoverage() {
   const m = mem();
   if (!m.minutes.size && !m.joined.size && !m.lost.size) return;

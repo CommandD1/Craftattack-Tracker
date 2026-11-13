@@ -268,6 +268,14 @@ async function migrate(db: Db) {
       minute integer PRIMARY KEY,
       ok     boolean NOT NULL DEFAULT true
     )`);
+  // Wiedereinstieg nach Neustart/Verbindungsabbruch: bis alle Kanäle neu beigetreten sind (~1 Min bei 107 Kanälen)
+  // fehlt der Chat, ohne dass eine Minute in irc_uptime fehlt → VOD-Nachlese genau dieses Fensters
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS irc_rejoin (
+      from_ms bigint PRIMARY KEY,
+      to_ms   bigint NOT NULL,
+      done    boolean NOT NULL DEFAULT false
+    )`);
   await db.query(`
     CREATE TABLE IF NOT EXISTS irc_joined (
       player text NOT NULL,
