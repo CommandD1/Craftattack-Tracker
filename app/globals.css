@@ -6355,82 +6355,82 @@ a.st-board__mvlink:focus-visible {
 }
 
 /* ---------- Fortschritte (Profil) ---------- */
-.adv {
+.fsb {
   display: grid;
   gap: 14px;
 }
-.adv__summary {
+.fsb__summary {
   display: grid;
   gap: 6px;
 }
-.adv__summary p {
+.fsb__summary p {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 10px;
   margin: 0;
 }
-.adv__big {
+.fsb__big {
   font-family: var(--font-display);
   font-size: 2rem;
   line-height: 1;
 }
-.adv__legend {
+.fsb__legend {
   margin-left: auto;
   font-size: 0.875rem;
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
-.adv__sw {
+.fsb__sw {
   display: inline-block;
   width: 12px;
   height: 12px;
   margin-left: 6px;
 }
-.adv__sw--done {
+.fsb__sw--done {
   background: var(--gold);
   box-shadow: 0 0 0 2px var(--line);
 }
-.adv__sw--guess {
+.fsb__sw--guess {
   background: repeating-linear-gradient(45deg, var(--gold) 0 3px, transparent 3px 6px);
   box-shadow: 0 0 0 2px var(--line);
 }
-.adv__bar {
+.fsb__bar {
   display: flex;
   height: 12px;
   background: color-mix(in srgb, var(--ink) 10%, transparent);
   box-shadow: 0 0 0 2px var(--line);
 }
-.adv__bar i {
+.fsb__bar i {
   display: block;
   height: 100%;
 }
-.adv__bar-done {
+.fsb__bar-done {
   background: var(--gold);
 }
-.adv__bar-guess {
+.fsb__bar-guess {
   background: repeating-linear-gradient(45deg, var(--gold) 0 4px, transparent 4px 8px);
 }
-.adv__controls {
+.fsb__controls {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 8px;
 }
-.adv__controls .gb__seg {
+.fsb__controls .gb__seg {
   margin: 0;
 }
-.adv__controls .gb__seg button {
+.fsb__controls .gb__seg button {
   min-height: 34px;
   padding: 4px 10px;
   font-size: 0.8125rem;
 }
-.adv__count {
+.fsb__count {
   opacity: 0.7;
   margin-left: 4px;
 }
-.adv__grid {
+.fsb__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
   gap: 10px;
@@ -6438,7 +6438,7 @@ a.st-board__mvlink:focus-visible {
   padding: 0;
   list-style: none;
 }
-.adv__card {
+.fsb__card {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) auto;
   gap: 10px;
@@ -6448,113 +6448,113 @@ a.st-board__mvlink:focus-visible {
   color: var(--ink);
   box-shadow: 0 0 0 2px var(--line);
 }
-.adv__card--guess {
+.fsb__card--guess {
   box-shadow: none;
   outline: 2px dashed var(--line);
   outline-offset: -2px;
 }
-.adv__card--open {
+.fsb__card--open {
   background: transparent;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--line) 25%, transparent);
   color: color-mix(in srgb, var(--ink) 60%, transparent);
 }
-.adv__frame {
+.fsb__frame {
   width: 34px;
   height: 34px;
 }
-.adv__frame rect,
-.adv__frame > path:first-child {
+.fsb__frame rect,
+.fsb__frame > path:first-child {
   fill: color-mix(in srgb, var(--ink) 10%, transparent);
   stroke: color-mix(in srgb, var(--ink) 35%, transparent);
   stroke-width: 2;
 }
-.adv__check {
+.fsb__check {
   fill: none;
   stroke: transparent;
   stroke-width: 3;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.adv__card--done .adv__frame rect,
-.adv__card--done .adv__frame > path:first-child {
+.fsb__card--done .fsb__frame rect,
+.fsb__card--done .fsb__frame > path:first-child {
   fill: var(--gold);
   stroke: var(--line);
 }
-.adv__card--done.adv__card--challenge .adv__frame > path:first-child {
+.fsb__card--done.fsb__card--challenge .fsb__frame > path:first-child {
   fill: var(--amethyst);
 }
-.adv__card--done .adv__check {
+.fsb__card--done .fsb__check {
   stroke: var(--ink);
 }
-.adv__card--guess .adv__frame rect,
-.adv__card--guess .adv__frame > path:first-child {
+.fsb__card--guess .fsb__frame rect,
+.fsb__card--guess .fsb__frame > path:first-child {
   fill: color-mix(in srgb, var(--gold) 35%, transparent);
   stroke: var(--line);
   stroke-dasharray: 3 3;
 }
-.adv__card--guess .adv__check {
+.fsb__card--guess .fsb__check {
   stroke: color-mix(in srgb, var(--ink) 55%, transparent);
 }
-.adv__text {
+.fsb__text {
   display: grid;
   min-width: 0;
 }
-.adv__text b {
+.fsb__text b {
   font-weight: 700;
   line-height: 1.2;
 }
-.adv__desc {
+.fsb__desc {
   font-size: 0.8125rem;
   opacity: 0.75;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.adv__meta {
+.fsb__meta {
   font-size: 0.75rem;
   opacity: 0.8;
 }
-.adv__card--guess .adv__meta {
+.fsb__card--guess .fsb__meta {
   font-style: italic;
 }
-.adv__others {
+.fsb__others {
   display: grid;
   justify-items: end;
   gap: 2px;
   font-size: 0.8125rem;
   font-weight: 700;
 }
-.adv__onum {
+.fsb__onum {
   font-size: 0.6875rem;
   font-weight: 400;
   opacity: 0.7;
 }
-.adv__obar {
+.fsb__obar {
   display: flex;
   width: 52px;
   height: 5px;
   background: color-mix(in srgb, var(--ink) 12%, transparent);
 }
-.adv__obar i {
+.fsb__obar i {
   display: block;
   height: 100%;
   background: var(--ink);
 }
-.adv__obar .adv__obar-guess {
+.fsb__obar .fsb__obar-guess {
   background: color-mix(in srgb, var(--ink) 40%, transparent);
 }
 
 /* ---------- Fortschritte als Baum wie im Spiel ---------- */
-.advt {
+.fstree {
   display: grid;
   gap: 10px;
 }
-.advt__tabs {
+.fstree__tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
 }
-.advt__tab {
+.fstree__tab {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -6568,19 +6568,19 @@ a.st-board__mvlink:focus-visible {
   font-size: 0.8125rem;
   cursor: pointer;
 }
-.advt__tab[aria-pressed="true"] {
+.fstree__tab[aria-pressed="true"] {
   background: #e0e0e0;
   color: #000;
   transform: translateY(-2px);
 }
-.advt__icon {
+.fstree__icon {
   display: inline-block;
   flex: none;
   /* 64-px-Felder auf 32 px: genau halbiert, glättet die Würfelkanten ohne Pixel zu verwischen */
   image-rendering: auto;
   background-repeat: no-repeat;
 }
-.advt__view {
+.fstree__view {
   position: relative;
   overflow: auto;
   background-size: 32px 32px;
@@ -6590,28 +6590,28 @@ a.st-board__mvlink:focus-visible {
   overscroll-behavior: contain;
   user-select: none;
 }
-.advt__view:active {
+.fstree__view:active {
   cursor: grabbing;
 }
-.advt__canvas {
+.fstree__canvas {
   position: relative;
 }
-.advt__lines {
+.fstree__lines {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
-.advt__line-outer {
+.fstree__line-outer {
   fill: none;
   stroke: #000;
   stroke-width: 6;
 }
-.advt__line-inner {
+.fstree__line-inner {
   fill: none;
   stroke: #fff;
   stroke-width: 2;
 }
-.advt__node {
+.fstree__node {
   position: absolute;
   display: grid;
   place-items: center;
@@ -6622,20 +6622,20 @@ a.st-board__mvlink:focus-visible {
   image-rendering: pixelated;
   cursor: pointer;
 }
-.advt__node:focus-visible {
+.fstree__node:focus-visible {
   outline: 3px solid #fff;
   outline-offset: 2px;
 }
-.advt__node--guess {
+.fstree__node--guess {
   opacity: 0.8;
   filter: saturate(0.55);
 }
 /* Noch nicht erreicht: Symbol grau und blass, wie im Beispiel */
-.advt__node--open .advt__icon {
+.fstree__node--open .fstree__icon {
   filter: grayscale(1);
   opacity: 0.45;
 }
-.advt__q {
+.fstree__q {
   position: absolute;
   right: -4px;
   top: -6px;
@@ -6652,7 +6652,7 @@ a.st-board__mvlink:focus-visible {
   box-shadow: 0 0 0 2px #000;
   z-index: 1;
 }
-.advt__tip {
+.fstree__tip {
   position: absolute;
   z-index: 5;
   display: grid;
@@ -6666,27 +6666,27 @@ a.st-board__mvlink:focus-visible {
   box-shadow: 0 0 0 2px #000, inset 0 0 0 2px #555;
   pointer-events: none;
 }
-.advt__tiphead {
+.fstree__tiphead {
   margin: 0 -10px 4px;
   padding: 6px 10px;
   background: #0489c1;
   font-size: 0.9375rem;
   box-shadow: inset 0 0 0 2px #000;
 }
-.advt__tip--done .advt__tiphead {
+.fstree__tip--done .fstree__tiphead {
   background: #c2922f;
 }
-.advt__tip--guess .advt__tiphead {
+.fstree__tip--guess .fstree__tiphead {
   background: repeating-linear-gradient(45deg, #c2922f 0 8px, #a77d28 8px 16px);
 }
-.advt__tip > span:nth-of-type(1) {
+.fstree__tip > span:nth-of-type(1) {
   color: #55ff55;
 }
-.advt__tipmeta {
+.fstree__tipmeta {
   color: #c6c6c6;
   font-size: 0.75rem;
 }
-.advt__note {
+.fstree__note {
   font-size: 0.75rem;
   margin: 0;
 }
