@@ -395,5 +395,20 @@ async function migrate(db: Db) {
       ended_at     timestamptz
     )`);
   await db.query(`CREATE INDEX IF NOT EXISTS costream_sessions_started_idx ON costream_sessions (started_at DESC)`);
+  // Anwesenheit je Beteiligtem in einer „Gemeinsam streamen“-Session (Kommen und Gehen, minutengenau).
+  // Eine Zeile = ein zusammenhängender Zeitraum; offene Zeile: ended_at IS NULL.
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS costream_presence (
+      id           bigserial PRIMARY KEY,
+      session_key  text NOT NULL,
+      login        text NOT NULL,
+      player       text,
+      host_login   text NOT NULL,
+      started_at   timestamptz NOT NULL,
+      last_seen_at timestamptz NOT NULL,
+      ended_at     timestamptz
+    )`);
+  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS costream_presence_open_idx ON costream_presence (session_key, login) WHERE ended_at IS NULL`);
+  await db.query(`CREATE INDEX IF NOT EXISTS costream_presence_player_idx ON costream_presence (player, started_at)`);
   // Früher: Tabelle user_files für das entfernte Konto-Feature. Bestehende (leere) Tabellen bleiben unangetastet.
 }
