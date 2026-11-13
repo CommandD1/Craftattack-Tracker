@@ -101,10 +101,21 @@ export function AdvancementBoard({ mine, others, players }: { mine: Record<strin
   const done = ADVANCEMENTS.filter((a) => mine[a.id]?.at).length;
   const guessed = ADVANCEMENTS.filter((a) => mine[a.id]?.guess).length;
   const tipNode = tip ? pos.get(tip.id) : undefined;
-  // Alle Rahmen und Hintergründe vorab laden, sonst fehlen sie beim ersten Umschalten kurz
-  for (const f of ["task", "goal", "challenge"]) for (const st of ["obtained", "unobtained"]) preload(`${BASE_PATH}/adv/${f}-${st}.png`, { as: "image" });
-  for (const b of Object.values(BG)) preload(`${BASE_PATH}/adv/bg-${b}.png`, { as: "image" });
+  // Vorab nur, was die erste Ansicht braucht (sonst warnt der Browser über ungenutzte Preloads); der Rest kommt
+  // nach dem Laden still in den Cache, damit beim Umschalten nichts kurz fehlt
   preload(`${BASE_PATH}/adv/icons.png`, { as: "image" });
+  preload(`${BASE_PATH}/adv/bg-${BG[cat]}.png`, { as: "image" });
+  for (const st of ["obtained", "unobtained"]) preload(`${BASE_PATH}/adv/task-${st}.png`, { as: "image" });
+  useEffect(() => {
+    const urls = [
+      ...["goal", "challenge"].flatMap((f) => ["obtained", "unobtained"].map((st) => `${BASE_PATH}/adv/${f}-${st}.png`)),
+      ...Object.values(BG).map((b) => `${BASE_PATH}/adv/bg-${b}.png`),
+    ];
+    const load = () => urls.forEach((u) => (new Image().src = u));
+    const w = window as Window & { requestIdleCallback?: (cb: () => void) => number };
+    if (w.requestIdleCallback) w.requestIdleCallback(load);
+    else setTimeout(load, 1500);
+  }, []);
   // Wie im Spiel: die Wurzel der Kategorie im Blick (senkrecht mittig)
   useEffect(() => {
     const v = view.current;
