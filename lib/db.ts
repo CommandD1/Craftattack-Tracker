@@ -378,5 +378,22 @@ async function migrate(db: Db) {
   await db.query(`CREATE INDEX IF NOT EXISTS twitch_clips_views_idx ON twitch_clips (view_count DESC)`);
   // Clip entstand, während der Streamer auf dem Server war (gesetzt von lib/twitchHistory.ts; NULL = noch offen)
   await db.query(`ALTER TABLE twitch_clips ADD COLUMN IF NOT EXISTS on_server boolean`);
+  // „Gemeinsam streamen“ beim Clippen (lib/costream.ts): Session und Gäste laut Twitch, NULL = noch nicht nachgeschlagen
+  await db.query(`ALTER TABLE twitch_clips ADD COLUMN IF NOT EXISTS costream_session text`);
+  await db.query(`ALTER TABLE twitch_clips ADD COLUMN IF NOT EXISTS costream_guests text[]`);
+  await db.query(`ALTER TABLE twitch_clips ADD COLUMN IF NOT EXISTS costream_checked_at timestamptz`);
+  await db.query(`CREATE INDEX IF NOT EXISTS twitch_clips_costream_open_idx ON twitch_clips (created_at) WHERE costream_checked_at IS NULL`);
+  // Live beobachtete „Gemeinsam streamen“-Sessions (Twitch Stream Together) der Spieler-Kanäle, siehe lib/costream.ts
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS costream_sessions (
+      key          text PRIMARY KEY,
+      host_login   text NOT NULL,
+      logins       text[] NOT NULL,
+      players      text[] NOT NULL,
+      started_at   timestamptz NOT NULL,
+      last_seen_at timestamptz NOT NULL,
+      ended_at     timestamptz
+    )`);
+  await db.query(`CREATE INDEX IF NOT EXISTS costream_sessions_started_idx ON costream_sessions (started_at DESC)`);
   // Früher: Tabelle user_files für das entfernte Konto-Feature. Bestehende (leere) Tabellen bleiben unangetastet.
 }

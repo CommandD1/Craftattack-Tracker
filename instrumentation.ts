@@ -25,6 +25,9 @@ export async function register() {
     // Twitch-Verlauf (VODs, Clips) auch rückwirkend, z. B. Streams in Tracker-Lücken
     const { startTwitchHistorySync } = await import("./lib/twitchHistory");
     startTwitchHistorySync();
+    // „Gemeinsam streamen“ (Stream Together): live jede Minute, rückwirkend aus allen Clips
+    const { startCostreamSync } = await import("./lib/costream");
+    startCostreamSync();
     // Ereignisse und Meilensteine für die Zusatzwerte (platzierte Blöcke, Handel, Angeln, …), auch rückwirkend
     const { startExtraEvents } = await import("./lib/extraEvents");
     startExtraEvents();

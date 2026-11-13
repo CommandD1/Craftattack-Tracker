@@ -24,6 +24,7 @@ Expensive analyses are precomputed by the tracker every ~10 min into table `snap
 | Polling, diffing API states into events, AFK/farm detection | `lib/tracker.ts`, `lib/craftattackFetch.ts`, `lib/backfill.ts` |
 | Event types, labels, feed thresholds | `lib/types.ts`, `lib/events.ts`, `lib/extraEvents.ts`, `lib/feedThresholds.ts` |
 | Twitch API / IRC / VOD+clip history | `lib/twitch.ts`, `lib/twitchIrc.ts`, `lib/twitchHistory.ts`, `scripts/vod-chat.mjs` |
+| „Gemeinsam streamen“ (Stream Together, via Twitch-Web-GQL) | `lib/costream.ts` → `costream_sessions`, `twitch_clips.costream_*` |
 | Page data entry point | `lib/data.ts` → `loadTracker()` (calls `connection()`, so request-only) |
 | Day boundaries (Europe/Berlin) | `lib/berlin.ts`, `dayKey` in `lib/analytics.ts` |
 | Big analyses | `lib/analytics.ts`, `lib/viewerMigration.ts`, `lib/viewerFlowCore.ts`, `lib/network.ts`, `lib/groups.ts`, `lib/rhythmCore.ts` |
