@@ -20,7 +20,7 @@ const COL = 28 * SCALE;
 const ROW = 27 * SCALE;
 const NODE = 26 * SCALE;
 const PAD = 12 * SCALE;
-/** Sprite public/adv/icons.png: 16 Spalten, 64-px-Felder (Blöcke als Würfel wie im Inventar), angezeigt in 32 px */
+/** Sprite public/fortschritt/icons.png: 16 Spalten, 64-px-Felder (Blöcke als Würfel wie im Inventar), angezeigt in 32 px */
 const SPRITE_COLS = 16;
 
 interface Placed {
@@ -63,7 +63,7 @@ function Icon({ index, size = 32 }: { index: number; size?: number }) {
       style={{
         width: size,
         height: size,
-        backgroundImage: `url(${BASE_PATH}/adv/icons.png)`,
+        backgroundImage: `url(${BASE_PATH}/fortschritt/icons.png)`,
         backgroundSize: `${SPRITE_COLS * 16 * f}px auto`,
         backgroundPosition: `-${(index % SPRITE_COLS) * size}px -${Math.floor(index / SPRITE_COLS) * size}px`,
       }}
@@ -103,13 +103,13 @@ export function AdvancementBoard({ mine, others, players }: { mine: Record<strin
   const tipNode = tip ? pos.get(tip.id) : undefined;
   // Vorab nur, was die erste Ansicht braucht (sonst warnt der Browser über ungenutzte Preloads); der Rest kommt
   // nach dem Laden still in den Cache, damit beim Umschalten nichts kurz fehlt
-  preload(`${BASE_PATH}/adv/icons.png`, { as: "image" });
-  preload(`${BASE_PATH}/adv/bg-${BG[cat]}.png`, { as: "image" });
-  for (const st of ["obtained", "unobtained"]) preload(`${BASE_PATH}/adv/task-${st}.png`, { as: "image" });
+  preload(`${BASE_PATH}/fortschritt/icons.png`, { as: "image" });
+  preload(`${BASE_PATH}/fortschritt/bg-${BG[cat]}.png`, { as: "image" });
+  for (const st of ["obtained", "unobtained"]) preload(`${BASE_PATH}/fortschritt/task-${st}.png`, { as: "image" });
   useEffect(() => {
     const urls = [
-      ...["goal", "challenge"].flatMap((f) => ["obtained", "unobtained"].map((st) => `${BASE_PATH}/adv/${f}-${st}.png`)),
-      ...Object.values(BG).map((b) => `${BASE_PATH}/adv/bg-${b}.png`),
+      ...["goal", "challenge"].flatMap((f) => ["obtained", "unobtained"].map((st) => `${BASE_PATH}/fortschritt/${f}-${st}.png`)),
+      ...Object.values(BG).map((b) => `${BASE_PATH}/fortschritt/bg-${b}.png`),
     ];
     const load = () => urls.forEach((u) => (new Image().src = u));
     const w = window as Window & { requestIdleCallback?: (cb: () => void) => number };
@@ -180,7 +180,7 @@ export function AdvancementBoard({ mine, others, players }: { mine: Record<strin
       <div
         ref={view}
         className="advt__view"
-        style={{ backgroundImage: `url(${BASE_PATH}/adv/bg-${BG[cat]}.png)`, maxHeight: Math.min(height + 4, 560) }}
+        style={{ backgroundImage: `url(${BASE_PATH}/fortschritt/bg-${BG[cat]}.png)`, maxHeight: Math.min(height + 4, 560) }}
         onPointerDown={(e) => {
           if (e.pointerType !== "mouse" || !view.current) return;
           drag.current = { x: e.clientX, y: e.clientY, sl: view.current.scrollLeft, st: view.current.scrollTop, moved: false };
@@ -214,7 +214,7 @@ export function AdvancementBoard({ mine, others, players }: { mine: Record<strin
                 key={a.id}
                 type="button"
                 className={`advt__node advt__node--${state}`}
-                style={{ left: x, top: y, width: NODE, height: NODE, backgroundImage: `url(${BASE_PATH}/adv/${a.frame}-${state === "open" ? "unobtained" : "obtained"}.png)` }}
+                style={{ left: x, top: y, width: NODE, height: NODE, backgroundImage: `url(${BASE_PATH}/fortschritt/${a.frame}-${state === "open" ? "unobtained" : "obtained"}.png)` }}
                 aria-label={`${a.title}: ${state === "done" ? "erzielt" : state === "guess" ? "vermutlich erzielt" : "nicht gesehen"}`}
                 aria-describedby={tip?.id === a.id ? "advt-tip" : undefined}
                 onPointerEnter={(e) => e.pointerType === "mouse" && !tip?.pinned && setTip({ id: a.id, pinned: false })}
