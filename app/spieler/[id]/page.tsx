@@ -955,11 +955,11 @@ async function AdvancementsSection({ params }: { params: Params }) {
   const board = await getAdvancementBoard(id, state.players);
   if (!Object.keys(board.mine).length) return <EmptySection title="Fortschritte" text="Noch keine Fortschritte gemeldet." />;
   return (
-    <section className="block block--tight" data-tone="paper" aria-labelledby="adv-h">
+    <section className="block block--tight" data-tone="paper" aria-labelledby="fortschritte-h">
       <div className="wrap">
         <Fold
           id="profil.fortschritte"
-          titleId="adv-h"
+          titleId="fortschritte-h"
           title={
             <>
               Fortschritte <Explain label="Woher die Fortschritte kommen">

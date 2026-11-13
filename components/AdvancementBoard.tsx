@@ -58,7 +58,7 @@ function Icon({ index, size = 32 }: { index: number; size?: number }) {
   const f = size / 16;
   return (
     <span
-      className="advt__icon"
+      className="fstree__icon"
       aria-hidden="true"
       style={{
         width: size,
@@ -137,21 +137,21 @@ export function AdvancementBoard({ mine, others, players }: { mine: Record<strin
     });
 
   return (
-    <div className="advt">
-      <div className="adv__summary">
+    <div className="fstree">
+      <div className="fsb__summary">
         <p>
-          <b className="adv__big num">{done + guessed}</b> <span className="muted">von {total}</span>
-          <span className="adv__legend">
-            <i className="adv__sw adv__sw--done" /> {done} gemeldet <i className="adv__sw adv__sw--guess" /> {guessed} vermutet
+          <b className="fsb__big num">{done + guessed}</b> <span className="muted">von {total}</span>
+          <span className="fsb__legend">
+            <i className="fsb__sw fsb__sw--done" /> {done} gemeldet <i className="fsb__sw fsb__sw--guess" /> {guessed} vermutet
           </span>
         </p>
-        <span className="adv__bar" aria-hidden="true">
-          <i className="adv__bar-done" style={{ width: `${(100 * done) / total}%` }} />
-          <i className="adv__bar-guess" style={{ width: `${(100 * guessed) / total}%` }} />
+        <span className="fsb__bar" aria-hidden="true">
+          <i className="fsb__bar-done" style={{ width: `${(100 * done) / total}%` }} />
+          <i className="fsb__bar-guess" style={{ width: `${(100 * guessed) / total}%` }} />
         </span>
       </div>
 
-      <div className="advt__tabs" role="group" aria-label="Kategorie">
+      <div className="fstree__tabs" role="group" aria-label="Kategorie">
         {ADV_CATEGORIES.map((c) => {
           const list = ADVANCEMENTS.filter((a) => a.cat === c.key);
           const root = list.find((a) => !a.parent)!;
@@ -160,7 +160,7 @@ export function AdvancementBoard({ mine, others, players }: { mine: Record<strin
             <button
               key={c.key}
               type="button"
-              className="advt__tab"
+              className="fstree__tab"
               aria-pressed={cat === c.key}
               title={`${c.label}: ${n} von ${list.length}`}
               onClick={() => {
@@ -169,7 +169,7 @@ export function AdvancementBoard({ mine, others, players }: { mine: Record<strin
               }}
             >
               <Icon index={root.icon} />
-              <span className="advt__tabcount">
+              <span className="fstree__tabcount">
                 {n}/{list.length}
               </span>
             </button>
@@ -179,7 +179,7 @@ export function AdvancementBoard({ mine, others, players }: { mine: Record<strin
 
       <div
         ref={view}
-        className="advt__view"
+        className="fstree__view"
         style={{ backgroundImage: `url(${BASE_PATH}/fortschritt/bg-${BG[cat]}.png)`, maxHeight: Math.min(height + 4, 560) }}
         onPointerDown={(e) => {
           if (e.pointerType !== "mouse" || !view.current) return;
@@ -197,13 +197,13 @@ export function AdvancementBoard({ mine, others, players }: { mine: Record<strin
         onPointerUp={() => setTimeout(() => (drag.current = null), 0)}
         onPointerLeave={() => (drag.current = null)}
       >
-        <div className="advt__canvas" style={{ width, height }}>
-          <svg className="advt__lines" width={width} height={height} aria-hidden="true">
+        <div className="fstree__canvas" style={{ width, height }}>
+          <svg className="fstree__lines" width={width} height={height} aria-hidden="true">
             {lines.map((l) => (
-              <path key={`o${l.id}`} d={l.d} className="advt__line-outer" />
+              <path key={`o${l.id}`} d={l.d} className="fstree__line-outer" />
             ))}
             {lines.map((l) => (
-              <path key={`i${l.id}`} d={l.d} className={l.on ? "advt__line-inner advt__line-inner--on" : "advt__line-inner"} />
+              <path key={`i${l.id}`} d={l.d} className={l.on ? "fstree__line-inner fstree__line-inner--on" : "fstree__line-inner"} />
             ))}
           </svg>
           {nodes.map(({ a, x, y }) => {
@@ -213,7 +213,7 @@ export function AdvancementBoard({ mine, others, players }: { mine: Record<strin
               <button
                 key={a.id}
                 type="button"
-                className={`advt__node advt__node--${state}`}
+                className={`fstree__node fstree__node--${state}`}
                 style={{ left: x, top: y, width: NODE, height: NODE, backgroundImage: `url(${BASE_PATH}/fortschritt/${a.frame}-${state === "open" ? "unobtained" : "obtained"}.png)` }}
                 aria-label={`${a.title}: ${state === "done" ? "erzielt" : state === "guess" ? "vermutlich erzielt" : "nicht gesehen"}`}
                 aria-describedby={tip?.id === a.id ? "advt-tip" : undefined}
@@ -227,7 +227,7 @@ export function AdvancementBoard({ mine, others, players }: { mine: Record<strin
                 }}
               >
                 <Icon index={a.icon} />
-                {state === "guess" && <span className="advt__q">?</span>}
+                {state === "guess" && <span className="fstree__q">?</span>}
               </button>
             );
           })}
@@ -244,7 +244,7 @@ export function AdvancementBoard({ mine, others, players }: { mine: Record<strin
           )}
         </div>
       </div>
-      <p className="muted advt__note">Ziehen zum Verschieben, Zeigen oder Tippen für Details. Grafiken aus Minecraft © Mojang, keine offizielle Seite.</p>
+      <p className="muted fstree__note">Ziehen zum Verschieben, Zeigen oder Tippen für Details. Grafiken aus Minecraft © Mojang, keine offizielle Seite.</p>
     </div>
   );
 }
@@ -253,15 +253,15 @@ function Tip({ a, s, share, players, x, y, flip }: { a: Advancement; s?: Status;
   const state = s?.at ? "done" : s?.guess ? "guess" : "open";
   const [rep, gue] = share;
   return (
-    <div id="advt-tip" role="tooltip" className={`advt__tip advt__tip--${state}`} style={flip ? { right: `calc(100% - ${x}px + 6px)`, top: y } : { left: x + NODE + 6, top: y }}>
-      <b className="advt__tiphead">{a.title}</b>
+    <div id="advt-tip" role="tooltip" className={`fstree__tip fstree__tip--${state}`} style={flip ? { right: `calc(100% - ${x}px + 6px)`, top: y } : { left: x + NODE + 6, top: y }}>
+      <b className="fstree__tiphead">{a.title}</b>
       <span>{a.desc}</span>
-      <span className="advt__tipmeta">
+      <span className="fstree__tipmeta">
         {state === "done" && <>Erzielt am {date.format(s!.at!)}</>}
         {state === "guess" && <>Vermutlich erzielt: {s!.guess}</>}
         {state === "open" && <>Noch nicht gesehen</>} · {FRAME_LABEL[a.frame]}
       </span>
-      <span className="advt__tipmeta">
+      <span className="fstree__tipmeta">
         {players ? Math.round((100 * (rep + gue)) / players) : 0} % der Spieler ({rep + gue} von {players}
         {gue ? `, davon ${gue} vermutet` : ""})
       </span>
