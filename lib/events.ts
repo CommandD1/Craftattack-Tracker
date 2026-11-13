@@ -572,6 +572,13 @@ export function eventPlayers(e: Pick<TrackerEvent, "player" | "type" | "meta">):
 }
 
 /**
+ * Pfad der Detailseite eines Ereignisses (`${EVENT_DETAIL_BASE}/<id>`), sobald sie öffentlich ist. Bis dahin `null`:
+ * dann verlinken z. B. die Fortschritte im Spielerprofil nichts. Beim Livegang der Seite (heute nur unter
+ * /vorschau/<key>/ereignis) hier "/ereignis" eintragen.
+ */
+export const EVENT_DETAIL_BASE: string | null = null;
+
+/**
  * Ziel eines Klicks auf ein Ereignis: die Ereignisse-Seite mit diesem Spieler und dieser Art, auf der Seite des
  * Ereignisses und dorthin gescrollt.
  */

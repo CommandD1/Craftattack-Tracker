@@ -7,7 +7,7 @@ import { Suspense, cache } from "react";
 import type { Metadata } from "next";
 import { BOARD_TONE } from "@/lib/statTone";
 import { loadTracker } from "@/lib/data";
-import { chatVodLinks, eventPlayers, sharedChatPlayers } from "@/lib/events";
+import { EVENT_DETAIL_BASE, chatVodLinks, eventPlayers, sharedChatPlayers } from "@/lib/events";
 import { getFeedFilter } from "@/lib/feedThresholds";
 import { thinHistory } from "@/lib/thinHistory";
 import { BOARD_KEYS, type BoardKey, type TrackerEvent } from "@/lib/types";
@@ -970,7 +970,7 @@ async function AdvancementsSection({ params }: { params: Params }) {
             </>
           }
         >
-          <AdvancementBoard mine={board.mine} others={board.others} players={board.players} />
+          <AdvancementBoard mine={board.mine} others={board.others} players={board.players} eventBase={EVENT_DETAIL_BASE ?? undefined} />
         </Fold>
       </div>
     </section>

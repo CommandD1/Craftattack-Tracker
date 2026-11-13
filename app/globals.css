@@ -6686,6 +6686,10 @@ a.st-board__mvlink:focus-visible {
   color: #c6c6c6;
   font-size: 0.75rem;
 }
+.fstree__tiplink {
+  color: #ffff55;
+  font-size: 0.75rem;
+}
 .fstree__note {
   font-size: 0.75rem;
   margin: 0;

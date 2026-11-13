@@ -2,12 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { preload } from "react-dom";
+import { useRouter } from "next/navigation";
 import { ADVANCEMENTS, ADV_CATEGORIES, type AdvCategory, type Advancement } from "@/lib/advancements";
 import { BASE_PATH } from "@/lib/estimateMode";
 
 interface Status {
   at?: number;
   guess?: string;
+  /** Ereignis-ID der Feed-Meldung */
+  ev?: string;
 }
 
 const date = new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
@@ -75,8 +78,23 @@ function Icon({ index, size = 32 }: { index: number; size?: number }) {
  * Fortschritte wie im Spiel: Reiter je Kategorie, Baum mit Original-Rahmen und -Symbolen auf dem Reiter-Hintergrund.
  * Gold = gemeldet, gold mit „?“ = vermutet, grau = noch nicht gesehen. Text nur im Tooltip (Zeigen oder Tippen).
  * Die Fläche lässt sich wie im Spiel mit der Maus ziehen.
+ *
+ * `eventBase` (z. B. „/ereignis“): gemeldete Fortschritte führen auf `${eventBase}/<Ereignis-ID>` (Maus/Tastatur: Klick;
+ * Touch: erstes Tippen zeigt den Tooltip, zweites öffnet). Ohne `eventBase` keine Links.
  */
-export function AdvancementBoard({ mine, others, players }: { mine: Record<string, Status>; others: Record<string, [number, number]>; players: number }) {
+export function AdvancementBoard({
+  mine,
+  others,
+  players,
+  eventBase,
+}: {
+  mine: Record<string, Status>;
+  others: Record<string, [number, number]>;
+  players: number;
+  eventBase?: string;
+}) {
+  const router = useRouter();
+  const hrefOf = (s?: Status) => (eventBase && s?.ev ? `${eventBase}/${encodeURIComponent(s.ev)}` : null);
   const [cat, setCatState] = useState<AdvCategory>("story");
   // Gewählten Reiter über Neuladen hinweg behalten (z. B. wenn eine neue Version der Website kommt)
   useEffect(() => {
@@ -213,7 +231,7 @@ export function AdvancementBoard({ mine, others, players }: { mine: Record<strin
               <button
                 key={a.id}
                 type="button"
-                className={`fstree__node fstree__node--${state}`}
+                className={`fstree__node fstree__node--${state}${hrefOf(s) ? " fstree__node--link" : ""}`}
                 style={{ left: x, top: y, width: NODE, height: NODE, backgroundImage: `url(${BASE_PATH}/fortschritt/${a.frame}-${state === "open" ? "unobtained" : "obtained"}.png)` }}
                 aria-label={`${a.title}: ${state === "done" ? "erzielt" : state === "guess" ? "vermutlich erzielt" : "nicht gesehen"}`}
                 aria-describedby={tip?.id === a.id ? "advt-tip" : undefined}
@@ -221,8 +239,14 @@ export function AdvancementBoard({ mine, others, players }: { mine: Record<strin
                 onPointerLeave={(e) => e.pointerType === "mouse" && !tip?.pinned && setTip(null)}
                 onFocus={() => setTip({ id: a.id, pinned: false })}
                 onBlur={() => setTip((t) => (t?.pinned ? t : null))}
-                onClick={() => {
+                onClick={(e) => {
                   if (drag.current?.moved) return;
+                  const href = hrefOf(s);
+                  const touch = (e.nativeEvent as PointerEvent).pointerType === "touch";
+                  if (href && (!touch || (tip?.id === a.id && tip.pinned))) {
+                    router.push(href);
+                    return;
+                  }
                   setTip((t) => (t?.id === a.id && t.pinned ? null : { id: a.id, pinned: true }));
                 }}
               >
@@ -237,6 +261,7 @@ export function AdvancementBoard({ mine, others, players }: { mine: Record<strin
               s={mine[tipNode.a.id]}
               share={others[tipNode.a.id] ?? [0, 0]}
               players={players}
+              link={hrefOf(mine[tipNode.a.id]) ? (tip?.pinned ? "Nochmal tippen öffnet das Ereignis" : "Klicken öffnet das Ereignis") : undefined}
               x={tipNode.x}
               y={tipNode.y}
               flip={tipNode.x + NODE + 300 > width && tipNode.x > 300}
@@ -244,12 +269,12 @@ export function AdvancementBoard({ mine, others, players }: { mine: Record<strin
           )}
         </div>
       </div>
-      <p className="muted fstree__note">Ziehen zum Verschieben, Zeigen oder Tippen für Details. Grafiken aus Minecraft © Mojang, keine offizielle Seite.</p>
+      <p className="muted fstree__note">Ziehen zum Verschieben, Zeigen oder Tippen für Details{eventBase ? ", Klick auf einen gemeldeten Fortschritt öffnet sein Ereignis" : ""}. Grafiken aus Minecraft © Mojang, keine offizielle Seite.</p>
     </div>
   );
 }
 
-function Tip({ a, s, share, players, x, y, flip }: { a: Advancement; s?: Status; share: [number, number]; players: number; x: number; y: number; flip: boolean }) {
+function Tip({ a, s, share, players, link, x, y, flip }: { a: Advancement; s?: Status; share: [number, number]; players: number; link?: string; x: number; y: number; flip: boolean }) {
   const state = s?.at ? "done" : s?.guess ? "guess" : "open";
   const [rep, gue] = share;
   return (
@@ -265,6 +290,7 @@ function Tip({ a, s, share, players, x, y, flip }: { a: Advancement; s?: Status;
         {players ? Math.round((100 * (rep + gue)) / players) : 0} % der Spieler ({rep + gue} von {players}
         {gue ? `, davon ${gue} vermutet` : ""})
       </span>
+      {link && <span className="fstree__tiplink">{link} →</span>}
     </div>
   );
 }

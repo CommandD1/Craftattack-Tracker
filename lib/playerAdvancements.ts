@@ -22,6 +22,8 @@ export interface AdvStatus {
   at?: number;
   /** Grund der Vermutung, wenn nicht gemeldet */
   guess?: string;
+  /** ID des Ereignisses (Feed-Meldung), wenn es eines gibt; die Event-Ranglisten haben keines */
+  ev?: string;
 }
 
 export interface AdvancementBoard {
@@ -34,20 +36,26 @@ export interface AdvancementBoard {
 
 const swr = createSwrCache();
 
-/** Gemeldete Fortschritte aller Spieler: Spieler → id → frühester Zeitpunkt */
-function loadReported(): Promise<Map<string, Map<string, number>>> {
+type Reported = { at: number; ev?: string };
+
+/** Gemeldete Fortschritte aller Spieler: Spieler → id → frühester Zeitpunkt (mit dem Ereignis dazu, falls vorhanden) */
+function loadReported(): Promise<Map<string, Map<string, Reported>>> {
   return swr("advancements", 5 * 60_000, async () => {
     const db = await getDb();
-    const r = await db.query<{ player: string; adv: string; at: Date }>(
-      `SELECT player, meta->>'advancement' AS adv, min(at) AS at FROM events
-        WHERE type = 'achievement' AND player IS NOT NULL AND meta->>'advancement' IS NOT NULL GROUP BY 1, 2`,
+    const r = await db.query<{ player: string; adv: string; at: Date; id: string }>(
+      `SELECT DISTINCT ON (player, meta->>'advancement') player, meta->>'advancement' AS adv, at, id FROM events
+        WHERE type = 'achievement' AND player IS NOT NULL AND meta->>'advancement' IS NOT NULL
+        ORDER BY player, meta->>'advancement', at, id`,
     );
-    const out = new Map<string, Map<string, number>>();
-    const put = (player: string, adv: string, at: number) => {
+    const out = new Map<string, Map<string, Reported>>();
+    const put = (player: string, adv: string, at: number, ev?: string) => {
       const m = out.get(player) ?? out.set(player, new Map()).get(player)!;
-      if (!(m.get(adv)! <= at)) m.set(adv, at);
+      const cur = m.get(adv);
+      // Früheste Zeit gilt; das Ereignis bleibt erhalten, auch wenn die Event-Rangliste etwas früher war
+      if (!cur || at < cur.at) m.set(adv, { at, ev: ev ?? cur?.ev });
+      else if (!cur.ev && ev) cur.ev = ev;
     };
-    for (const row of r.rows) put(row.player, row.adv, row.at.getTime());
+    for (const row of r.rows) put(row.player, row.adv, row.at.getTime(), String(row.id));
     for (const race of eventRaces.races) for (const [player, at] of race.entries) put(player, race.id, Date.parse(at));
     return out;
   });
@@ -93,9 +101,9 @@ function fromStats(p: PlayerState): [string, string][] {
 }
 
 /** Status aller Fortschritte für einen Spieler */
-function statusOf(p: PlayerState | undefined, reported: Map<string, number> | undefined): Record<string, AdvStatus> {
+function statusOf(p: PlayerState | undefined, reported: Map<string, Reported> | undefined): Record<string, AdvStatus> {
   const st: Record<string, AdvStatus> = {};
-  for (const [id, at] of reported ?? []) if (ADV_BY_ID.has(id)) st[id] = { at };
+  for (const [id, r] of reported ?? []) if (ADV_BY_ID.has(id)) st[id] = r.ev ? { at: r.at, ev: r.ev } : { at: r.at };
   if (p) for (const [id, why] of fromStats(p)) if (ADV_BY_ID.has(id) && !st[id]) st[id] = { guess: why };
   // Baum: Vorgänger von allem, was er hat (gemeldet oder vermutet), sind vermutlich auch erreicht
   for (const id of Object.keys(st)) {
