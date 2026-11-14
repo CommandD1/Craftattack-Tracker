@@ -1,4 +1,5 @@
 import { BOARD_STYLE } from "./boards";
+import { BOARD_ICON, EVENT_ICON, SPECIAL_ICON, type IconName } from "./iconNames";
 import { EXTRA_STATS, EXTRA_STAT_KEYS, TOP_LABELS, type ExtraStatKey, type StatGroup } from "./playerStats";
 import { BOARD_TONE, GROUP_TONE, METRIC_TONE, type Tone } from "./statTone";
 import type { BoardKey, PlayerState } from "./types";
@@ -45,17 +46,6 @@ export const LEADERBOARD_GROUPS: { key: LeaderboardGroup; label: string }[] = [
   { key: "afk", label: "AFK" },
 ];
 
-const BOARD_ICON: Record<BoardKey, string> = {
-  playtimeSeconds: "clock",
-  diamonds: "diamond",
-  deaths: "skull",
-  blocksBroken: "pickaxe",
-  mobsKilled: "sword",
-  distance: "boots",
-  damageDealt: "heart",
-  totemsUsed: "totem",
-  foodEaten: "food",
-};
 const BOARD_GROUP: Record<BoardKey, LeaderboardGroup> = {
   playtimeSeconds: "zeit",
   diamonds: "abbau",
@@ -107,7 +97,7 @@ const TOP_TONE: Record<TopCategory, Tone> = {
   mobsKilled: BOARD_TONE.mobsKilled,
   animalsKilled: GROUP_TONE.tiere,
 };
-const TOP_ICON: Record<TopCategory, string> = { blocksBroken: "pickaxe", blocksPlaced: "pickaxe", mobsKilled: "sword", animalsKilled: "sword" };
+const TOP_ICON: Record<TopCategory, IconName> = { blocksBroken: BOARD_ICON.blocksBroken, blocksPlaced: EVENT_ICON.blocksPlaced, mobsKilled: BOARD_ICON.mobsKilled, animalsKilled: EVENT_ICON.animalsKilled };
 /** Kurzname der Kategorie, z. B. für „Vielfalt: Abbau“ */
 const TOP_SHORT: Record<TopCategory, string> = { blocksBroken: "Abbau", blocksPlaced: "Bau", mobsKilled: "Mobs", animalsKilled: "Tiere" };
 /** Wert der Kategorie für „außerhalb der Top 10“ */
@@ -117,13 +107,13 @@ export const LEADERBOARDS: Record<Exclude<LeaderboardKey, ItemKey>, LeaderboardM
   ...(Object.fromEntries(
     (Object.keys(BOARD_STYLE) as BoardKey[]).map((k) => [k, { title: BOARD_STYLE[k].title, sub: BOARD_SUB[k], tone: BOARD_TONE[k], icon: BOARD_ICON[k], group: BOARD_GROUP[k] }]),
   ) as Record<BoardKey, LeaderboardMeta>),
-  tracked: { title: "Dauergäste", sub: "Online-Zeit laut Tracker, alle Spieler", tone: METRIC_TONE.tracked, icon: "users", group: "zeit" },
-  followers: { title: "Fanmagnet", sub: "Neue Twitch-Follower, während der Streamer auf dem Server war", tone: METRIC_TONE.followers, icon: "users", group: "twitch" },
-  twitchSubs: { title: "Sub-Stars", sub: "Twitch-Abos auf dem Server seit Beginn der IRC-Erfassung", tone: METRIC_TONE.twitchSubs, icon: "gift", group: "twitch" },
-  twitchBits: { title: "Bit-Regen", sub: "Bits aus Cheers im eigenen Kanal, während der Streamer auf dem Server war", tone: METRIC_TONE.twitchBits, icon: "bits", group: "twitch" },
-  afk: { title: "Standbilder", sub: "AFK-Zeit seit Tracker-Start laut Server: ab 5 Min ohne Bewegung", tone: METRIC_TONE.afkSeconds, icon: "clock", group: "afk" },
-  afkmobs: { title: "Mob-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Mobs pro Minute gestorben sind (AFK-Mobfarm)", tone: METRIC_TONE.afkMobsSeconds, icon: "sword", group: "afk" },
-  afkblocks: { title: "Block-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke pro Minute abgebaut wurden (AFK-Blockfarm)", tone: METRIC_TONE.afkBlocksSeconds, icon: "pickaxe", group: "afk" },
+  tracked: { title: "Dauergäste", sub: "Online-Zeit laut Tracker, alle Spieler", tone: METRIC_TONE.tracked, icon: SPECIAL_ICON.tracked, group: "zeit" },
+  followers: { title: "Fanmagnet", sub: "Neue Twitch-Follower, während der Streamer auf dem Server war", tone: METRIC_TONE.followers, icon: SPECIAL_ICON.followers, group: "twitch" },
+  twitchSubs: { title: "Sub-Stars", sub: "Twitch-Abos auf dem Server seit Beginn der IRC-Erfassung", tone: METRIC_TONE.twitchSubs, icon: SPECIAL_ICON.twitchSubs, group: "twitch" },
+  twitchBits: { title: "Bit-Regen", sub: "Bits aus Cheers im eigenen Kanal, während der Streamer auf dem Server war", tone: METRIC_TONE.twitchBits, icon: SPECIAL_ICON.twitchBits, group: "twitch" },
+  afk: { title: "Standbilder", sub: "AFK-Zeit seit Tracker-Start laut Server: ab 5 Min ohne Bewegung", tone: METRIC_TONE.afkSeconds, icon: SPECIAL_ICON.afk, group: "afk" },
+  afkmobs: { title: "Mob-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Mobs pro Minute gestorben sind (AFK-Mobfarm)", tone: METRIC_TONE.afkMobsSeconds, icon: SPECIAL_ICON.afkmobs, group: "afk" },
+  afkblocks: { title: "Block-Farmer", sub: "AFK-Zeit, in der trotzdem ≥ 10 Blöcke pro Minute abgebaut wurden (AFK-Blockfarm)", tone: METRIC_TONE.afkBlocksSeconds, icon: SPECIAL_ICON.afkblocks, group: "afk" },
   ...(Object.fromEntries(
     EXTRA_STAT_KEYS.map((k) => [
       k,

@@ -1,135 +1,151 @@
-import type { SVGProps } from "react";
-import type { BoardKey, EventType } from "@/lib/types";
+import type { ComponentType, ReactNode, SVGProps } from "react";
+import {
+  Apple,
+  ArrowDownToDot,
+  ArrowDownToLine,
+  Axe,
+  Beef,
+  Bell,
+  BrickWall,
+  ChevronsUp,
+  CircleStop,
+  Clapperboard,
+  Clock,
+  Coins,
+  Crown,
+  Eye,
+  Factory,
+  Fish,
+  Flag,
+  Footprints,
+  Gem,
+  Ghost,
+  Gift,
+  Hammer,
+  HandGrab,
+  Handshake,
+  Heart,
+  HeartCrack,
+  Hourglass,
+  LogIn,
+  LogOut,
+  Medal,
+  MessageSquare,
+  MessageSquareOff,
+  MessagesSquare,
+  Milestone,
+  Moon,
+  Package,
+  PartyPopper,
+  PawPrint,
+  Pickaxe,
+  Power,
+  Send,
+  Server,
+  ServerOff,
+  ShieldCheck,
+  Skull,
+  Sparkles,
+  Star,
+  Sunrise,
+  Sword,
+  Tag,
+  Trophy,
+  Type,
+  UserPlus,
+  Users,
+  Video,
+  VideoOff,
+  WandSparkles,
+  Zap,
+  type LucideProps,
+} from "lucide-react";
+import type { IconName } from "@/lib/iconNames";
+
+export { BOARD_ICON, EVENT_ICON, SPECIAL_ICON, type IconName } from "@/lib/iconNames";
 
 type P = SVGProps<SVGSVGElement>;
 const base = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "square", strokeLinejoin: "miter" } as const;
 
-export const Icon = {
-  clock: (p: P) => (
-    <svg {...base} {...p}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7v5l3 3" />
-    </svg>
-  ),
-  diamond: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M3 9l4-5h10l4 5-9 11z" />
-      <path d="M3 9h18M9 4l3 16 3-16" />
-    </svg>
-  ),
-  skull: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M12 3a8 8 0 0 1 8 8v2l-2 2v3h-3v2H9v-2H6v-3l-2-2v-2a8 8 0 0 1 8-8z" />
-      <circle cx="9" cy="11" r="1.5" fill="currentColor" />
-      <circle cx="15" cy="11" r="1.5" fill="currentColor" />
-      <path d="M11 15h2" />
-    </svg>
-  ),
-  pickaxe: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M3 21l9-9" />
-      <path d="M9 6c3-2 7-2 10 1-1 3-1 7 1 10" />
-      <path d="M12 12l3-3" />
-    </svg>
-  ),
-  sword: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M4 20l3-3M7 17l10-10 3-1-1 3L9 19z" />
-      <path d="M5 15l4 4" />
-    </svg>
-  ),
-  boots: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M6 3h6v8l6 3v4H6z" />
-      <path d="M6 14h6" />
-    </svg>
-  ),
-  heart: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M20.8 8.7c0 4.5-8.8 11-8.8 11s-8.8-6.5-8.8-11A4.7 4.7 0 0 1 12 6.1a4.7 4.7 0 0 1 8.8 2.6Z" />
-    </svg>
-  ),
+/**
+ * Lucide-Icon (ISC-Lizenz, wird mitgebündelt, keine Anfrage an Dritte) im Strich der eigenen Zeichnungen:
+ * etwas kräftiger, eckige Enden.
+ */
+const lucide = (L: ComponentType<LucideProps>) =>
+  function LucideIcon(p: P) {
+    return <L strokeWidth={2.2} strokeLinecap="square" strokeLinejoin="miter" {...(p as LucideProps)} />;
+  };
+
+/** Alle Icons nach Namen (Zuordnung zu Kennzahlen und Ereignissen: lib/iconNames.ts) */
+export const Icon: Record<IconName, (p: P) => ReactNode> = {
+  login: lucide(LogIn),
+  logout: lucide(LogOut),
+  clock: lucide(Clock),
+  hourglass: lucide(Hourglass),
+  moon: lucide(Moon),
+  sunrise: lucide(Sunrise),
+  factory: lucide(Factory),
+  stop: lucide(CircleStop),
+  server: lucide(Server),
+  serverOff: lucide(ServerOff),
+  power: lucide(Power),
+  users: lucide(Users),
+  diamond: lucide(Gem),
+  skull: lucide(Skull),
+  pickaxe: lucide(Pickaxe),
+  sword: lucide(Sword),
+  boots: lucide(Footprints),
+  axe: lucide(Axe),
+  heart: lucide(Heart),
+  food: lucide(Apple),
+  bricks: lucide(BrickWall),
+  heartCrack: lucide(HeartCrack),
+  shield: lucide(ShieldCheck),
+  jump: lucide(ChevronsUp),
+  fall: lucide(ArrowDownToLine),
+  ghost: lucide(Ghost),
+  hammer: lucide(Hammer),
+  hand: lucide(HandGrab),
+  drop: lucide(ArrowDownToDot),
+  wand: lucide(WandSparkles),
+  chest: lucide(Package),
+  handshake: lucide(Handshake),
+  beef: lucide(Beef),
+  paw: lucide(PawPrint),
+  fish: lucide(Fish),
+  bell: lucide(Bell),
+  video: lucide(Video),
+  videoOff: lucide(VideoOff),
+  title: lucide(Type),
+  star: lucide(Star),
+  gift: lucide(Gift),
+  bits: lucide(Sparkles),
+  coin: lucide(Coins),
+  clapper: lucide(Clapperboard),
+  userPlus: lucide(UserPlus),
+  raid: lucide(Send),
+  chat: lucide(MessageSquare),
+  chats: lucide(MessagesSquare),
+  chatOff: lucide(MessageSquareOff),
+  eye: lucide(Eye),
+  trophy: lucide(Trophy),
+  party: lucide(PartyPopper),
+  medal: lucide(Medal),
+  milestone: lucide(Milestone),
+  crown: lucide(Crown),
+  flag: lucide(Flag),
+  bolt: lucide(Zap),
+  tag: lucide(Tag),
+  // Eigene Zeichnungen: Totem (gibt es bei Lucide nicht) und Markenlogos
   totem: (p: P) => (
     <svg {...base} {...p}>
       <path d="M8 3h8v4l2 2v10l-6 2-6-2V9l2-2z" />
       <path d="M8 9h8M9 12h1m4 0h1M10 16h4" />
     </svg>
   ),
-  food: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M12 8c-3-4-8-1-8 4 0 5 4 9 8 9s8-4 8-9c0-5-5-8-8-4Z" />
-      <path d="M12 8c0-3 2-5 5-5M12 8c-2-2-4-2-6-1" />
-    </svg>
-  ),
-  login: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M10 17l5-5-5-5M15 12H3" />
-      <path d="M13 4h6v16h-6" />
-    </svg>
-  ),
-  logout: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M17 17l5-5-5-5M22 12H10" />
-      <path d="M11 4H5v16h6" />
-    </svg>
-  ),
   twitch: (p: P) => (
     <svg viewBox="0 0 24 24" fill="currentColor" {...p}>
       <path d="M4 2 2 6v14h5v3h3l3-3h4l5-5V2H4zm16 12-3 3h-5l-3 3v-3H6V4h14v10zM14 7h2v5h-2V7zm-5 0h2v5H9V7z" />
-    </svg>
-  ),
-  tag: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M3 3h9l9 9-9 9-9-9z" />
-      <circle cx="8" cy="8" r="1.5" fill="currentColor" />
-    </svg>
-  ),
-  gift: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M3 10h18v11H3zM2 6h20v4H2zM12 6v15" />
-      <path d="M12 6H8.5a2.5 2.5 0 1 1 2.5-2.5V6zm0 0h3.5a2.5 2.5 0 1 0-2.5-2.5V6z" />
-    </svg>
-  ),
-  chat: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M4 5h16v11H10l-4 4v-4H4z" />
-      <path d="M8 9h8M8 12h5" />
-    </svg>
-  ),
-  bits: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M12 3 5 13l7 8 7-8z" />
-      <path d="M5 13h14M12 3v18" />
-    </svg>
-  ),
-  coin: (p: P) => (
-    <svg {...base} {...p}>
-      <circle cx="12" cy="12" r="8" />
-      <path d="M15 8.5a4 4 0 1 0 0 7M7.5 11h5M7.5 13.5h5" />
-    </svg>
-  ),
-  raid: (p: P) => (
-    <svg {...base} {...p}>
-      <circle cx="7" cy="8" r="3" />
-      <path d="M2 20c0-3 2-5 5-5s5 2 5 5M13 8h8m-3-3 3 3-3 3" />
-    </svg>
-  ),
-  server: (p: P) => (
-    <svg {...base} {...p}>
-      <rect x="3" y="4" width="18" height="6" />
-      <rect x="3" y="14" width="18" height="6" />
-      <path d="M7 7h.01M7 17h.01" />
-    </svg>
-  ),
-  eye: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  ),
-  bolt: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M13 2 4 14h7l-1 8 9-12h-7z" />
     </svg>
   ),
   discord: (p: P) => (
@@ -142,84 +158,4 @@ export const Icon = {
       <path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.8c-2.8.6-3.4-1.2-3.4-1.2-.4-1.1-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.2-.2-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .9-.3 2.8 1a9.5 9.5 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.4 4.8-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z" />
     </svg>
   ),
-  trophy: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M7 3h10v5a5 5 0 0 1-10 0z" />
-      <path d="M7 5H3v2a4 4 0 0 0 4 4M17 5h4v2a4 4 0 0 1-4 4" />
-      <path d="M12 13v4M8 21h8M9 17h6v4H9z" />
-    </svg>
-  ),
-  flag: (p: P) => (
-    <svg {...base} {...p}>
-      <path d="M5 21V4h12l-2 4 2 4H5" />
-    </svg>
-  ),
-  users: (p: P) => (
-    <svg {...base} {...p}>
-      <circle cx="9" cy="8" r="3.5" />
-      <path d="M2 20c0-4 3-6 7-6s7 2 7 6" />
-      <path d="M16 4a3.5 3.5 0 0 1 0 7M18 14c3 .5 4 2.5 4 6" />
-    </svg>
-  ),
-};
-
-export const BOARD_ICON: Record<BoardKey, keyof typeof Icon> = {
-  playtimeSeconds: "clock",
-  diamonds: "diamond",
-  deaths: "skull",
-  blocksBroken: "pickaxe",
-  mobsKilled: "sword",
-  distance: "boots",
-  damageDealt: "heart",
-  totemsUsed: "totem",
-  foodEaten: "food",
-};
-
-export const EVENT_ICON: Record<EventType, keyof typeof Icon> = {
-  join: "login",
-  leave: "logout",
-  afk_start: "clock",
-  afk_mobs_start: "sword",
-  afk_mobs_end: "sword",
-  afk_blocks_start: "pickaxe",
-  afk_blocks_end: "pickaxe",
-  afk_end: "boots",
-  death: "skull",
-  achievement: "trophy",
-  diamonds: "diamond",
-  blocksBroken: "pickaxe",
-  mobsKilled: "sword",
-  distance: "boots",
-  damageDealt: "heart",
-  totemsUsed: "totem",
-  foodEaten: "food",
-  stream_start: "twitch",
-  stream_end: "twitch",
-  stream_title: "tag",
-  subscription: "gift",
-  subscription_gift: "gift",
-  cheer: "bits",
-  blocksPlaced: "pickaxe",
-  damageTaken: "heart",
-  raidsWon: "trophy",
-  itemsCrafted: "bolt",
-  itemsEnchanted: "bolt",
-  tradedWithVillagers: "users",
-  animalsKilled: "sword",
-  animalsBred: "heart",
-  fishCaught: "food",
-  bellsRung: "flag",
-  clip: "eye",
-  follower_burst: "users",
-  raid: "raid",
-  chat: "chat",
-  shared_chat_start: "users",
-  shared_chat_end: "users",
-  server_online: "server",
-  server_offline: "server",
-  tracker_start: "bolt",
-  first_join: "users",
-  rank: "trophy",
-  milestone: "flag",
-  record: "bolt",
 };

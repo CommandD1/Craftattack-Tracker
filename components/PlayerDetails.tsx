@@ -13,9 +13,9 @@ const GROUP_ICON: Record<string, keyof typeof Icon> = {
   abbau: "pickaxe",
   kampf: "sword",
   bewegung: "boots",
-  items: "bolt",
-  tiere: "heart",
-  afk: "clock",
+  items: "chest",
+  tiere: "paw",
+  afk: "moon",
 };
 
 export interface ListPlace {
