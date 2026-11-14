@@ -1,6 +1,6 @@
 import "server-only";
 import { getDb } from "./db";
-import { assignEventPlayer, backfillChatEvents, deleteBackfilledEvents, deleteEvents, ensureLoaded, loadAllSessions, getState, insertPastEvents, type StoredSession } from "./store";
+import { assignEventPlayer, backfillChatEvents, deleteBackfilledEvents, deleteEvents, ensureLoaded, loadAllSessions, getState, insertPastEvents, setEventTypes, type StoredSession } from "./store";
 import { loadAfkSpans } from "./analytics";
 import { AFK_MS, UNKNOWN_DEATH_GRACE_MS } from "./tracker";
 import { trackedSecondsOf } from "./playtime";
@@ -67,9 +67,10 @@ const overlaps = (phases: Map<string, [number, number][]>, player: string, a: nu
  * 1 = Zähler ohne ext und Spielzeit korrigiert, 2 = AFK-Farm-Ereignisse nach Minuten-Rate neu bewertet,
  * 3 = alle AFK-Ereignisse mit der aktuellen AFK-Schwelle aus dem Verlauf neu aufgebaut,
  * 4 = doppelte Meilensteine und Stream-Flackern (vorschnelles Ende + erneuter Start) entfernt (lib/eventDedupe.ts),
- * 5 = Rekord-Ereignisse aus dem Verlauf neu aufgebaut (nach Datenbank-Wechseln fingen die Rekorde wieder bei 0 an)
+ * 5 = Rekord-Ereignisse aus dem Verlauf neu aufgebaut (nach Datenbank-Wechseln fingen die Rekorde wieder bei 0 an),
+ * 6 = „Neu“ (first_join) je Spieler höchstens einmal, beim ersten Auftauchen (Datenbank-Wechsel hatten Doppelte erzeugt)
  */
-const HISTORY_FIX_LEVEL = 5;
+const HISTORY_FIX_LEVEL = 6;
 
 /** Alle Nachträge beim Prozessstart, in der richtigen Reihenfolge. */
 export async function runBackfills(): Promise<void> {
@@ -191,6 +192,10 @@ async function fixHistoryOnce(): Promise<void> {
   if (level < 5) {
     const { removed, added } = await rebuildRecordEvents();
     console.log(`[tracker] Rekorde aus dem Verlauf neu aufgebaut: ${removed} alte Rekord-Ereignisse entfernt, ${added} eingetragen`);
+  }
+  if (level < 6) {
+    const { toJoin, toFirst } = await fixFirstJoins();
+    console.log(`[tracker] „Neu“ vereinheitlicht: ${toJoin} zu Join, ${toFirst} zu „Neu“`);
   }
   await db.query(`UPDATE tracker_meta SET history_fix = $1 WHERE id = 1`, [HISTORY_FIX_LEVEL]);
 }
@@ -439,4 +444,29 @@ async function seedRecordsFromHistory(): Promise<void> {
   for (const r of top.rows) fromHistory[r.key] = { value: r.value, at: r.at.toISOString() };
   const state = await getState();
   state.records = maxRecords(state.records, fromHistory);
+}
+
+/**
+ * „Neu“ ist der erste Join eines Spielers (first_join statt join, die Sitzung beginnt dort trotzdem). Nach den
+ * Datenbank-Wechseln kannte der Tracker die Spieler nicht mehr und vergab „Neu“ bis zu dreimal. Richtig ist: genau
+ * der früheste Join – außer der Spieler war schon beim ersten Messpunkt online (dann gibt es kein „Neu“). Alle
+ * anderen first_join werden wieder zu join; nichts wird gelöscht, die Sitzungen bleiben unverändert.
+ */
+async function fixFirstJoins(): Promise<{ toJoin: number; toFirst: number }> {
+  await ensureLoaded();
+  const db = await getDb();
+  const rows = await db.query<{ id: string; first: boolean }>(
+    `WITH t0 AS (SELECT min(at) AS t0 FROM player_history),
+          h AS (SELECT player, min(at) AS online FROM player_history WHERE online GROUP BY player),
+          j AS (SELECT DISTINCT ON (player) player, id AS first_id, at AS first_at
+                  FROM events WHERE type IN ('join', 'first_join') AND player IS NOT NULL ORDER BY player, at, id),
+          want AS (SELECT j.player, j.first_id, least(coalesce(h.online, j.first_at), j.first_at) > t0.t0 + interval '2 minutes' AS neu
+                     FROM j LEFT JOIN h USING (player), t0)
+     SELECT e.id, (e.id = w.first_id AND w.neu) AS first
+       FROM events e JOIN want w ON w.player = e.player
+      WHERE e.type IN ('join', 'first_join') AND (e.type = 'first_join') <> (e.id = w.first_id AND w.neu)`,
+  );
+  const changes = rows.rows.map((r) => ({ id: r.id, type: (r.first ? "first_join" : "join") as EventType }));
+  await setEventTypes(changes);
+  return { toJoin: changes.filter((c) => c.type === "join").length, toFirst: changes.filter((c) => c.type === "first_join").length };
 }

@@ -9,7 +9,7 @@ import { getEarningsSeries, getPlayerSubs, getSubsSeries, getSubsTotals } from "
 import { runsTracker } from "./mode";
 import { ESTIMATE } from "./estimateMode";
 import { EXTRA_HISTORY_KEYS, EXTRA_KEY_OF_METRIC, EXTRA_METRICS, extraStatSql, type ExtraMetric } from "./playerStats";
-import type { BoardKey, DeathFeedItem, FeedItem, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind, AfkCheck } from "./types";
+import type { BoardKey, DeathFeedItem, EventType, FeedItem, PlayerPoint, PlayerState, TotalsPoint, TrackerEvent, TrackerRecords, TrackerState, AfkKind, AfkCheck } from "./types";
 
 const MAX_EVENTS_IN_MEMORY = 20000;
 /**
@@ -1305,6 +1305,24 @@ export async function deleteEvents(types: string[], keep: string[] = []): Promis
     if (store.state) store.state.eventCount = Math.max(0, store.state.eventCount - ids.length);
   }
   return ids.length;
+}
+
+/** Ändert die Art einzelner Ereignisse in DB und Speicher (z. B. „Neu“ ↔ Join, siehe lib/backfill.ts). */
+export async function setEventTypes(changes: { id: string; type: EventType }[]): Promise<number> {
+  if (changes.length === 0) return 0;
+  await ensureLoaded();
+  const store = g();
+  const db = await getDb();
+  const done = await db.query<{ id: string }>(
+    `UPDATE events e SET type = c.type FROM unnest($1::text[], $2::text[]) AS c(id, type) WHERE e.id = c.id RETURNING e.id`,
+    [changes.map((c) => c.id), changes.map((c) => c.type)],
+  );
+  const typeOf = new Map(changes.map((c) => [c.id, c.type]));
+  for (const e of store.events) {
+    const t = typeOf.get(e.id);
+    if (t) e.type = t;
+  }
+  return done.rows.length;
 }
 
 /** Entfernt einzelne Ereignisse (z. B. Doppelte, siehe lib/eventDedupe.ts) aus DB und Speicher. */
