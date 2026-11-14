@@ -307,6 +307,8 @@ function subtractRanges(span: Span, cut: [number, number][]): Span[] {
 const SOURCE_AFK_SLACK_MS = 45_000;
 /** Der Server rechnet beim AFK-Beginn die 5 Min Stillstand rückwirkend dazu: so weit darf ein Zuwachs vor das Intervall reichen */
 const SOURCE_AFK_RETRO_MS = 10 * 60_000;
+/** Kürzere Abstände ohne Zuwachs sagen nichts (Zähler in Schritten, Antworten teils kurz zwischengespeichert) */
+const SOURCE_AFK_MIN_STALL_MS = 90_000;
 
 /**
  * AFK laut Quelle: Der Server zählt `afkSeconds` (/api/player) hoch, solange ein Spieler AFK ist, und hält dafür die
@@ -314,6 +316,10 @@ const SOURCE_AFK_RETRO_MS = 10 * 60_000;
  * (der Zähler springt um ~300 s). Zwischen zwei Verlaufspunkten mit Zählerstand ist der Zuwachs also die AFK-Zeit bis
  * zum späteren Punkt; ein voller Zuwachs reicht dabei so weit zurück, wie er groß ist. Ein Teil-Zuwachs liegt am Rand
  * zum benachbarten AFK-Intervall (Phase endet) bzw. am Intervallende (Phase beginnt). `covered` sind die Zeiträume, für die die Quelle eine Aussage macht – dort gilt nur sie.
+ *
+ * Der Zähler läuft mit dem Server-Takt und steigt bei Lag langsamer als die Uhr (nachts gemessen bis auf 44 %). Eine
+ * laufende Phase endet deshalb erst, wenn er ganz stehen bleibt (oder der Spieler geht); war der letzte Zuwachs zu
+ * kurz, endet sie an dessen Ende (`soft`).
  */
 function sourceAfkFromRows(rows: AfkRow[], now: number, state: TrackerState): Map<string, { spans: Span[]; covered: [number, number][] }> {
   const out = new Map<string, { spans: Span[]; covered: [number, number][] }>();
@@ -321,7 +327,13 @@ function sourceAfkFromRows(rows: AfkRow[], now: number, state: TrackerState): Ma
   while (i < rows.length) {
     const id = rows[i].player;
     const covered: [number, number][] = [];
-    const afk: { a: number; b: number; byLeave: boolean }[] = [];
+    const afk: { a: number; b: number; byLeave: boolean; soft?: number }[] = [];
+    /** Offene Phase abschließen: endete sie mit einem zu kurzen Zuwachs, an dessen Ende */
+    const settle = () => {
+      const run = afk[afk.length - 1];
+      if (run?.soft !== undefined) run.b = run.soft;
+      if (run) run.soft = undefined;
+    };
     const pts: CounterPoint[] = [];
     // Letzter Punkt mit Zählerstand seit ununterbrochener Online-Zeit
     let prev = null as { t: number; v: number } | null;
@@ -331,13 +343,21 @@ function sourceAfkFromRows(rows: AfkRow[], now: number, state: TrackerState): Ma
         const dt = t - prev.t;
         const gain = Math.min(dt + SOURCE_AFK_RETRO_MS, Math.max(0, (v - prev.v) * 1000));
         covered.push([prev.t, t]);
-        if (gain > 0) {
-          const run = afk[afk.length - 1];
-          const touches = run && run.b >= prev.t;
-          // Ganzes Intervall, sonst am Rand zur laufenden Phase (sie endet hier) bzw. am Ende (Phase beginnt)
-          const [a, b] = gain >= dt - SOURCE_AFK_SLACK_MS ? [Math.min(prev.t, t - gain), t] : touches ? [prev.t, prev.t + gain] : [t - gain, t];
-          if (run && a <= run.b) run.b = Math.max(run.b, b);
-          else afk.push({ a, b, byLeave: false });
+        // Zu kurz für eine Aussage: den älteren Stand behalten (die Zeit gilt trotzdem als von der Quelle belegt)
+        if (gain === 0 && dt < SOURCE_AFK_MIN_STALL_MS) return;
+        const run = afk[afk.length - 1];
+        const touches = run !== undefined && run.b >= prev.t;
+        const full = gain >= dt - SOURCE_AFK_SLACK_MS;
+        if (gain === 0) settle();
+        else if (touches) {
+          // Laufende Phase: der Zähler steigt noch, also weiter AFK; ein kurzer Zuwachs ist ein mögliches Ende
+          run.b = Math.max(run.b, t);
+          run.soft = full ? undefined : prev.t + gain;
+        } else {
+          // Neue Phase: ganzes Intervall (samt rückwirkend gebuchtem Stillstand) oder am Intervallende
+          const a = full ? Math.min(prev.t, t - gain) : t - gain;
+          if (run && a <= run.b) run.b = Math.max(run.b, t);
+          else afk.push({ a, b: t, byLeave: false });
         }
       }
       prev = { t, v };
@@ -345,11 +365,18 @@ function sourceAfkFromRows(rows: AfkRow[], now: number, state: TrackerState): Ma
     for (; i < rows.length && rows[i].player === id; i++) {
       const r = rows[i];
       const t = new Date(r.at).getTime();
-      if (t - lastAt > AFK_GAP_MS) prev = null;
+      if (t - lastAt > AFK_GAP_MS) {
+        if (prev) settle();
+        prev = null;
+      }
       lastAt = t;
       if (!r.online) {
         const run = afk[afk.length - 1];
-        if (prev && run && run.b >= prev.t) run.byLeave = true;
+        if (prev && run && run.b >= prev.t) {
+          // Bis zum Verlassen AFK (der Zähler steht danach ohnehin)
+          run.byLeave = true;
+          run.soft = undefined;
+        }
         prev = null;
         continue;
       }
@@ -363,11 +390,16 @@ function sourceAfkFromRows(rows: AfkRow[], now: number, state: TrackerState): Ma
     if (typeof live === "number" && fetched - lastAt <= AFK_GAP_MS) {
       step(fetched, live);
       const run = afk[afk.length - 1];
-      if (run && run.b >= fetched - SOURCE_AFK_SLACK_MS && now - fetched <= 3 * POLL_INTERVAL_MS) {
+      // Letzter Punkt mit Aussage (ein kurzer Abstand ohne Zuwachs zählt nicht)
+      const last = prev?.t ?? fetched;
+      // Der Zählerstand kommt nur alle paar Minuten (Einzelabfrage je Spieler): so alt darf er sein
+      if (run && run.b >= last - SOURCE_AFK_SLACK_MS && now - fetched <= AFK_GAP_MS) {
         run.b = now;
-        covered.push([fetched, now]);
+        covered.push([last, now]);
       }
     }
+    // Ohne laufende Sitzung keine weitere Aussage mehr: ein offener kurzer Zuwachs ist das Ende
+    if (typeof live !== "number") settle();
     if (covered.length === 0) continue;
     const spans: Span[] = [];
     for (const run of afk) {
@@ -388,6 +420,17 @@ function sourceAfkFromRows(rows: AfkRow[], now: number, state: TrackerState): Ma
  * gilt die eigene Erkennung (`ownAfkFromRows`). Ausnahme: stillstehend farmen (eigene Erkennung mit Farm-Art) zählt
  * immer, denn die Quelle wertet Blöcke abbauen als Aktivität (bei ≥ 10 Blöcken pro Minute 0 % AFK laut Server).
  */
+/** Einfache AFK-Stücke (ohne Farm), die aneinanderstoßen, zu einem zusammenfassen (z. B. Quelle bis zum letzten Zählerstand, danach eigene Erkennung) */
+function joinPlain(list: Span[]): Span[] {
+  const out: Span[] = [];
+  for (const s of list) {
+    const last = out[out.length - 1];
+    if (last && last.length === 2 && s.length === 2 && s[0] <= last[1] + 5_000) last[1] = Math.max(last[1], s[1]);
+    else out.push(s);
+  }
+  return out;
+}
+
 function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, state: TrackerState): Map<string, Span[]> {
   const own = ownAfkFromRows(rows, from, to, now, state);
   const source = sourceAfkFromRows(rows, now, state);
@@ -403,7 +446,7 @@ function afkFromRows(rows: AfkRow[], from: number, to: number, now: number, stat
       if (b > a) list.push(...subtractRanges([a, b, ...s.slice(2)] as Span, farms));
     }
     for (const s of ownList) list.push(...(s[2] || !src ? [s] : subtractRanges(s, src.covered)));
-    if (list.length) out.set(id, list.sort((x, y) => x[0] - y[0]));
+    if (list.length) out.set(id, joinPlain(list.sort((x, y) => x[0] - y[0])));
   }
   return out;
 }

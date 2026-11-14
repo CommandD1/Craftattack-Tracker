@@ -15,8 +15,9 @@ const AFK_TYPES: EventType[] = ["afk_start", "afk_end", ...FARM_TYPES];
 /**
  * Bei Änderungen der AFK-Erkennung erhöhen, damit bestehende Ereignisse aus dem Verlauf neu aufgebaut werden.
  * 2 = AFK-Zähler des Servers, stillstehend farmen zählt als AFK-Farm, Farm-Fenster 3 Min, keine doppelten Phasen
+ * 3 = laufende Phase endet erst, wenn der Zähler stehen bleibt (langsamer Zähler bei Server-Lag)
  */
-const AFK_HISTORY_VERSION = 2;
+const AFK_HISTORY_VERSION = 3;
 
 /**
  * Bestehende Phasen je Spieler aus Start-/Ende-Ereignissen: Ende mit `meta.since` ergibt [since, Ende], ein Start

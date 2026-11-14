@@ -916,16 +916,24 @@ function diffBoards(ctx: DiffContext, ext: Map<string, ExtPlayer>) {
   }
 }
 
-/** Letzter AFK-Zählerstand der Quelle je Spieler (ms, Sekunden), Grundlage für `sourceAfkVerdict` */
-const sourceAfkPrev = new Map<string, { at: number; v: number }>();
+/**
+ * Letzter AFK-Zählerstand der Quelle je Spieler (ms, Sekunden), Grundlage für `sourceAfkVerdict`. `softEnd`: Ende
+ * einer laufenden Phase, falls der letzte Zuwachs zu kurz war und der Zähler danach ganz stehen bleibt.
+ */
+const sourceAfkPrev = new Map<string, { at: number; v: number; softEnd?: number }>();
 /** Zuwachs knapp unter der Intervalllänge zählt als ganz AFK (Zähler der Quelle in 30-s-Schritten) */
 const SOURCE_AFK_SLACK_MS = 45_000;
+/** Kürzere Abstände ohne Zuwachs sagen nichts (Zähler in Schritten, Antworten teils kurz zwischengespeichert) */
+const SOURCE_AFK_MIN_STALL_MS = 90_000;
 
 type AfkVerdict = { afk: true; since: number } | { afk: false; endAt: number };
 
 /**
  * AFK laut Quelle: Der Server zählt `afkSeconds` hoch, solange ein Spieler AFK ist. Steigt der Zähler seit der
- * vorigen Abfrage, ist der Spieler AFK, und zwar seit (jetzt − Zuwachs); stockt er, endete die Phase nach dem Zuwachs.
+ * vorigen Abfrage, ist der Spieler AFK, und zwar seit (jetzt − Zuwachs); stockt er, endete die Phase.
+ * Der Zähler läuft mit dem Server-Takt: Laggt der Server (nachts gemessen bis auf 44 % der Echtzeit), steigt er
+ * langsamer als die Uhr. Eine laufende Phase endet deshalb erst, wenn er ganz stehen bleibt – am Ende des letzten
+ * Zuwachses, falls der zu kurz war (dann bewegte sich der Spieler mitten im Intervall).
  * `undefined` = die Quelle kennt den Zähler nicht (eigene Erkennung), `null` = in dieser Abfrage keine Aussage.
  */
 function sourceAfkVerdict(ps: PlayerState, t: number): AfkVerdict | null | undefined {
@@ -933,14 +941,23 @@ function sourceAfkVerdict(ps: PlayerState, t: number): AfkVerdict | null | undef
   if (typeof v !== "number") return undefined;
   if (!freshDetail.has(ps.id)) return null;
   const prev = sourceAfkPrev.get(ps.id);
-  sourceAfkPrev.set(ps.id, { at: t, v });
-  if (!prev || t - prev.at > 15 * 60_000 || t <= prev.at) return null;
+  if (!prev || t - prev.at > 15 * 60_000 || t <= prev.at) {
+    sourceAfkPrev.set(ps.id, { at: t, v });
+    return null;
+  }
   const dt = t - prev.at;
   // Beim AFK-Beginn bucht der Server die 5 Min Stillstand rückwirkend um: der Zuwachs darf größer als dt sein
   const gain = Math.min(dt + 10 * 60_000, Math.max(0, (v - prev.v) * 1000));
-  if (gain === 0) return { afk: false, endAt: prev.at };
+  if (gain === 0) {
+    // Zu kurz für eine Aussage: den älteren Stand behalten, damit das nächste Intervall lang genug ist
+    if (dt < SOURCE_AFK_MIN_STALL_MS) return null;
+    sourceAfkPrev.set(ps.id, { at: t, v });
+    return { afk: false, endAt: prev.softEnd ?? prev.at };
+  }
+  const short = gain < dt - SOURCE_AFK_SLACK_MS;
+  sourceAfkPrev.set(ps.id, { at: t, v, ...(short ? { softEnd: prev.at + gain } : {}) });
   if (!ps.afkSince) return { afk: true, since: t - gain };
-  return gain >= dt - SOURCE_AFK_SLACK_MS ? { afk: true, since: Date.parse(ps.afkSince) } : { afk: false, endAt: prev.at + gain };
+  return { afk: true, since: Date.parse(ps.afkSince) };
 }
 
 /** Eigene Erkennung (ohne AFK-Zähler der Quelle): online, aber seit AFK_MS keine Aktivität. */
