@@ -2,6 +2,7 @@ import "server-only";
 import { COUNTER_EVENT_MIN } from "./events";
 import { flushStreamFlickers, loadReachedMilestones, milestoneSeen, noteStreamEnd, streamFlicker } from "./eventDedupe";
 import { createHash } from "node:crypto";
+import { getDb } from "./db";
 import { appendEvents, appendFeedItems, deathFeedMeta, enrichDeathEvents, getState, recordPlayerPoints, recordTopSnapshots, saveState } from "./store";
 import { fetchFollowerCounts, fetchLiveStreams, TWITCH_ENABLED, type TwitchFollowerChannel, type TwitchStream } from "./twitch";
 import { fetchCraftAttack, getCraftAttackPauseMs, maxCraftAttackTimerDelay, USER_AGENT } from "./craftattackFetch";
@@ -481,6 +482,17 @@ export const KNOWN_LOGINS: Record<string, string> = {
 };
 
 const newPlayers = new Set<string>();
+/**
+ * Spieler, die schon einmal gejoint sind (laut Ereignissen). Fehlt ein Spieler nur in der Spielerliste – etwa nach
+ * einem Datenbank-Wechsel –, ist er trotzdem nicht neu. Einmal vor dem ersten Vergleich geladen.
+ */
+let knownPlayers: Set<string> | null = null;
+async function loadKnownPlayers(): Promise<void> {
+  if (knownPlayers) return;
+  const db = await getDb();
+  const rows = await db.query<{ player: string }>(`SELECT DISTINCT player FROM events WHERE type IN ('join', 'first_join') AND player IS NOT NULL`);
+  knownPlayers = new Set(rows.rows.map((r) => r.player));
+}
 
 function ensurePlayer(
   state: TrackerState,
@@ -528,7 +540,7 @@ function ensurePlayer(
       detail: null,
     };
     state.players[p.id] = ps;
-    newPlayers.add(p.id);
+    if (!knownPlayers?.has(p.id)) newPlayers.add(p.id);
   }
   ps.name = p.name || ps.name;
   ps.uuid = p.uuid || ps.uuid;
@@ -1290,6 +1302,7 @@ export async function pollOnce(): Promise<{ ok: boolean; events: number; error?:
       const first = state.latest === null;
       // Bereits erreichte Meilensteine (einmal je Prozess), damit keiner doppelt entsteht (lib/eventDedupe.ts)
       await loadReachedMilestones().catch((err: unknown) => console.warn("[tracker] Meilensteine nicht geladen:", err instanceof Error ? err.message : err));
+      await loadKnownPlayers();
       const events = diffSnapshot(state, stats, feed, now, ext.players, twitch, ext.loginOf, ext.missing, followers);
       snapshotApplied = true;
       // Geteilter Chat (Stream Together): mit Twitch-API je Session abfragen, sonst aus Chat erschlossene beenden.
