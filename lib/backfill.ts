@@ -5,6 +5,7 @@ import { loadAfkSpans } from "./analytics";
 import { AFK_MS, UNKNOWN_DEATH_GRACE_MS } from "./tracker";
 import { trackedSecondsOf } from "./playtime";
 import { removeDuplicateHistory } from "./eventDedupe";
+import { maxRecords, recordsFromHistory, type HistoryRecordRow } from "./records";
 import type { EventType, TrackerEvent } from "./types";
 
 /** Eine Phase, die bis kurz vor „jetzt“ reicht und deren Spieler online ist, läuft noch – die übernimmt der Live-Tracker. */
@@ -65,13 +66,15 @@ const overlaps = (phases: Map<string, [number, number][]>, player: string, a: nu
  * Aktuelle Stufe der einmaligen Verlaufs-Korrekturen (tracker_meta.history_fix):
  * 1 = Zähler ohne ext und Spielzeit korrigiert, 2 = AFK-Farm-Ereignisse nach Minuten-Rate neu bewertet,
  * 3 = alle AFK-Ereignisse mit der aktuellen AFK-Schwelle aus dem Verlauf neu aufgebaut,
- * 4 = doppelte Meilensteine und Stream-Flackern (vorschnelles Ende + erneuter Start) entfernt (lib/eventDedupe.ts)
+ * 4 = doppelte Meilensteine und Stream-Flackern (vorschnelles Ende + erneuter Start) entfernt (lib/eventDedupe.ts),
+ * 5 = Rekord-Ereignisse aus dem Verlauf neu aufgebaut (nach Datenbank-Wechseln fingen die Rekorde wieder bei 0 an)
  */
-const HISTORY_FIX_LEVEL = 4;
+const HISTORY_FIX_LEVEL = 5;
 
 /** Alle Nachträge beim Prozessstart, in der richtigen Reihenfolge. */
 export async function runBackfills(): Promise<void> {
   await fixHistoryOnce();
+  await seedRecordsFromHistory();
   await rebuildAfkEventsIfNeeded();
   const afk = await backfillAfkEvents();
   if (afk > 0) console.log(`[tracker] ${afk} AFK-Ereignisse rückwirkend neu aufgebaut`);
@@ -184,6 +187,10 @@ async function fixHistoryOnce(): Promise<void> {
   if (level < 4) {
     const gone = await removeDuplicateHistory();
     console.log(`[tracker] Doppelte entfernt: ${gone.milestones} Meilensteine, ${gone.streams} Stream-Start/-Ende (Flackern)`);
+  }
+  if (level < 5) {
+    const { removed, added } = await rebuildRecordEvents();
+    console.log(`[tracker] Rekorde aus dem Verlauf neu aufgebaut: ${removed} alte Rekord-Ereignisse entfernt, ${added} eingetragen`);
   }
   await db.query(`UPDATE tracker_meta SET history_fix = $1 WHERE id = 1`, [HISTORY_FIX_LEVEL]);
 }
@@ -390,4 +397,46 @@ async function backfillAfkEvents(): Promise<number> {
     flush();
   }
   return insertPastEvents(events);
+}
+
+/** Server-Verlauf in Zeitreihenfolge, nur die Spalten für Rekorde (≈ 60 000 kleine Zeilen) */
+async function historyRecordRows(): Promise<HistoryRecordRow[]> {
+  const db = await getDb();
+  const rows = await db.query<{ at: Date; online_count: number; live_count: number; viewers: number }>(
+    `SELECT at, online_count, live_count, viewers FROM history ORDER BY at`,
+  );
+  return rows.rows.map((r) => ({ at: r.at.toISOString(), onlineCount: r.online_count, liveCount: r.live_count, viewers: r.viewers }));
+}
+
+/**
+ * Alle Rekord-Ereignisse verwerfen und aus dem Verlauf mit der Live-Regel (lib/records.ts) neu eintragen. Nach den
+ * Datenbank-Wechseln fing der Tracker die Rekorde mehrmals bei 0 an und meldete Werte weit unter dem Saisonhoch.
+ */
+async function rebuildRecordEvents(): Promise<{ removed: number; added: number }> {
+  await ensureLoaded();
+  const { events, records } = recordsFromHistory(await historyRecordRows());
+  const removed = await deleteEvents(["record"]);
+  const added = await insertPastEvents(events);
+  const state = await getState();
+  state.records = maxRecords(state.records, records);
+  return { removed, added };
+}
+
+/**
+ * Bei jedem Start: Rekordstände mindestens auf die Höchstwerte des Verlaufs heben. Ohne das meldet ein Tracker mit
+ * frischer (oder neu befüllter) Datenbank jeden kleinen Anstieg als Rekord.
+ */
+async function seedRecordsFromHistory(): Promise<void> {
+  await ensureLoaded();
+  const db = await getDb();
+  const top = await db.query<{ key: "peakOnline" | "peakLive" | "peakViewers"; value: number; at: Date }>(
+    `(SELECT 'peakOnline' AS key, online_count AS value, at FROM history ORDER BY online_count DESC, at LIMIT 1)
+     UNION ALL (SELECT 'peakLive', live_count, at FROM history ORDER BY live_count DESC, at LIMIT 1)
+     UNION ALL (SELECT 'peakViewers', viewers, at FROM history ORDER BY viewers DESC, at LIMIT 1)`,
+  );
+  if (top.rows.length === 0) return;
+  const fromHistory = { peakOnline: null, peakLive: null, peakViewers: null } as ReturnType<typeof recordsFromHistory>["records"];
+  for (const r of top.rows) fromHistory[r.key] = { value: r.value, at: r.at.toISOString() };
+  const state = await getState();
+  state.records = maxRecords(state.records, fromHistory);
 }

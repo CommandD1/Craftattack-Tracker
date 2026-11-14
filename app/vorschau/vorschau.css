@@ -208,29 +208,6 @@
   fill: var(--ink);
 }
 
-/* Ausführlicher Hover-Text der Kacheln (EventFeed richTips): ganzer Satz, Chat-Nachricht vollständig */
-.tile[data-full]:hover::after,
-.tile[data-full]:focus-within::after {
-  content: attr(data-full);
-  position: absolute;
-  left: 0;
-  top: calc(100% + 6px);
-  z-index: 20;
-  width: max-content;
-  max-width: min(420px, 80vw);
-  padding: 8px 10px;
-  background: var(--ink);
-  color: var(--paper);
-  font-family: var(--font-body, inherit);
-  font-size: 0.875rem;
-  font-weight: 500;
-  line-height: 1.4;
-  white-space: pre-line;
-  overflow-wrap: anywhere;
-  box-shadow: var(--outline);
-  pointer-events: none;
-}
-
 /* Zwei Spieler: wer gibt, wer bekommt */
 .vs-pair {
   display: flex;

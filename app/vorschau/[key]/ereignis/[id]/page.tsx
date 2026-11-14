@@ -537,13 +537,13 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
                 <p className="muted" style={{ marginBottom: 8 }}>
                   Die letzten Ereignisse vor diesem, neuestes zuletzt.
                 </p>
-                <EventFeed events={d.before} focus={e.player} isShown={isShown} hrefFor={href} richTips empty="Davor nichts." />
+                <EventFeed events={d.before} focus={e.player} isShown={isShown} hrefFor={href} empty="Davor nichts." />
                 <p className="vs-now">▼ {label} · {dayLong.format(at)}</p>
               </div>
               <div className="box" data-tone="white">
                 <h3 className="t-3">Danach bei {name}</h3>
                 <p className="vs-now">▲ {label} · {dayLong.format(at)}</p>
-                <EventFeed events={d.after} focus={e.player} isShown={isShown} hrefFor={href} richTips empty="Danach (noch) nichts." />
+                <EventFeed events={d.after} focus={e.player} isShown={isShown} hrefFor={href} empty="Danach (noch) nichts." />
               </div>
             </div>
           )}
@@ -555,13 +555,13 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
                 <p className="muted" style={{ marginBottom: 8 }}>
                   Die andere Seite: was {pname(pair.other.id)} vorher erlebte.
                 </p>
-                <EventFeed events={pair.other.before} focus={pair.other.id} isShown={isShown} hrefFor={href} richTips empty="Davor nichts." />
+                <EventFeed events={pair.other.before} focus={pair.other.id} isShown={isShown} hrefFor={href} empty="Davor nichts." />
                 <p className="vs-now">▼ {label} · {dayLong.format(at)}</p>
               </div>
               <div className="box" data-tone="white">
                 <h3 className="t-3">Danach bei {pname(pair.other.id)}</h3>
                 <p className="vs-now">▲ {label} · {dayLong.format(at)}</p>
-                <EventFeed events={pair.other.after} focus={pair.other.id} isShown={isShown} hrefFor={href} richTips empty="Danach (noch) nichts." />
+                <EventFeed events={pair.other.after} focus={pair.other.id} isShown={isShown} hrefFor={href} empty="Danach (noch) nichts." />
               </div>
             </div>
           )}
@@ -572,7 +572,7 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
               Ereignisse anderer Spieler 15 Minuten davor bis 15 Minuten danach, der Reihe nach ({num(d.around.length)}).
             </p>
             <ShowMore height={700} label="Ereignisse">
-              <EventFeed events={d.around} isShown={isShown} hrefFor={href} richTips empty="Sonst passierte in dieser Zeit nichts." />
+              <EventFeed events={d.around} isShown={isShown} hrefFor={href} empty="Sonst passierte in dieser Zeit nichts." />
             </ShowMore>
           </div>
 
