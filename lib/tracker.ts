@@ -7,6 +7,7 @@ import { fetchFollowerCounts, fetchLiveStreams, TWITCH_ENABLED, type TwitchFollo
 import { fetchCraftAttack, getCraftAttackPauseMs, maxCraftAttackTimerDelay, USER_AGENT } from "./craftattackFetch";
 import { expireChatSessions, syncSharedChatFromApi } from "./sharedChat";
 import { trackedSecondsOf } from "./playtime";
+import { notifyRecord, RECORD_LABEL, recordEventId, type RecordKey } from "./records";
 import {
   BOARD_KEYS,
   type ApiPlayerDetail,
@@ -1162,22 +1163,25 @@ function recordHistory(ctx: DiffContext, liveNow: Map<string, ApiStats["live"][n
   return { liveOnServer, viewers };
 }
 
-/** Rekorde (seit Tracker-Start) */
+/**
+ * Rekorde seit Beginn des Verlaufs (Regel und Beschriftung: lib/records.ts). Beim Start hebt `seedRecordsFromHistory`
+ * die Stände auf die Höchstwerte des Verlaufs an, damit eine frische Datenbank keine Schein-Rekorde meldet.
+ */
 function diffRecords(ctx: DiffContext, liveOnServer: ApiStats["live"], viewers: number) {
-  const { state, stats, now, first, push } = ctx;
+  const { state, stats, now, first, events } = ctx;
   const rec = state.records;
-  const bump = (key: keyof typeof rec, value: number, label: string, notify: (prev: number) => boolean) => {
+  const bump = (key: RecordKey, value: number) => {
     const prev = rec[key]?.value ?? -1;
     if (value <= prev) return;
     const had = rec[key] !== null;
     rec[key] = { value, at: now };
-    if (!first && had && notify(prev)) {
-      push({ type: "record", where: "server", value, delta: value - prev, meta: { key, label } });
+    if (!first && had && notifyRecord(key, value, prev)) {
+      events.push({ id: recordEventId(key, now), at: now, type: "record", where: "server", value, delta: value - prev, meta: { key, label: RECORD_LABEL[key] } });
     }
   };
-  bump("peakOnline", stats.onlineCount, "Spieler gleichzeitig online", () => true);
-  bump("peakLive", liveOnServer.length, "Streams gleichzeitig live", () => true);
-  bump("peakViewers", viewers, "Zuschauer gesamt", (prev) => Math.floor(viewers / 10000) > Math.floor(prev / 10000));
+  bump("peakOnline", stats.onlineCount);
+  bump("peakLive", liveOnServer.length);
+  bump("peakViewers", viewers);
 }
 
 /** Vergleicht neuen Snapshot mit dem gespeicherten Zustand und erzeugt Ereignisse. */

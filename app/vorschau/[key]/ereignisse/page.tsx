@@ -213,7 +213,7 @@ async function Events({ params, searchParams }: { params: PageProps<"/vorschau/[
             )}
           </div>
 
-          <EventFeed events={slice} focus={player} highlight={evIndex >= 0 ? ev : undefined} getTimeState={getTimeState} isShown={isShown} hrefFor={(e) => previewEventHref(root, e.id)} richTips />
+          <EventFeed events={slice} focus={player} highlight={evIndex >= 0 ? ev : undefined} getTimeState={getTimeState} isShown={isShown} hrefFor={(e) => previewEventHref(root, e.id)} />
           {evIndex >= 0 && <ScrollToHighlight id={`ev-${ev}`} />}
           {player && (
             <PresenceLegend />

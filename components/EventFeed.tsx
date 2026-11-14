@@ -110,13 +110,64 @@ function detail(e: TrackerEvent): string | null {
   }
 }
 
+/** Satz ohne den Handelnden (sein Kopf steht auf der Kachel): „hat 339 Diamanten gefunden“ → „339 Diamanten gefunden“ */
+function withoutSubject(e: TrackerEvent, text: string): string {
+  if (!e.player) return text;
+  const rest = text.replace(/^(hat|ist|wurde) /, "");
+  return rest.charAt(0).toUpperCase() + rest.slice(1);
+}
+
+/** Art eines Minecraft-Fortschritts, wie im Spiel auf Deutsch */
+const ADVANCEMENT_FRAME: Record<string, string> = { task: "Fortschritt", goal: "Ziel", challenge: "Aufgabe" };
+
+/**
+ * Zusatzzeile ohne Rohdaten mit Spielernamen: Todesnachricht ohne den Namen des Opfers, beim Achievement weder die
+ * Chat-Meldung (wiederholt den Satz) noch die interne ID, die Art auf Deutsch.
+ */
+function cleanSub(e: TrackerEvent, sub: string): string {
+  return sub
+    .split(" · ")
+    .map((part) => {
+      if (part.startsWith("minecraft:")) return null;
+      if (e.type === "achievement") return part === e.meta?.message ? null : (ADVANCEMENT_FRAME[part] ?? part);
+      if (e.type === "death" && part === e.meta?.deathMessage) {
+        const cause = deathCause(part, e.meta?.victimMinecraft ?? e.playerName);
+        return cause.charAt(0).toUpperCase() + cause.slice(1);
+      }
+      return part;
+    })
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/**
+ * Hover-Text einer Kachel: Art des Ereignisses, was passiert ist, Einzelheiten – ohne Spielernamen (Kopf) und ohne
+ * Uhrzeit (steht links). Zeilen, die nur wiederholen, was darüber steht, entfallen.
+ */
+function tooltip(e: TrackerEvent, label: string, text: string, sub: string | null | undefined, info: string | null, estimated: boolean): string {
+  const lines: string[] = [];
+  const add = (line: string | null | undefined) => {
+    const t = line?.trim();
+    if (!t) return;
+    const low = t.toLowerCase();
+    if (lines.some((l) => l.toLowerCase() === low || l.toLowerCase().includes(low))) return;
+    lines.push(t);
+  };
+  add(label);
+  add(withoutSubject(e, text));
+  add(sub ? cleanSub(e, sub) : null);
+  add(info && e.type === "chat" ? `„${info}“` : info);
+  if (estimated) add("Geschätzt (Datenlücke)");
+  return lines.join("\n");
+}
+
 /**
  * Kompakte Kachel für ein Ereignis. Der volle Satz steht im Tooltip. Überall gleich aufgebaut: Kopf des Handelnden,
  * Pfeil bzw. Schwert zum zweiten Beteiligten, Icon und Wert. Nur der Kopf des Spielers, um den es auf der Seite geht
  * (`focus`), entfällt, wenn er selbst handelt – Beteiligte auf der anderen Seite bleiben immer sichtbar.
  * Ein Klick auf die Kachel zeigt alle Ereignisse dieser Art von diesem Spieler, mit diesem hervorgehoben.
  */
-function EventTile({ e, focus, highlight, hrefFor, richTips }: { e: TrackerEvent; focus?: string; highlight?: boolean; hrefFor?: (e: TrackerEvent) => string; richTips?: boolean }) {
+function EventTile({ e, focus, highlight, hrefFor }: { e: TrackerEvent; focus?: string; highlight?: boolean; hrefFor?: (e: TrackerEvent) => string }) {
   const showPlayer = !focus || e.player !== focus;
   const meta = EVENT_META[e.type];
   // Meilensteine eines Zusatzwerts mit dem Icon ihres Werts
@@ -145,8 +196,7 @@ function EventTile({ e, focus, highlight, hrefFor, richTips }: { e: TrackerEvent
   const killerName = typeof e.meta?.killerName === "string" ? e.meta.killerName : killer;
 
   return (
-    <li className="tile" id={`ev-${e.id}`} data-tone={meta.tone} data-type={e.type} data-highlight={highlight || undefined} title={richTips ? undefined : `${time(e.at)} · ${sentence}`}
-      data-full={richTips ? `${time(e.at)} · ${sentence}${info && !sentence.includes(info) ? `\n„${info}“` : ""}` : undefined}>
+    <li className="tile" id={`ev-${e.id}`} data-tone={meta.tone} data-type={e.type} data-highlight={highlight || undefined} data-full={tooltip(e, meta.label, text, sub, info, estimated)}>
       <Link className="tile__hit" href={hrefFor ? hrefFor(e) : eventHref(e)} aria-label={hrefFor ? `„${meta.label}“${e.player ? ` von ${e.playerName ?? e.player}` : ""} im Detail` : `Alle „${meta.label}“${e.player ? ` von ${e.playerName ?? e.player}` : ""} zeigen`} />
       {withHead && showPlayer ? (
         <Link className="tile__head" href={`/spieler/${encodeURIComponent(e.player!)}`} aria-label={e.playerName ?? e.player}>
@@ -269,7 +319,6 @@ export function EventFeed({
   getTimeState,
   isShown = isShownEvent,
   hrefFor,
-  richTips = false,
 }: {
   events: TrackerEvent[];
   /** Spieler, um den es auf der Seite geht: sein eigener Kopf entfällt, wenn er selbst handelt */
@@ -282,8 +331,6 @@ export function EventFeed({
   isShown?: (e: TrackerEvent) => boolean;
   /** Ziel beim Klick auf eine Kachel (Standard: gefilterte Ereignisliste, lib/events.ts eventHref) */
   hrefFor?: (e: TrackerEvent) => string;
-  /** Ausführlicher Hover-Text (ganzer Satz, Chat-Nachricht vollständig, umbrechend) statt des einzeiligen title */
-  richTips?: boolean;
 }) {
   const shown = events.filter(isShown);
   if (shown.length === 0) return <p className="st-online__empty">{empty}</p>;
@@ -313,7 +360,7 @@ export function EventFeed({
         )}
         <ul className="tiles">
           {bucket.map((e) => (
-            <EventTile key={e.id} e={e} focus={focus} highlight={e.id === highlight} hrefFor={hrefFor} richTips={richTips} />
+            <EventTile key={e.id} e={e} focus={focus} highlight={e.id === highlight} hrefFor={hrefFor} />
           ))}
         </ul>
       </li>,
