@@ -7,11 +7,11 @@ import { Head } from "@/components/Head";
 import { ShowMore } from "@/components/ShowMore";
 import { loadTracker } from "@/lib/data";
 import { num } from "@/lib/format";
-import { previewGate } from "@/lib/preview";
+import "@/components/detail/detail.css";
 import { getRaidAnalysis, type RaidPlayer } from "@/lib/raidAnalysis";
-import { RaidScatter } from "../../_components/RaidScatter";
-import { RaidHours } from "../../_components/RaidHours";
-import { PairMatrix } from "../../_components/PairMatrix";
+import { RaidScatter } from "@/components/detail/RaidScatter";
+import { RaidHours } from "@/components/detail/RaidHours";
+import { PairMatrix } from "@/components/detail/PairMatrix";
 
 export const metadata: Metadata = { title: "Raids" };
 
@@ -61,8 +61,7 @@ const COLS: { key: string; label: string; hint: string; v: (p: RaidPlayer) => nu
   },
 ];
 
-async function Raids(props: PageProps<"/vorschau/[key]/raids">) {
-  const root = await previewGate(props.params);
+async function Raids(props: PageProps<"/raids">) {
   const sp = await props.searchParams;
   const [a, { state }] = await Promise.all([getRaidAnalysis(), loadTracker()]);
   const name = (id: string) => state.players[id]?.name ?? id;
@@ -83,7 +82,7 @@ async function Raids(props: PageProps<"/vorschau/[key]/raids">) {
       <section className="block page-head" data-tone="ender">
         <div className="wrap">
           <p className="eyebrow">
-            Vorschau · <Link href={`${root}/ereignisse`}>Ereignisse</Link> · Raids
+            <Link href="/verbindungen">Community</Link> · Raids
           </p>
           <h1 className="t-1">Wer raidet wen?</h1>
           <p>
@@ -173,7 +172,7 @@ async function Raids(props: PageProps<"/vorschau/[key]/raids">) {
                     <th>Spieler</th>
                     {COLS.map((c) => (
                       <th key={c.key} className="num" title={c.hint}>
-                        <Link href={`${root}/raids?sort=${c.key}#tabelle`} aria-current={c.key === sort.key ? "true" : undefined} scroll={false}>
+                        <Link href={`/raids?sort=${c.key}#tabelle`} aria-current={c.key === sort.key ? "true" : undefined} scroll={false}>
                           {c.label}
                         </Link>
                       </th>
@@ -236,7 +235,7 @@ async function Raids(props: PageProps<"/vorschau/[key]/raids">) {
             <p className="muted" style={{ marginBottom: 8 }}>
               Raids zwischen erfassten Spielern: Zeilen raiden, Spalten werden geraidet, Kreisfläche = Anzahl. Klick öffnet den neuesten Raid des Paars.
             </p>
-            <PairMatrix matrix={a.pairs} names={names} giver={top((p) => p.given).id} receiver={top((p) => p.received).id} hrefBase={`${root}/ereignis/`} noun="Raids" />
+            <PairMatrix matrix={a.pairs} names={names} giver={top((p) => p.given).id} receiver={top((p) => p.received).id} hrefBase="/ereignis/" noun="Raids" />
           </div>
         </div>
       </section>
@@ -244,10 +243,12 @@ async function Raids(props: PageProps<"/vorschau/[key]/raids">) {
   );
 }
 
-export default function Page(props: PageProps<"/vorschau/[key]/raids">) {
+export default function Page(props: PageProps<"/raids">) {
   return (
-    <Suspense fallback={<PageSkeleton eyebrow="Vorschau" title="Raids" />}>
+    <div className="vs">
+      <Suspense fallback={<PageSkeleton eyebrow="Community" title="Raids" />}>
       <Raids {...props} />
-    </Suspense>
+      </Suspense>
+    </div>
   );
 }

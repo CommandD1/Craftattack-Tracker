@@ -19,7 +19,7 @@ const JOBS: [string, () => Promise<unknown>][] = [
   ["Netz je Tag (nur Server)", () => getDailyNetwork(true)],
   ["AFK-Phasen", () => snapshot(AFK_SNAPSHOT, computeAllAfkSpans, AFK_SNAPSHOT_MS)],
   ["Summen-Kurven", () => snapshot(BOARD_TOTALS_SNAPSHOT, computeBoardTotals, BOARD_TOTALS_MS)],
-  // Raid-Auswertung (Vorschau /vorschau/<key>/raids): Gelegenheiten, Gruppen, Abstände
+  // Raid-Auswertung (/raids): Gelegenheiten, Gruppen, Abstände
   ["Raids", () => getRaidAnalysis()],
 ];
 

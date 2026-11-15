@@ -4,7 +4,7 @@ import { getFeedFilter } from "./feedThresholds";
 import type { TrackerEvent } from "./types";
 
 /**
- * Ereignisse mit zwei Spielern (Vorschau-Detailseite): wer gibt, wer bekommt. Je Art feste SQL-Ausdrücke für beide
+ * Ereignisse mit zwei Spielern (Detailseite /ereignis/<id>): wer gibt, wer bekommt. Je Art feste SQL-Ausdrücke für beide
  * Seiten (nie aus der Anfrage). Liefert beide Seiten mit Davor/Danach, wie oft jede Seite das je Tag tat bzw. bekam,
  * die Matrix „Wer → wen“ und bei Chat die Unterhaltung rund um die Nachricht.
  */

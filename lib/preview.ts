@@ -16,6 +16,3 @@ export async function previewGate(params: Promise<{ key: string }>): Promise<str
   if (!ok) notFound();
   return `/vorschau/${encodeURIComponent(key)}`;
 }
-
-/** Detailseite eines Ereignisses in der Vorschau */
-export const previewEventHref = (base: string, id: string) => `${base}/ereignis/${encodeURIComponent(id)}`;

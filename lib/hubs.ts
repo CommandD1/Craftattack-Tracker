@@ -49,6 +49,7 @@ export const HUBS: Hub[] = [
     tabs: [
       { href: "/verbindungen", label: "Verbindungen", also: ["/gruppen"] },
       { href: "/zuschauer", label: "Zuschauer" },
+      { href: "/raids", label: "Raids" },
     ],
   },
 ];

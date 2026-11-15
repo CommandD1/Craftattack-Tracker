@@ -29,7 +29,9 @@ Expensive analyses are precomputed by the tracker every ~10 min into table `snap
 | Day boundaries (Europe/Berlin) | `lib/berlin.ts`, `dayKey` in `lib/analytics.ts` |
 | Big analyses | `lib/analytics.ts`, `lib/viewerMigration.ts`, `lib/viewerFlowCore.ts`, `lib/network.ts`, `lib/groups.ts`, `lib/rhythmCore.ts` |
 | Startup jobs (warm caches, official events, heads/skins, Twitch history) | `instrumentation.ts` |
-| Ops scripts | `scripts/deploy.sh`, `scripts/cached-server.mjs`, `scripts/watchdog.mjs`, `scripts/backup.sh` (+ `RESTORE.md`), `scripts/systemd/` |
+| Event detail page `/ereignis/<id>`, raid analysis `/raids` | `app/ereignis/[id]`, `app/raids`, `components/detail/`, `lib/eventDetail.ts` (`statOf()`: new event types need an entry or get no chart), `lib/eventPair.ts`, `lib/raidAnalysis.ts` |
+| Hidden test pages (`/vorschau/<key>/…`, key in `~/.config/actracker/vorschau.key`) | `app/vorschau/[key]/` with `previewGate()` from `lib/preview.ts` – try new features here before going public |
+| Ops scripts | `scripts/deploy.sh`, `scripts/autodeploy.sh` (push to main → live), `scripts/cached-server.mjs`, `scripts/watchdog.mjs`, `scripts/backup.sh` (+ `RESTORE.md`), `scripts/systemd/` |
 | Dormant estimate mode (`/schaetzung`, `CA_ESTIMATE=1`) | `lib/estimateMode.ts`, `scripts/estimate.mjs` – shut down, kept for reuse |
 
 ## Rules that bite
