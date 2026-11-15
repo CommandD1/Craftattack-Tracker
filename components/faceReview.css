@@ -1,0 +1,35 @@
+/* Interne Seite „Gesichter zuordnen“ (/vorschau/<key>/gesichter) */
+.fr-bar { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-bottom: 20px }
+.fr-stat { margin: 0; font-variant-numeric: tabular-nums }
+.fr-tabs { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap }
+.fr-tabs button, .fr-act, .fr-cand { font: inherit; font-size: 0.9rem; border: 2px solid var(--line); background: var(--white); color: var(--ink); padding: 4px 10px; cursor: pointer }
+.fr-tabs button[aria-pressed="true"], .fr-act[aria-pressed="true"] { background: var(--ink); color: var(--paper) }
+.fr-note { padding: 10px 14px; border: 2px dashed var(--line); margin: 0 0 16px }
+.fr-list { display: grid; gap: 16px }
+.fr-card { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 18px; background: var(--white); border: 2px solid var(--line); padding: 16px }
+.fr-card[data-done="true"] { opacity: 0.7 }
+.fr-facecol { display: grid; gap: 6px; align-content: start; justify-items: start }
+.fr-face { width: 112px; height: 112px; image-rendering: pixelated; display: block; border: 2px solid var(--line) }
+.fr-id { font-family: var(--font-display); font-size: 0.75rem; opacity: 0.7 }
+.fr-body { display: grid; gap: 10px; min-width: 0 }
+.fr-meta { margin: 0; font-variant-numeric: tabular-nums }
+.fr-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0 }
+.fr-lbl { font-family: var(--font-display); font-size: 0.72rem; text-transform: uppercase; opacity: 0.7; min-width: 8.5em }
+.fr-muted { opacity: 0.7 }
+.fr-ex { font-size: 0.9rem }
+.fr-cand { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 2px }
+.fr-cand img { width: 24px; height: 24px; image-rendering: pixelated }
+.fr-cand small { opacity: 0.7; font-variant-numeric: tabular-nums }
+.fr-cand:hover, .fr-act:hover { border-color: var(--twitch) }
+.fr-cand[aria-pressed="true"] { background: var(--grass); color: var(--on-tone) }
+.fr-reset { border-style: dashed }
+.fr input[type="text"] { font: inherit; font-size: 0.9rem; padding: 4px 9px; border: 2px solid var(--line); background: var(--paper); color: var(--ink); width: 13em; max-width: 100% }
+.fr-result { margin: 0; font-weight: 700 }
+.fr-result[data-kind="skip"] { opacity: 0.7 }
+.fr-empty { padding: 40px 0; text-align: center; opacity: 0.7 }
+@media (max-width: 560px) {
+  .fr-card { grid-template-columns: 1fr; gap: 12px }
+  .fr-facecol { grid-auto-flow: column; align-items: center; justify-content: start; gap: 12px }
+  .fr-face { width: 80px; height: 80px }
+  .fr-lbl { min-width: 0; width: 100% }
+}
