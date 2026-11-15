@@ -98,6 +98,9 @@ Auf einem Rechner brauchen beide verschiedene Ports, z. B. `PORT=3001 npm run st
   höchstens zwei gleichzeitige Renderings, Wechsel auf neue Versionen ohne Ausfall.
 - `scripts/deploy.sh` rollt aus: `git pull`, Build in den freien Ordner `.next-a` / `.next-b`, vorwärmen,
   umschalten, danach den Tracker-Dienst neu starten. Schlägt der Build fehl, bleibt alles, wie es war.
+- `scripts/autodeploy.sh` (Timer `scripts/systemd/actracker-autodeploy.*`) prüft jede Minute, ob es auf `main` von
+  [CommandD1/Craftattack-Tracker](https://github.com/CommandD1/Craftattack-Tracker) neue Commits gibt, und ruft dann
+  `deploy.sh` auf. Ein Push auf `main` ist so nach wenigen Minuten live; Erfolg oder Fehler kommen per ntfy.
 - `scripts/watchdog.mjs` prüft alle paar Minuten Tunnel, Tracker, Website, Dienste und Speicherplatz und meldet
   anhaltende Probleme per ntfy (`NTFY_URL`).
 

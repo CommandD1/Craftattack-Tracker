@@ -1,0 +1,11 @@
+# Kopie liegt in ~/.config/systemd/user/ (systemctl --user daemon-reload nach Änderungen)
+[Unit]
+Description=Jede Minute auf neue Commits prüfen
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
