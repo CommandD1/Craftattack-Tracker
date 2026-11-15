@@ -37,7 +37,7 @@ export const HUBS: Hub[] = [
     key: "verlauf",
     label: "Verlauf",
     tabs: [
-      { href: "/ereignisse", label: "Ereignisse" },
+      { href: "/ereignisse", label: "Ereignisse", also: ["/ereignis"] },
       { href: "/zeitstrahl", label: "Zeitstrahl" },
       { href: "/graph", label: "Graph" },
       { href: "/statistik", label: "Statistik" },
