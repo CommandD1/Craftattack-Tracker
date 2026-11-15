@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import "../vorschau.css";
+import "@/components/detail/detail.css";
 
 // Versteckte Vorschau neuer Funktionen: nicht verlinkt, nicht in Suchmaschinen, kein Referrer nach außen
 export const metadata: Metadata = {

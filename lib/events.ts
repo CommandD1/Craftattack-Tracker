@@ -571,16 +571,15 @@ export function eventPlayers(e: Pick<TrackerEvent, "player" | "type" | "meta">):
   return [...new Set(ids.filter((x): x is string => typeof x === "string" && x !== ""))];
 }
 
-/**
- * Pfad der Detailseite eines Ereignisses (`${EVENT_DETAIL_BASE}/<id>`), sobald sie öffentlich ist. Bis dahin `null`:
- * dann verlinken z. B. die Fortschritte im Spielerprofil nichts. Beim Livegang der Seite (heute nur unter
- * /vorschau/<key>/ereignis) hier "/ereignis" eintragen.
- */
-export const EVENT_DETAIL_BASE: string | null = null;
+/** Pfad der Detailseiten von Ereignissen (`${EVENT_DETAIL_BASE}/<id>`, app/ereignis/[id]); verlinkt u. a. die Fortschritte im Spielerprofil */
+export const EVENT_DETAIL_BASE: string | null = "/ereignis";
+
+/** Ziel eines Klicks auf ein Ereignis: seine Detailseite mit Vorher, Nachher und Verläufen */
+export const eventDetailHref = (id: string) => `/ereignis/${encodeURIComponent(id)}`;
 
 /**
- * Ziel eines Klicks auf ein Ereignis: die Ereignisse-Seite mit diesem Spieler und dieser Art, auf der Seite des
- * Ereignisses und dorthin gescrollt.
+ * Die Ereignisse-Seite mit diesem Spieler und dieser Art, auf der Seite des Ereignisses und dorthin gescrollt
+ * („Alle … zeigen“ auf der Detailseite).
  */
 export function eventHref(e: Pick<TrackerEvent, "id" | "player" | "type">): string {
   const p = new URLSearchParams();

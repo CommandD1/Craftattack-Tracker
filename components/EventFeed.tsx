@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BOARD_KEYS, type BoardKey, type EventType, type TrackerEvent } from "@/lib/types";
-import { EVENT_META, eventBadge, eventHref, isShownEvent, sharedChatPlayers } from "@/lib/events";
+import { EVENT_META, eventBadge, eventDetailHref, isShownEvent, sharedChatPlayers } from "@/lib/events";
 import { time } from "@/lib/format";
 import { Head } from "./Head";
 import { BOARD_ICON, EVENT_ICON, Icon } from "./Icons";
@@ -197,7 +197,7 @@ function EventTile({ e, focus, highlight, hrefFor }: { e: TrackerEvent; focus?: 
 
   return (
     <li className="tile" id={`ev-${e.id}`} data-tone={meta.tone} data-type={e.type} data-highlight={highlight || undefined} data-full={tooltip(e, meta.label, text, sub, info, estimated)}>
-      <Link className="tile__hit" href={hrefFor ? hrefFor(e) : eventHref(e)} aria-label={hrefFor ? `„${meta.label}“${e.player ? ` von ${e.playerName ?? e.player}` : ""} im Detail` : `Alle „${meta.label}“${e.player ? ` von ${e.playerName ?? e.player}` : ""} zeigen`} />
+      <Link className="tile__hit" href={hrefFor ? hrefFor(e) : eventDetailHref(e.id)} aria-label={`„${meta.label}“${e.player ? ` von ${e.playerName ?? e.player}` : ""} im Detail`} />
       {withHead && showPlayer ? (
         <Link className="tile__head" href={`/spieler/${encodeURIComponent(e.player!)}`} aria-label={e.playerName ?? e.player}>
           <Head id={e.player!} uuid={e.uuid} name={e.playerName} size={32} className="" decorative />
@@ -329,7 +329,7 @@ export function EventFeed({
   getTimeState?: (at: string) => { server: boolean; live: boolean; href?: string };
   /** Was im Feed erscheint (Standard: feste Schwellen; Seiten übergeben die Tages-Schwellen, lib/feedThresholds.ts) */
   isShown?: (e: TrackerEvent) => boolean;
-  /** Ziel beim Klick auf eine Kachel (Standard: gefilterte Ereignisliste, lib/events.ts eventHref) */
+  /** Ziel beim Klick auf eine Kachel (Standard: Detailseite des Ereignisses, lib/events.ts eventDetailHref) */
   hrefFor?: (e: TrackerEvent) => string;
 }) {
   const shown = events.filter(isShown);

@@ -7,7 +7,7 @@ import { EXTRA_HISTORY_KEYS, EXTRA_STATS, extraStatSql, type ExtraStatKey } from
 import { BOARD_KEYS, type BoardKey, type TrackerEvent } from "./types";
 
 /**
- * Alles für die Detailseite eines Ereignisses (Vorschau unter /vorschau/<key>/ereignis/<id>): das Ereignis, was der
+ * Alles für die Detailseite eines Ereignisses (/ereignis/<id>): das Ereignis, was der
  * Spieler davor und danach erlebte, was gleichzeitig sonst passierte, wer gerade da war, Verläufe ±3 Stunden, die
  * Rohdaten dahinter (auch Zuwächse, die kein Ereignis wurden) und wann es dieselbe Art sonst gab – beim Spieler und bei
  * allen. Nur Abfragen über vorhandene Indizes (events (player, at), (type, at), player_history (player, at)).

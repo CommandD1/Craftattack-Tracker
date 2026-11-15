@@ -10,17 +10,17 @@ import { EVENT_ICON, Icon } from "@/components/Icons";
 import { loadTracker } from "@/lib/data";
 import { getEventDetail } from "@/lib/eventDetail";
 import { getEventPair } from "@/lib/eventPair";
-import { EVENT_META, eventBadge, eventHref, eventPlayers } from "@/lib/events";
+import { EVENT_META, eventBadge, eventDetailHref, eventHref, eventPlayers } from "@/lib/events";
+import "@/components/detail/detail.css";
 import { getFeedFilter } from "@/lib/feedThresholds";
 import { dateTime, distance, duration, hearts, num } from "@/lib/format";
-import { previewEventHref, previewGate } from "@/lib/preview";
 import { findVodAt, vodLink } from "@/lib/twitch";
 import { BOARD_KEYS, type TrackerEvent } from "@/lib/types";
-import { EventWindowChart } from "../../../_components/EventWindowChart";
-import { EventSteps } from "../../../_components/EventSteps";
-import { EventOccurrences } from "../../../_components/EventOccurrences";
-import { EventMatrix } from "../../../_components/EventMatrix";
-import { PairMatrix } from "../../../_components/PairMatrix";
+import { EventWindowChart } from "@/components/detail/EventWindowChart";
+import { EventSteps } from "@/components/detail/EventSteps";
+import { EventOccurrences } from "@/components/detail/EventOccurrences";
+import { EventMatrix } from "@/components/detail/EventMatrix";
+import { PairMatrix } from "@/components/detail/PairMatrix";
 
 export const metadata: Metadata = { title: "Ereignis" };
 
@@ -46,8 +46,7 @@ function rel(ms: number) {
   return ms < 0 ? `${s} davor` : `${s} danach`;
 }
 
-async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
-  const root = await previewGate(props.params);
+async function Detail(props: PageProps<"/ereignis/[id]">) {
   const { id: raw } = await props.params;
   const id = decodeURIComponent(raw);
   const [d, { state }, isShown] = await Promise.all([getEventDetail(id), loadTracker(), getFeedFilter()]);
@@ -60,7 +59,7 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
   const at = Date.parse(e.at);
   const meta = EVENT_META[e.type];
   const IconCmp = Icon[EVENT_ICON[e.type]];
-  const href = (x: TrackerEvent) => previewEventHref(root, x.id);
+  const href = (x: TrackerEvent) => eventDetailHref(x.id);
   const p = e.player ? state.players[e.player] : undefined;
   const name = e.playerName ?? p?.name ?? e.player ?? "";
   const sentence = [e.player ? `${name} ${meta.text(e)}` : meta.text(e), meta.sub?.(e)].filter(Boolean).join(" · ");
@@ -100,7 +99,7 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
     .map((x) => ({ t: Date.parse(x.at), label: `${relLabel(x)} · ${dayLong.format(Date.parse(x.at))} Uhr`, href: href(x) }));
   const milestones = d.related ? d.related.ladder.filter((x) => x.type === "milestone") : [];
   const ranks = d.related ? d.related.ladder.filter((x) => x.type === "rank") : [];
-  const detailBase = `${root}/ereignis/`;
+  const detailBase = "/ereignis/";
   // Berliner Tag des Ereignisses (für die Häufigkeit je Tag)
   const eventDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" }).format(at);
   const playersWithSame = new Set(d.all.points.map((x) => x[2])).size;
@@ -110,7 +109,7 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
       <section className="block page-head" data-tone="ender">
         <div className="wrap">
           <p className="eyebrow">
-            Vorschau · <Link href={`${root}/ereignisse`}>Ereignisse</Link> · {label}
+            <Link href="/ereignisse">Ereignisse</Link> · {label}
           </p>
           <div className="vs-hero">
             {/* Kopf öffnet das Profil (statt eines eigenen „Profil von …“-Knopfs) */}
@@ -598,10 +597,12 @@ async function Detail(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
   );
 }
 
-export default function Page(props: PageProps<"/vorschau/[key]/ereignis/[id]">) {
+export default function Page(props: PageProps<"/ereignis/[id]">) {
   return (
-    <Suspense fallback={<PageSkeleton eyebrow="Vorschau" title="Ereignis" figs={0} />}>
+    <div className="vs">
+      <Suspense fallback={<PageSkeleton eyebrow="Ereignisse" title="Ereignis" figs={0} />}>
       <Detail {...props} />
-    </Suspense>
+      </Suspense>
+    </div>
   );
 }

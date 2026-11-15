@@ -8,7 +8,7 @@ import { adjacency, distancesFrom } from "./network";
 import { snapshot } from "./snapshots";
 
 /**
- * Raid-Auswertung (Vorschau /vorschau/<key>/raids): wer raidet, wer wird geraidet – nach Anzahl und Zuschauern, fair
+ * Raid-Auswertung (/raids): wer raidet, wer wird geraidet – nach Anzahl und Zuschauern, fair
  * gemessen an den Gelegenheiten. Für jeden Raid gelten die erfassten Spieler als mögliche Ziele, die in diesem
  * Moment live waren (aus Stream-Start/-Ende). Daraus:
  * - Erwartet (Empfänger): Summe über alle Raids, bei denen er live war, von 1 / Zahl der möglichen Ziele; Faktor
