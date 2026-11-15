@@ -18,8 +18,10 @@ async function Inner(props: PageProps<"/vorschau/[key]/gesichter">) {
           <h1>Gesichter zuordnen</h1>
           <p className="lead">
             Köpfe aus der Voicechat-Liste, die der VOD-Scan keinem Skin zuordnen konnte, nach Ähnlichkeit gruppiert. Wähle den
-            Spieler oder sortiere die Gruppe aus. Kandidaten waren laut Tracker bei mindestens der Hälfte der Sichtungen online.
-            Eine Zuordnung gilt für alle Sichtungen der Gruppe und für künftige Scans.
+            Spieler oder sortiere die Gruppe aus. Vorschläge: „Laut Reihenfolge“ zählt, wie oft die Liste eines anderen
+            Streamers zur selben Zeit an dieser Stelle den Spieler zeigt (alle in einer Gruppe sehen dieselbe Reihenfolge);
+            „Ähnlicher Skin“ vergleicht mit den bekannten Skins, ohne die Ecke mit dem Lautsprecher-Symbol. Eine Zuordnung gilt
+            für alle Sichtungen der Gruppe und für künftige Scans.
           </p>
         </div>
       </section>

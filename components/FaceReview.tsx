@@ -99,6 +99,15 @@ export function FaceReview({ data, endpoint }: { data: FaceReviewData; endpoint:
         {shown.length === 0 && <p className="fr-empty">{filter === "open" ? "Alles zugeordnet." : "Noch nichts erledigt."}</p>}
         {shown.map((g) => {
           const choice = choiceOf(g);
+          const cand = (p: string, note: string, title: string) => {
+            const skin = data.players[p]?.skins[0];
+            return (
+              <button key={p} type="button" className="fr-cand" aria-pressed={choice === p} onClick={() => choose(g, p)} title={title}>
+                {skin && <img src={urls.get(skin)} alt="" width={24} height={24} />}
+                {pname(p)} <small>{note}</small>
+              </button>
+            );
+          };
           const from = g.from ? fmtDay.format(new Date(g.from)) : "", to = g.to ? fmtDay.format(new Date(g.to)) : "";
           return (
             <article key={g.id} className="fr-card" data-done={isDone(g)} aria-label={`Gruppe ${g.id}`}>
@@ -123,18 +132,21 @@ export function FaceReview({ data, endpoint }: { data: FaceReviewData; endpoint:
                   ))}
                 </div>
                 <div className="fr-row">
-                  <span className="fr-lbl">Kandidaten</span>
-                  {g.cands.length === 0 && <span className="fr-muted">Niemand war bei der Hälfte der Sichtungen online.</span>}
-                  {g.cands.map(([p, pct]) => {
-                    const skin = data.players[p]?.skins[0];
-                    return (
-                      <button key={p} type="button" className="fr-cand" aria-pressed={choice === p} onClick={() => choose(g, p)} title={`Als ${pname(p)} zuordnen`}>
-                        {skin && <img src={urls.get(skin)} alt="" width={24} height={24} />}
-                        {pname(p)} <small>{pct} %</small>
-                      </button>
-                    );
-                  })}
+                  <span className="fr-lbl">Laut Reihenfolge</span>
+                  {g.cands.length === 0 && <span className="fr-muted">Keine Liste eines anderen Streamers zur selben Zeit.</span>}
+                  {g.cands.map(([p, n]) => (
+                    cand(p, `${fmtN.format(n)}×`, `${fmtN.format(n)} Listen anderer Streamer haben an dieser Stelle ${pname(p)}`)
+                  ))}
                 </div>
+                <div className="fr-row">
+                  <span className="fr-lbl">Ähnlicher Skin</span>
+                  {(g.similar ?? []).map(([p, d]) => (
+                    cand(p, `Abw. ${String(d).replace(".", ",")}`, `Abweichung zum bekannten Skin von ${pname(p)}: unter 15 gilt als gleich`)
+                  ))}
+                </div>
+                {choice && !OUT[choice] && g.cands.length > 0 && g.cands[0][0] !== choice && (
+                  <p className="fr-warn">Die Reihenfolge spricht eher für {pname(g.cands[0][0])}. Bitte noch einmal prüfen.</p>
+                )}
                 <div className="fr-row">
                   <span className="fr-lbl">Oder</span>
                   <input

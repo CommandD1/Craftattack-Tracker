@@ -24,7 +24,10 @@ export type FaceGroup = {
   from: string | null;
   to: string | null;
   streamers: [string, number][];
+  /** Reihenfolge-Abgleich: [Spieler, Anzahl übereinstimmender Listen anderer Streamer] */
   cands: [string, number][];
+  /** Ähnlichste Skins ohne die Symbol-Ecke: [Spieler, Abweichung] (bekannte Köpfe ~1–8, fremde ~25+) */
+  similar?: [string, number][];
   ex: { s: string; url: string; at: string }[];
 };
 export type FaceReviewData = { made: string; groups: FaceGroup[]; players: Record<string, { name: string; skins: string[] }> };

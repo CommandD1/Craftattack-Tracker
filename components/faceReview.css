@@ -25,6 +25,7 @@
 .fr-reset { border-style: dashed }
 .fr input[type="text"] { font: inherit; font-size: 0.9rem; padding: 4px 9px; border: 2px solid var(--line); background: var(--paper); color: var(--ink); width: 13em; max-width: 100% }
 .fr-result { margin: 0; font-weight: 700 }
+.fr-warn { margin: 0; padding: 6px 10px; border: 2px solid var(--redstone); font-size: 0.9rem }
 .fr-result[data-kind="skip"] { opacity: 0.7 }
 .fr-empty { padding: 40px 0; text-align: center; opacity: 0.7 }
 @media (max-width: 560px) {
