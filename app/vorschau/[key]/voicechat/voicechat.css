@@ -8,7 +8,7 @@
 .vc-who:hover span { text-decoration: underline }
 .vc-num { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right }
 .vc-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px }
-.vc-bars li { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(40px, 1fr) 4.5em; gap: 10px; align-items: center }
+.vc-bars li { display: grid; grid-template-columns: minmax(0, 2fr) minmax(40px, 1fr) 4.5em; gap: 10px; align-items: center }
 .vc-pair { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap }
 .vc-bar { height: 12px; background: color-mix(in srgb, var(--ink) 8%, transparent); position: relative }
 .vc-bar::before { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--w); background: var(--amethyst) }
@@ -21,7 +21,7 @@
 .vc-table { border-collapse: collapse; width: 100%; font-size: 0.92rem }
 .vc-table th, .vc-table td { padding: 6px 10px; border-bottom: 2px solid color-mix(in srgb, var(--ink) 10%, transparent); text-align: left }
 .vc-table thead th { font-family: var(--font-display); font-size: 0.75rem; text-transform: uppercase; white-space: nowrap }
-.vc-table td.vc-num { text-align: right }
+.vc-table td.vc-num, .vc-table th.vc-num { text-align: right }
 .vc-hours { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; height: 120px; align-items: end }
 .vc-hours span { height: var(--h); min-height: 1px; background: var(--amethyst) }
 .vc-hours-axis { display: flex; justify-content: space-between; font-size: 0.75rem; opacity: 0.7 }

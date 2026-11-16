@@ -98,6 +98,7 @@ async function Inner(props: PageProps<"/vorschau/[key]/voicechat">) {
           </div>
           <div className="box" data-tone="white">
             <h2 className="t-3">Häufigste Gruppen</h2>
+            <p className="vc-note">Gleiche bekannte Spieler zusammen; „+3?“ = so viele Köpfe dieser Liste sind noch unbekannt.</p>
             <ol className="vc-groups">
               {v.groups.slice(0, 20).map((g) => (
                 <li key={g.ids.join(",")}>
@@ -111,7 +112,7 @@ async function Inner(props: PageProps<"/vorschau/[key]/voicechat">) {
                   </span>
                   <span className="vc-num">{h(g.hours)}</span>
                   <span className="vc-when">
-                    {dt.format(new Date(g.first))} – {dt.format(new Date(g.last))}
+                    gesehen {dt.format(new Date(g.first))} bis {dt.format(new Date(g.last))}
                   </span>
                 </li>
               ))}
@@ -137,11 +138,11 @@ async function Inner(props: PageProps<"/vorschau/[key]/voicechat">) {
               <thead>
                 <tr>
                   <th scope="col">Spieler</th>
-                  <th scope="col">Zeit</th>
-                  <th scope="col">Spricht</th>
-                  <th scope="col">Hört nicht zu</th>
-                  <th scope="col" title="Eigenes Mikro stumm (Symbol unten links im eigenen Stream)">Stumm</th>
-                  <th scope="col" title="Anteil der eigenen Stream-Bilder mit Gruppenliste">In Gruppe</th>
+                  <th scope="col" className="vc-num">Zeit</th>
+                  <th scope="col" className="vc-num">Spricht</th>
+                  <th scope="col" className="vc-num">Hört nicht zu</th>
+                  <th scope="col" className="vc-num" title="Eigenes Mikro stumm (Symbol unten links im eigenen Stream)">Stumm</th>
+                  <th scope="col" className="vc-num" title="Anteil der eigenen Stream-Bilder mit Gruppenliste">In Gruppe</th>
                   <th scope="col">Meist mit</th>
                 </tr>
               </thead>
