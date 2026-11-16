@@ -19,6 +19,8 @@ export type FaceGroup = {
   n: number;
   faces: number;
   units: number;
+  /** Helligkeits-Streuung des Gesichts (echte Skins ~50–60, flache Flächen meist < 30) */
+  contrast?: number;
   status: string;
   player: string | null;
   from: string | null;

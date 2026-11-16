@@ -56,3 +56,4 @@
   .fr-exbox { grid-template-columns: 1fr }
   .fr-thumb img { max-height: 200px }
 }
+.fr-flat { margin: 0; font-size: 0.85rem; padding: 2px 8px; border: 2px dashed var(--line); justify-self: start }
