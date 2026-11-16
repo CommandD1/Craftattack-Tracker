@@ -976,8 +976,14 @@ a.st-chip-in[data-live="true"] {
   width: 14px;
   height: 14px;
 }
+/* Symbol = Art des Ereignisses: Klick zeigt alle dieser Art vom Spieler (Kachel selbst → Detailseite) */
 .tile__icon:hover {
   filter: brightness(1.1);
+  box-shadow: 0 0 0 2px var(--line), 0 0 0 4px var(--ink);
+}
+.tile__icon:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
 }
 .tile__val {
   font-weight: 700;
