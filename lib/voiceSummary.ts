@@ -41,3 +41,32 @@ export async function loadVoiceSummary(): Promise<VoiceSummary | null> {
     return null;
   }
 }
+
+/** Overlay-Karte je Streamer (scripts/chat/overlay-map.mjs → overlays.json + overlays/<streamer>.png) */
+export type OverlayInfo = {
+  frames: number;
+  hudScale: number;
+  /** Anteil fester (unveränderlicher) Pixel in den gelesenen HUD-Stellen, % */
+  shares: { liste?: number | null; symbol: number | null; chat: number | null; hotbar: number | null };
+  /** feste Flächen (480×270-Koordinaten) und welche HUD-Stellen sie berühren */
+  overlays: { x: number; y: number; w: number; h: number; fill: number; covers: string[] }[];
+  layout: boolean;
+};
+
+export async function loadOverlays(): Promise<Record<string, OverlayInfo> | null> {
+  try {
+    return JSON.parse(await readFile(join(DIR, "overlays.json"), "utf8")) as Record<string, OverlayInfo>;
+  } catch {
+    return null;
+  }
+}
+
+/** Overlay-Bild <streamer>.png (oder null) */
+export async function readOverlayImage(file: string): Promise<Buffer | null> {
+  if (!/^[a-z0-9_]+\.png$/.test(file)) return null;
+  try {
+    return await readFile(join(DIR, "overlays", file));
+  } catch {
+    return null;
+  }
+}
