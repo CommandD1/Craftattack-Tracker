@@ -7,7 +7,7 @@ import { Head } from "@/components/Head";
 import { loadTracker } from "@/lib/data";
 import { num } from "@/lib/format";
 import { previewGate } from "@/lib/preview";
-import { loadVoiceSummary } from "@/lib/voiceSummary";
+import { loadOverlays, loadVoiceSummary } from "@/lib/voiceSummary";
 import "./voicechat.css";
 
 export const metadata: Metadata = { title: "Voicechat" };
@@ -19,7 +19,7 @@ const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)} %` : "�
 
 async function Inner(props: PageProps<"/vorschau/[key]/voicechat">) {
   const root = await previewGate(props.params);
-  const [v, { state }] = await Promise.all([loadVoiceSummary(), loadTracker()]);
+  const [v, { state }, ov] = await Promise.all([loadVoiceSummary(), loadTracker(), loadOverlays()]);
   if (!v) return <p className="wrap">Noch keine Auswertung vom Scan.</p>;
   const name = (id: string) => state.players[id]?.name ?? id;
   const uuid = (id: string) => state.players[id]?.uuid ?? null;
@@ -225,9 +225,46 @@ async function Inner(props: PageProps<"/vorschau/[key]/voicechat">) {
           </ol>
         </div>
       </section>
+      {ov && (
+        <section className="block" data-tone="paper">
+          <div className="wrap stack">
+            <h2 className="t-2">Einblendungen über dem HUD</h2>
+            <p className="vc-note">
+              Je Streamer das Mittel aus ~24 Bildern über alle VODs (links) und rechts magenta die Bereiche, die sich kaum ändern: Banner, Logos, Rahmen,
+              Chat-Kästen, aber auch das Minecraft-HUD und oft gehaltene Gegenstände. Umrandet die Stellen, die der Scan liest: grün Kopfliste, türkis
+              Stumm-Symbol, gelb Chat, weiß Hotbar. Liegt eine feste Fläche auf einer dieser Stellen, ist dort vermutlich etwas eingeblendet. Verdeckte Plätze
+              der Kopfliste bleiben „unbekannt“ und werden über die Reihenfolge bei den anderen Streamern gefolgert.
+            </p>
+            <ol className="vc-ov">
+              {Object.entries(ov)
+                .sort((a, b) => (b[1].overlays.filter((o) => o.covers.length).length - a[1].overlays.filter((o) => o.covers.length).length) || a[0].localeCompare(b[0]))
+                .map(([id, o]) => {
+                  const covered = [...new Set(o.overlays.flatMap((x) => x.covers))];
+                  return (
+                    <li key={id} className="box" data-tone="white">
+                      <div className="vc-ov-head">
+                        {who(id)}
+                        <span className="vc-note">
+                          {covered.length ? `Mögliche Einblendung über: ${covered.map((c) => PART[c] ?? c).join(", ")}` : "Nichts über den gelesenen Stellen"}
+                          {!o.layout && " · keine Kopfliste gefunden"}
+                        </span>
+                      </div>
+                      <img src={`${root}/voicechat/bild/${id}.png`} alt={`Overlay-Karte ${name(id)}`} loading="lazy" className="vc-ov-img" />
+                      <p className="vc-note">
+                        Fest in der Kopfliste {o.shares.liste ?? "–"} % · am Stumm-Symbol {o.shares.symbol ?? "–"} % · im Chat {o.shares.chat ?? "–"} %
+                      </p>
+                    </li>
+                  );
+                })}
+            </ol>
+          </div>
+        </section>
+      )}
     </>
   );
 }
+
+const PART: Record<string, string> = { liste: "Kopfliste", symbol: "Stumm-Symbol", chat: "Chat" };
 
 export default function Page(props: PageProps<"/vorschau/[key]/voicechat">) {
   return (

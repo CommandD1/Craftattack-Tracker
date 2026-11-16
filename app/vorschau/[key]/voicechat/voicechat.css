@@ -36,3 +36,7 @@
   .vc-bars li { grid-template-columns: minmax(0, 1fr) 4.5em }
   .vc-bars .vc-bar { grid-column: 1 / -1; grid-row: 2 }
 }
+.vc-ov { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr)) }
+.vc-ov > li { display: grid; gap: 8px; min-width: 0 }
+.vc-ov-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center }
+.vc-ov-img { width: 100%; height: auto; display: block; border: 2px solid var(--line) }
