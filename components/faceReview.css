@@ -34,3 +34,25 @@
   .fr-face { width: 80px; height: 80px }
   .fr-lbl { min-width: 0; width: 100% }
 }
+
+/* Beispiele: Bildausschnitt + Liste, davor/danach, gleichzeitig bei anderen */
+.fr-examples { display: grid; gap: 12px }
+.fr-exbox { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; padding: 10px; border: 2px dashed color-mix(in srgb, var(--ink) 20%, transparent); align-items: start }
+.fr-thumb img { display: block; max-height: 260px; max-width: 160px; width: auto; height: auto; image-rendering: pixelated; border: 2px solid var(--line) }
+.fr-exinfo { display: grid; gap: 6px; min-width: 0 }
+.fr-list-row { display: inline-flex; flex-wrap: wrap; gap: 3px }
+.fr-slot { width: 26px; height: 26px; display: inline-grid; place-items: center; border: 2px solid transparent; font-size: 0.8rem; background: color-mix(in srgb, var(--ink) 6%, transparent) }
+.fr-slot img { width: 22px; height: 22px; image-rendering: pixelated }
+.fr-slot[data-kind="junk"] { opacity: 0.5 }
+.fr-slot[data-hit] { border-color: #ff00e6 }
+.fr-who { display: inline-flex; align-items: center; gap: 6px }
+.fr-who img { image-rendering: pixelated }
+.fr-who small, .fr-other-name small { opacity: 0.7; font-variant-numeric: tabular-nums }
+.fr-others { align-items: start }
+.fr-otherlist { display: grid; gap: 4px; min-width: 0 }
+.fr-other { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center }
+.fr-other-name { min-width: 8em; font-size: 0.85rem }
+@media (max-width: 560px) {
+  .fr-exbox { grid-template-columns: 1fr }
+  .fr-thumb img { max-height: 200px }
+}

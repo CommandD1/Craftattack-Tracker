@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { FaceLabel, FaceReviewData, FaceGroup } from "@/lib/faceReview";
+import type { FaceExample, FaceLabel, FaceReviewData, FaceGroup } from "@/lib/faceReview";
 import "./faceReview.css";
 
 /** Zuordnungsliste für /vorschau/<key>/gesichter (Daten: lib/faceReview.ts) */
@@ -22,7 +22,13 @@ function faceUrl(b64: string): string {
   return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" shape-rendering="crispEdges">${rects}</svg>`)}`;
 }
 
-export function FaceReview({ data, endpoint }: { data: FaceReviewData; endpoint: string }) {
+const rel = (sec: number) => {
+  const m = Math.round(Math.abs(sec) / 60);
+  const t = m < 1 ? `${Math.abs(sec)} s` : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+  return sec < 0 ? `${t} davor` : `${t} danach`;
+};
+
+export function FaceReview({ data, endpoint, thumbBase }: { data: FaceReviewData; endpoint: string; thumbBase: string }) {
   const [labels, setLabels] = useState<Record<string, FaceLabel>>({});
   const [loaded, setLoaded] = useState(false);
   const [note, setNote] = useState("");
@@ -69,6 +75,80 @@ export function FaceReview({ data, endpoint }: { data: FaceReviewData; endpoint:
       setNote(`Nicht gespeichert (${e instanceof Error ? e.message : "Fehler"}). Bitte erneut wählen.`);
     }
   }
+
+  // Liste als Köpfe; die Kachel der Sichtung markiert (unbekannt = „?“, kein Kopf = grau)
+  const ListRow = ({ list, slot, mark, unknownFace }: { list: (string | null)[]; slot?: number; mark: boolean; unknownFace?: string }) => (
+    <span className="fr-list-row">
+      {list.map((id, i) => {
+        const hit = mark && i === slot;
+        const skin = id && id !== "-" ? data.players[id]?.skins[0] : undefined;
+        return (
+          <span key={i} className="fr-slot" data-hit={hit || undefined} data-kind={id === "-" ? "junk" : id ? "known" : "open"} title={id === "-" ? "kein Kopf" : id ? pname(id) : "unbekannt"}>
+            {skin ? <img src={urls.get(skin) ?? faceUrl(skin)} alt={pname(id!)} width={22} height={22} /> : hit && unknownFace ? <img src={urls.get(unknownFace)} alt="unbekannt" width={22} height={22} /> : <span aria-hidden="true">{id === "-" ? "×" : "?"}</span>}
+          </span>
+        );
+      })}
+    </span>
+  );
+  const Who = ({ v, label }: { v: { id: string; sec: number; how: string } | null | undefined; label: string }) => (
+    <div className="fr-row">
+      <span className="fr-lbl">{label}</span>
+      {v ? (
+        <span className="fr-who">
+          {data.players[v.id]?.skins[0] && <img src={urls.get(data.players[v.id].skins[0])} alt="" width={22} height={22} />}
+          {pname(v.id)} <small>({rel(v.sec)}, {v.how})</small>
+        </span>
+      ) : (
+        <span className="fr-muted">niemand bekannt (±30 min, gleiche Listenlänge)</span>
+      )}
+    </div>
+  );
+  const Example = ({ x, faceUrl: face }: { x: FaceExample; faceUrl: string }) => (
+    <div className="fr-exbox">
+      {x.vod != null && (
+        <a className="fr-thumb" href={x.url} target="_blank" rel="noopener noreferrer" title="Im VOD ansehen">
+          <img
+            src={`${thumbBase}/${x.vod}-${x.seg}-${x.slot}.png`}
+            alt={`Kopfliste bei ${pname(x.s)}, Kachel markiert`}
+            loading="lazy"
+            onError={(e) => (e.currentTarget.style.display = "none")}
+          />
+        </a>
+      )}
+      <div className="fr-exinfo">
+        <a className="fr-ex" href={x.url} target="_blank" rel="noopener noreferrer">
+          ▶ {pname(x.s)} {fmtD.format(new Date(x.at))}
+        </a>
+        {x.list && x.list.length > 0 && (
+          <div className="fr-row">
+            <span className="fr-lbl">Liste</span>
+            <ListRow list={x.list} slot={x.slot} mark unknownFace={face} />
+          </div>
+        )}
+        {x.list && (
+          <>
+            <Who v={x.before} label="Davor hier" />
+            <Who v={x.after} label="Danach hier" />
+          </>
+        )}
+        {x.others && x.others.length > 0 && (
+          <div className="fr-row fr-others">
+            <span className="fr-lbl">Gleichzeitig</span>
+            <div className="fr-otherlist">
+              {x.others.map((o) => (
+                <div key={o.s} className="fr-other" title={o.same ? "Gleich lange Liste: gleicher Platz markiert" : "Andere Länge: Platz nicht vergleichbar"}>
+                  <span className="fr-other-name">
+                    {pname(o.s)} <small>{o.dt === 0 ? "±0 s" : `${o.dt > 0 ? "+" : ""}${o.dt} s`}</small>
+                  </span>
+                  <ListRow list={o.list} slot={x.slot} mark={o.same} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   const done = data.groups.filter(isDone).length;
   const openSightings = data.groups.filter((g) => !isDone(g)).reduce((s, g) => s + g.n, 0);
@@ -123,12 +203,9 @@ export function FaceReview({ data, endpoint }: { data: FaceReviewData; endpoint:
                   <span className="fr-lbl">Gesehen bei</span>
                   <span>{g.streamers.map(([s, n]) => `${pname(s)} (${fmtN.format(n)})`).join(", ")}</span>
                 </div>
-                <div className="fr-row">
-                  <span className="fr-lbl">Im VOD</span>
+                <div className="fr-examples">
                   {g.ex.map((x) => (
-                    <a key={x.url} className="fr-ex" href={x.url} target="_blank" rel="noopener noreferrer">
-                      ▶ {pname(x.s)} {fmtD.format(new Date(x.at))}
-                    </a>
+                    <Example key={x.url} x={x} faceUrl={g.face} />
                   ))}
                 </div>
                 <div className="fr-row">

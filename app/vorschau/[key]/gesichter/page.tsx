@@ -27,7 +27,7 @@ async function Inner(props: PageProps<"/vorschau/[key]/gesichter">) {
       </section>
       <section className="block">
         <div className="wrap">
-          {data ? <FaceReview data={data} endpoint={`${root}/gesichter/daten`} /> : <p>Noch keine Daten vom Scan.</p>}
+          {data ? <FaceReview data={data} endpoint={`${root}/gesichter/daten`} thumbBase={`${root}/gesichter/bild`} /> : <p>Noch keine Daten vom Scan.</p>}
         </div>
       </section>
     </>

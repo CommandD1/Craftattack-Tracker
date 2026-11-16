@@ -28,7 +28,24 @@ export type FaceGroup = {
   cands: [string, number][];
   /** Ähnlichste Skins ohne die Symbol-Ecke: [Spieler, Abweichung] (bekannte Köpfe ~1–8, fremde ~25+) */
   similar?: [string, number][];
-  ex: { s: string; url: string; at: string }[];
+  ex: FaceExample[];
+};
+/** Eine Sichtung mit Zusammenhang (scripts/chat/cluster-faces.mjs) */
+export type FaceExample = {
+  s: string;
+  url: string;
+  at: string;
+  vod?: string;
+  seg?: number;
+  /** Platz der Kachel in der Liste (0 = oben/links) */
+  slot?: number;
+  /** Liste in diesem Moment: Spieler-ID, null = unbekannt, "-" = kein Kopf */
+  list?: (string | null)[];
+  /** Wer auf dieser Kachel davor/danach erkannt oder gefolgert war (gleich lange Liste, ±30 min) */
+  before?: { id: string; sec: number; how: string } | null;
+  after?: { id: string; sec: number; how: string } | null;
+  /** Listen anderer Streamer derselben Gruppe zur selben Zeit (Versatz der VODs herausgerechnet) */
+  others?: { s: string; dt: number; list: (string | null)[]; same: boolean; agree: number }[];
 };
 export type FaceReviewData = { made: string; groups: FaceGroup[]; players: Record<string, { name: string; skins: string[] }> };
 export type FaceLabel = { choice: string; at: string };
@@ -38,6 +55,16 @@ export const FACE_SPECIAL = ["-", "?", "skip"] as const;
 export async function loadFaceReview(): Promise<FaceReviewData | null> {
   try {
     return JSON.parse(await readFile(DATA, "utf8")) as FaceReviewData;
+  } catch {
+    return null;
+  }
+}
+
+/** Bildausschnitt <vod>-<seg>-<platz>.png aus FACE_REVIEW_DIR/thumbs (oder null) */
+export async function readFaceThumb(file: string): Promise<Buffer | null> {
+  if (!/^\d+-\d+-\d+\.png$/.test(file)) return null;
+  try {
+    return await readFile(join(DIR, "thumbs", file));
   } catch {
     return null;
   }
