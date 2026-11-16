@@ -5,6 +5,7 @@ import type { FaceExample, FaceLabel, FaceReviewData, FaceGroup } from "@/lib/fa
 import "./faceReview.css";
 
 /** Zuordnungsliste für /vorschau/<key>/gesichter (Daten: lib/faceReview.ts) */
+const FLAT = 30;
 const OUT: Record<string, string> = { "-": "Kein Kopf", "?": "Fremde Person", skip: "Weiß nicht" };
 const fmtN = new Intl.NumberFormat("de-DE");
 const fmtD = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
@@ -152,7 +153,12 @@ export function FaceReview({ data, endpoint, thumbBase }: { data: FaceReviewData
 
   const done = data.groups.filter(isDone).length;
   const openSightings = data.groups.filter((g) => !isDone(g)).reduce((s, g) => s + g.n, 0);
-  const shown = data.groups.filter((g) => filter === "all" || (filter === "done") === isDone(g));
+  // Offene zuerst mit Stimmen, dann nach Gesichts-Kontrast (flache Flächen = wahrscheinlich kein Kopf zuletzt), dann Häufigkeit
+  const flat = (g: FaceGroup) => g.contrast != null && g.contrast < FLAT;
+  const rank = (g: FaceGroup) => (g.cands.length ? 0 : flat(g) ? 2 : 1);
+  const shown = data.groups
+    .filter((g) => filter === "all" || (filter === "done") === isDone(g))
+    .sort((a, b) => rank(a) - rank(b) || b.n - a.n);
 
   return (
     <div className="fr">
@@ -196,6 +202,7 @@ export function FaceReview({ data, endpoint, thumbBase }: { data: FaceReviewData
                 <span className="fr-id">#{g.id}</span>
               </div>
               <div className="fr-body">
+                {flat(g) && <p className="fr-flat">Flach, wahrscheinlich kein Kopf (Kontrast {g.contrast}; echte Skins meist über 40)</p>}
                 <p className="fr-meta">
                   <b>{fmtN.format(g.n)}</b> Sichtungen in <b>{fmtN.format(g.units)}</b> Paketen{from && ` · ${from === to ? from : `${from}–${to}`}`}
                 </p>
