@@ -9,3 +9,5 @@ EnvironmentFile=/home/commandd/.config/actracker/watchdog.env
 Environment=PATH=/home/commandd/.local/node/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=/bin/bash /home/commandd/actracker-live/scripts/autodeploy.sh
 TimeoutStartSec=20min
+# Optional: Dienste, die während des Builds pausieren (Speicher knapp), z. B.
+# Environment=AUTODEPLOY_PAUSE_UNITS=mein-dienst
