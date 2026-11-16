@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BOARD_KEYS, type BoardKey, type EventType, type TrackerEvent } from "@/lib/types";
-import { EVENT_META, eventBadge, eventDetailHref, isShownEvent, sharedChatPlayers } from "@/lib/events";
+import { EVENT_META, eventBadge, eventDetailHref, eventHref, isShownEvent, sharedChatPlayers } from "@/lib/events";
 import { time } from "@/lib/format";
 import { Head } from "./Head";
 import { BOARD_ICON, EVENT_ICON, Icon } from "./Icons";
@@ -165,7 +165,8 @@ function tooltip(e: TrackerEvent, label: string, text: string, sub: string | nul
  * Kompakte Kachel für ein Ereignis. Der volle Satz steht im Tooltip. Überall gleich aufgebaut: Kopf des Handelnden,
  * Pfeil bzw. Schwert zum zweiten Beteiligten, Icon und Wert. Nur der Kopf des Spielers, um den es auf der Seite geht
  * (`focus`), entfällt, wenn er selbst handelt – Beteiligte auf der anderen Seite bleiben immer sichtbar.
- * Ein Klick auf die Kachel zeigt alle Ereignisse dieser Art von diesem Spieler, mit diesem hervorgehoben.
+ * Ein Klick auf die Kachel öffnet die Detailseite des Ereignisses; ein Klick auf das Symbol (die Art des Ereignisses)
+ * zeigt alle Ereignisse dieser Art von diesem Spieler, mit diesem hervorgehoben.
  */
 function EventTile({ e, focus, highlight, hrefFor }: { e: TrackerEvent; focus?: string; highlight?: boolean; hrefFor?: (e: TrackerEvent) => string }) {
   const showPlayer = !focus || e.player !== focus;
@@ -270,9 +271,15 @@ function EventTile({ e, focus, highlight, hrefFor }: { e: TrackerEvent; focus?: 
           </Link>
         </>
       )}
-      <span className="tile__icon" data-tone={meta.tone} aria-hidden="true">
-        <IconCmp />
-      </span>
+      <Link
+        className="tile__icon"
+        data-tone={meta.tone}
+        href={eventHref(e)}
+        title={`Alle „${meta.label}“${e.player ? ` von ${e.playerName ?? e.player}` : ""}`}
+        aria-label={`Alle „${meta.label}“${e.player ? ` von ${e.playerName ?? e.player}` : ""} zeigen`}
+      >
+        <IconCmp aria-hidden="true" />
+      </Link>
       {badge && <span className="tile__val num">{badge}</span>}
       {estimated && (
         <span className="tile__est" title="Geschätzt (Datenlücke)" aria-label="geschätzt">
