@@ -7914,11 +7914,14 @@ a.rh-badge:focus-visible {
   gap: 12px;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
 }
-.news-card {
+/* li als Raster, damit die Kachel die Zeilenhöhe füllt (ohne height: 100% neben dem Rand von .box) */
+.news-grid > li {
+  display: grid;
+}
+a.box.news-card {
   display: grid;
   gap: 4px;
   align-content: start;
-  height: 100%;
   padding: 14px 16px;
   color: inherit;
   text-decoration: none;
