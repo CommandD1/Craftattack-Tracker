@@ -1,5 +1,5 @@
 /**
- * Neuerungen für Besucher (Startseite, „Neu auf der Seite“).
+ * Neuerungen für Besucher (Seite /neuigkeiten, im Footer verlinkt).
  * Nur neue Auswertungen und Ansichten – keine Fehlerbehebungen, Feinschliff oder Technik im Hintergrund.
  * Neueste zuerst; `date` als TT.MM.
  */

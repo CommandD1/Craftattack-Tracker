@@ -34,6 +34,9 @@ export function SiteFooter() {
             <Link href="/so-funktionierts">So funktioniert’s</Link>
           </li>
           <li>
+            <Link href="/neuigkeiten">Neuigkeiten</Link>
+          </li>
+          <li>
             <Link href="/impressum">Impressum</Link>
           </li>
           <li>
