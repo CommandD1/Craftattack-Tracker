@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
 import { HUBS, hubOf } from "@/lib/hubs";
 
@@ -42,14 +42,18 @@ function ActiveList() {
 /** Reiter des aktuellen Bereichs (nur, wenn er mehr als einen hat) */
 export function HubTabs() {
   const path = usePathname();
+  const sp = useSearchParams();
   const current = hubOf(path);
   if (!current || current.hub.tabs.length < 2) return <span />;
+  // Community: die Auswahl „nur CraftAttack“ (?ca=) gilt für alle Reiter und bleibt beim Wechsel
+  const ca = current.hub.key === "community" ? sp.get("ca") : null;
+  const keep = ca === "einer" || ca === "beide" ? `?ca=${ca}` : "";
   return (
     <nav className="subnav" aria-label={current.hub.label}>
       <ul className="subnav__in">
         {current.hub.tabs.map((t) => (
           <li key={t.href}>
-            <Link href={t.href} aria-current={t.href === current.tab.href ? "page" : undefined}>
+            <Link href={t.href + keep} aria-current={t.href === current.tab.href ? "page" : undefined}>
               {t.label}
             </Link>
           </li>

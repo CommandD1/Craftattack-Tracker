@@ -6,6 +6,7 @@ import { connection } from "next/server";
 import { PageSkeleton } from "@/components/Skeletons";
 import { CommunityExplorer, type CommunityView } from "@/components/CommunityExplorer";
 import { getDailyNetwork } from "@/lib/connections";
+import { caModeOf } from "@/lib/onlineSpans";
 
 export const metadata: Metadata = {
   title: "Verbindungen",
@@ -26,7 +27,7 @@ export default function Page(props: PageProps<"/verbindungen">) {
 async function Community({ searchParams }: { searchParams: PageProps<"/verbindungen">["searchParams"] }) {
   await connection();
   const sp = await searchParams;
-  const [all, server] = await Promise.all([getDailyNetwork(), getDailyNetwork(true)]);
+  const [all, einer, beide] = await Promise.all([getDailyNetwork(), getDailyNetwork("einer"), getDailyNetwork("beide")]);
   // Frühere Ansichten: „naehe“ heißt jetzt Distanz, „gruppen“ ist das Netz mit eingeschalteten Gruppen
   const view: CommunityView = sp.ansicht === "distanz" || sp.ansicht === "naehe" ? "distanz" : "netz";
   const groups = sp.gruppen === "1" || sp.ansicht === "gruppen" ? true : sp.gruppen === "0" ? false : null;
@@ -46,16 +47,16 @@ async function Community({ searchParams }: { searchParams: PageProps<"/verbindun
               Verbindung, desto dicker die Linie und desto näher die Köpfe; mit Spieler seine Verbindungen. <b>Distanz</b>: wer allen am nächsten steht; mit Spieler
               alle nach dem kürzesten Weg zu ihm (Raids, Titel und Nachrichten zählen nur in ihre Richtung). <b>Gruppen</b>: wer untereinander deutlich enger
               verbunden ist als mit dem Rest (Louvain), benannt nach dem Mitglied mit der meisten Aufmerksamkeit; das sagt nichts über echte Freundschaften.
-              <b> Verbindungen während online</b> zählt nur, was geschah, während mindestens einer der beiden auf CraftAttack online war; in Lücken des Trackers gilt
-              niemand als online. Kopf anklicken wählt den Spieler aus, Rechtsklick öffnet sein Profil.
+              <b> Nur CraftAttack</b>: „Einer online“ zählt nur, was geschah, während mindestens einer der beiden auf CraftAttack online war, „Beide online“
+              nur, während beide gleichzeitig dort waren; in Lücken des Trackers gilt niemand als online. Die Auswahl gilt auch für Zuschauer und Raids. Kopf anklicken wählt den Spieler aus, Rechtsklick öffnet sein Profil.
             </Explain>{" "}
-            <DataAge at={Math.min(all.at, server.at)} prefix="Auswertung" hint="wird alle 10 Minuten im Hintergrund neu berechnet" />
+            <DataAge at={Math.min(all.at, einer.at, beide.at)} prefix="Auswertung" hint="wird alle 10 Minuten im Hintergrund neu berechnet" />
           </p>
         </div>
       </section>
       <section className="block" data-tone="paper">
         <div className="wrap">
-          <CommunityExplorer nodes={all.nodes} daily={all.daily} dailyServer={server.daily} initialView={view} initialServer={sp.server === "1"} initialFocus={focus} initialGroups={groups} />
+          <CommunityExplorer nodes={all.nodes} daily={all.daily} dailyEiner={einer.daily} dailyBeide={beide.daily} initialView={view} initialCa={caModeOf(sp)} initialFocus={focus} initialGroups={groups} />
         </div>
       </section>
     </>

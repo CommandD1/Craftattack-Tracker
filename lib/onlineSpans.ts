@@ -15,6 +15,38 @@ export interface OnlineIndex {
   at(id: string, t: number): boolean;
   /** Abschnitte in [from, to], in denen `a` oder `b` online war (sortiert, ohne Überlappung) */
   either(a: string, b: string, from: number, to: number): [number, number][];
+  /** Abschnitte in [from, to], in denen `a` und `b` gleichzeitig online waren */
+  both(a: string, b: string, from: number, to: number): [number, number][];
+}
+
+/**
+ * Filter „nur CraftAttack“ der Community-Seiten: `alle` = alle Twitch-Daten, `einer` = nur, während mindestens einer
+ * der beiden auf dem Server war, `beide` = nur, während beide gleichzeitig online waren.
+ */
+export type CaMode = "alle" | "einer" | "beide";
+export const CA_MODES: CaMode[] = ["alle", "einer", "beide"];
+/** Adress-Parameter `?ca=einer|beide` (früher `?server=1` = einer) */
+export function caModeOf(sp: Record<string, string | string[] | undefined>): CaMode {
+  const v = sp.ca;
+  if (v === "einer" || v === "beide") return v;
+  return sp.server === "1" ? "einer" : "alle";
+}
+export const CA_LABEL: Record<CaMode, string> = { alle: "Alle Twitch-Daten", einer: "Einer online", beide: "Beide online" };
+export const CA_HINT: Record<CaMode, string> = {
+  alle: "Alles von Twitch, auch wenn gerade niemand auf CraftAttack war",
+  einer: "Nur, während mindestens einer der beiden auf CraftAttack online war",
+  beide: "Nur, während beide gleichzeitig auf CraftAttack online waren",
+};
+
+/** Prüft je Paar und Zeitpunkt (ms), ob es im Modus zählt; `null` bei `alle` */
+export function caPairTest(online: OnlineIndex | null, mode: CaMode): ((a: string, b: string, t: number) => boolean) | null {
+  if (!online || mode === "alle") return null;
+  return mode === "beide" ? (a, b, t) => online.at(a, t) && online.at(b, t) : (a, b, t) => online.at(a, t) || online.at(b, t);
+}
+/** Abschnitte je Paar im Modus (bei `alle` der ganze Zeitraum) */
+export function caSpans(online: OnlineIndex | null, mode: CaMode, a: string, b: string, from: number, to: number): [number, number][] {
+  if (!online || mode === "alle") return [[from, to]];
+  return mode === "beide" ? online.both(a, b, from, to) : online.either(a, b, from, to);
 }
 
 /** Sortierte, zusammengelegte Abschnitte */
@@ -67,6 +99,19 @@ export function onlineIndex(sessions: SessionLike[], now: number): OnlineIndex {
     },
     either(a, b, from, to) {
       return merge([...clip(a, from, to), ...clip(b, from, to)]);
+    },
+    both(a, b, from, to) {
+      const x = clip(a, from, to);
+      const y = clip(b, from, to);
+      const out: [number, number][] = [];
+      for (let i = 0, j = 0; i < x.length && j < y.length; ) {
+        const lo = Math.max(x[i][0], y[j][0]);
+        const hi = Math.min(x[i][1], y[j][1]);
+        if (hi > lo) out.push([lo, hi]);
+        if (x[i][1] < y[j][1]) i++;
+        else j++;
+      }
+      return out;
     },
   };
 }

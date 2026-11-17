@@ -13,14 +13,19 @@ import { getRaidAnalysis } from "./raidAnalysis";
  */
 const JOBS: [string, () => Promise<unknown>][] = [
   ["Zuschauerwanderung", () => getFlows()],
+  ["Zuschauerwanderung (einer online)", () => getFlows("einer")],
+  ["Zuschauerwanderung (beide online)", () => getFlows("beide")],
   // Netz der ganzen Staffel (Profil, Gruppen-Seiten, Zuschauer); die Netz-Seite rechnet Zeiträume aus dem Tagesnetz
   ["Netz Staffel", () => getNetwork(null)],
   ["Netz je Tag", () => getDailyNetwork()],
-  ["Netz je Tag (nur Server)", () => getDailyNetwork(true)],
+  ["Netz je Tag (einer online)", () => getDailyNetwork("einer")],
+  ["Netz je Tag (beide online)", () => getDailyNetwork("beide")],
   ["AFK-Phasen", () => snapshot(AFK_SNAPSHOT, computeAllAfkSpans, AFK_SNAPSHOT_MS)],
   ["Summen-Kurven", () => snapshot(BOARD_TOTALS_SNAPSHOT, computeBoardTotals, BOARD_TOTALS_MS)],
   // Raid-Auswertung (/raids): Gelegenheiten, Gruppen, Abstände
   ["Raids", () => getRaidAnalysis()],
+  ["Raids (einer online)", () => getRaidAnalysis("einer")],
+  ["Raids (beide online)", () => getRaidAnalysis("beide")],
 ];
 
 let started = false;

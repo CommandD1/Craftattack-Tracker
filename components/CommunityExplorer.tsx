@@ -10,6 +10,7 @@ import { PlayerSearch } from "./PlayerSearch";
 import type { GraphEdge, GraphNode } from "./ConnectionGraph";
 import type { CommunityCtx } from "./communityCtx";
 import { sumDays, type DailyNetwork } from "@/lib/dailyNetwork";
+import { CA_HINT, CA_LABEL, CA_MODES, type CaMode } from "@/lib/onlineSpans";
 import { DEFAULT_WEIGHTS, KIND_INFO, LINK_KINDS, weigh } from "@/lib/connectionWeights";
 import { analyzeGroups, resolutionForCount } from "@/lib/groups";
 import { isMutual, type Direction } from "@/lib/network";
@@ -28,6 +29,7 @@ const SHOW: { key: Show; label: string; hint: string }[] = [
   { key: "live", label: "Live", hint: "Nur Spieler, die gerade streamen" },
 ];
 
+const CA_ITEMS = CA_MODES.map((key) => ({ key, label: CA_LABEL[key], hint: CA_HINT[key] }));
 const DIRECTIONS: { key: Direction; label: string; hint: string }[] = [
   { key: "von", label: "Von ihm", hint: "Wen er raidet, bei wem er schreibt, und weiter über deren Verbindungen" },
   { key: "zu", label: "Zu ihm", hint: "Wer ihn raidet oder bei ihm schreibt, und wer wiederum zu denen" },
@@ -55,23 +57,25 @@ const OPEN_NARROW: Record<Section, boolean> = { verteilung: false, filter: false
 export function CommunityExplorer({
   nodes,
   daily,
-  dailyServer,
+  dailyEiner,
+  dailyBeide,
   initialView,
-  initialServer,
+  initialCa,
   initialFocus,
   initialGroups,
 }: {
   nodes: GraphNode[];
   daily: DailyNetwork;
-  dailyServer: DailyNetwork;
+  dailyEiner: DailyNetwork;
+  dailyBeide: DailyNetwork;
   initialView: CommunityView;
-  initialServer: boolean;
+  initialCa: CaMode;
   initialFocus: string;
   /** Aus der Adresse (?gruppen=1); sonst gilt die gespeicherte Einstellung */
   initialGroups: boolean | null;
 }) {
   const [view, setView] = useState<CommunityView>(initialView);
-  const [server, setServer] = useState(initialServer);
+  const [ca, setCa] = useState<CaMode>(initialCa);
   const [focus, setFocus] = useState(initialFocus);
   const [s, setS] = useState<CommunitySettings>(SETTINGS_DEFAULTS);
   const [loaded, setLoaded] = useState(false);
@@ -103,15 +107,16 @@ export function CommunityExplorer({
     const u = new URL(window.location.href);
     const put = (k: string, v: string) => (v ? u.searchParams.set(k, v) : u.searchParams.delete(k));
     put("ansicht", view === "netz" ? "" : view);
-    put("server", server ? "1" : "");
+    u.searchParams.delete("server");
+    put("ca", ca === "alle" ? "" : ca);
     put("spieler", focus);
     if (loaded) put("gruppen", s.groups ? "1" : "");
     // Mit null, damit Next.js die Adresse übernimmt (sonst setzt die Minuten-Aktualisierung sie zurück)
     window.history.replaceState(null, "", u);
-  }, [view, server, focus, s.groups, loaded]);
+  }, [view, ca, focus, s.groups, loaded]);
 
   // Zeitraum: von–bis als Tage; „bis“ leer = immer der neueste Tag
-  const data = server ? dailyServer : daily;
+  const data = ca === "beide" ? dailyBeide : ca === "einer" ? dailyEiner : daily;
   const last = data.days.length - 1;
   const [range, setRange] = useState<{ from: number; to: number | null }>({ from: 0, to: null });
   const to = range.to === null ? last : Math.min(range.to, last);
@@ -292,13 +297,7 @@ export function CommunityExplorer({
               <Toggle on={s.groups} onClick={() => set({ groups: !s.groups })} title="Wer untereinander deutlich enger verbunden ist als mit dem Rest (Louvain). Sagt nichts über echte Freundschaften.">
                 Gruppen
               </Toggle>
-              <Toggle
-                on={server}
-                onClick={() => setServer(!server)}
-                title="Nur, während mindestens einer der beiden auf dem Server war: Raids und Nachrichten zu dem Zeitpunkt, geteilter Chat und Titel nur für diese Zeit"
-              >
-                Verbindungen während online
-              </Toggle>
+              <Seg label="Nur CraftAttack" items={CA_ITEMS} value={ca} onPick={setCa} />
             </div>
             {s.groups && (
               <div className="cs__groupbar">

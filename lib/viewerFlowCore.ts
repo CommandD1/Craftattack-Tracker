@@ -73,6 +73,11 @@ export interface FlowInput {
   affinity?: Map<string, Map<string, number>>;
   /** Chat-Spuren: Wechsel von Schreibern von A nach B je 5-Minuten-Abschnitt (Abschnitt = Minute / 5) */
   chatMoves?: ChatMoveSeries;
+  /**
+   * Filter „nur CraftAttack“: zählt eine Wanderung von A nach B zur Minute `min`? Ohne Filter zählt alles. Das
+   * Staffel-Muster (β, γ) bleibt aus allen Daten geschätzt, zugeordnet und aufsummiert wird nur, was der Filter erlaubt.
+   */
+  allow?: (from: string, to: string, min: number) => boolean;
 }
 
 /**
@@ -513,11 +518,15 @@ export function computeFlows(input: FlowInput): FlowResult {
   const events: FlowEvent[] = [];
   const pairAgg = new Map<string, { viewers: number; stays: number[]; n: number }>();
   const hourly = Array.from({ length: 24 }, (_, hour) => ({ hour, pool: 0, found: 0, n: 0 }));
+  /** Mit Filter: Quelle nur, wenn überhaupt ein Paar zu dieser Zeit zählen kann (sonst wäre sie ein leeres Ereignis) */
+  const anyAllowed = (from: string, min: number) => !input.allow || [...binned.keys()].some((b) => b !== from && input.allow!(from, b, min));
   for (const s of sources) {
+    if (!anyAllowed(s.from, (s.k + k0 + 1) * BIN)) continue;
     const overl = sources.filter((o) => o !== s && Math.abs(o.k - s.k) <= 3);
     const shares: FlowShare[] = [];
     for (const b of binned.values()) {
       if (b.id === s.from) continue;
+      if (input.allow && !input.allow(s.from, b.id, (s.k + k0 + 1) * BIN)) continue;
       // Raid-Ziel: ausdrücklich, Ankunft als höchster Stand in 10 Min über dem Stand davor
       if (s.kind === "raid" && b.id === s.raidTo) {
         const before = b.v[s.k - 1] ?? NaN;
@@ -679,10 +688,12 @@ export function computeFlows(input: FlowInput): FlowResult {
   const startPair = new Map<string, number>();
   const WIN = 6;
   for (const st of startList) {
+    if (!anyAllowed(st.b, (st.k + k0) * BIN)) continue;
     const overl = startList.filter((o) => o !== st && Math.abs(o.k - st.k) <= 3);
     const shares: FlowShare[] = [];
     for (const a of binned.values()) {
       if (a.id === st.b || raidBins.get(a.id)?.has(st.k + 2)) continue;
+      if (input.allow && !input.allow(a.id, st.b, (st.k + k0) * BIN)) continue;
       let loss = 0;
       let ok = true;
       for (let q = st.k; q <= st.k + WIN; q++) {
@@ -768,11 +779,12 @@ export function computeFlows(input: FlowInput): FlowResult {
     const [from, to] = key.split("|");
     const agg = pairAgg.get(key);
     const tb = binned.get(to)!;
-    const nLive = (eventsOf.get(from) ?? []).filter((s) => !Number.isNaN(tb.v[s.k]) || !Number.isNaN(tb.v[s.k + 1])).length;
+    const counted = (s: Src) => (!Number.isNaN(tb.v[s.k]) || !Number.isNaN(tb.v[s.k + 1])) && (!input.allow || input.allow(from, to, (s.k + k0 + 1) * BIN));
+    const nLive = (eventsOf.get(from) ?? []).filter(counted).length;
     // Staffel-Summe aus dem Muster (β · frei gewordene Zuschauer, während B live war); einzelne Zuordnungen wären
     // durch das Abschneiden bei 0 nach oben verzerrt
     const amt = (eventsOf.get(from) ?? [])
-      .filter((s) => s.kind !== "raid" && (!Number.isNaN(tb.v[s.k]) || !Number.isNaN(tb.v[s.k + 1])))
+      .filter((s) => s.kind !== "raid" && counted(s))
       .reduce((a, s) => a + s.pool, 0);
     const viewers = Math.round(bt * amt);
     if (viewers <= 0 && !raidPair.has(key)) continue;
@@ -806,14 +818,16 @@ export function computeFlows(input: FlowInput): FlowResult {
   });
   startSummaries.sort((a, b) => b.pulled - a.pulled);
 
-  const summaries: SourceSummary[] = [...eventsOf].map(([id, l]) => {
+  // Je Quelle ein Ereignis (mit Filter nur die Quellen, die zählen können)
+  const summaries: SourceSummary[] = [...eventsOf.keys()].flatMap((id) => {
     const evs = events.filter((e) => e.from === id && e.kind !== "start");
+    if (!evs.length) return [];
     const stays = evs.flatMap((e) => e.shares.filter((x) => x.stay !== null && x.viewers >= 20).map((x) => x.stay!));
     return {
       id,
-      ends: l.filter((s) => s.kind === "ende").length,
-      drops: l.filter((s) => s.kind === "einbruch").length,
-      raids: l.filter((s) => s.kind === "raid").length,
+      ends: evs.filter((e) => e.kind === "ende").length,
+      drops: evs.filter((e) => e.kind === "einbruch").length,
+      raids: evs.filter((e) => e.kind === "raid").length,
       pool: Math.round(evs.reduce((a, e) => a + e.pool, 0)),
       found: Math.round(evs.reduce((a, e) => a + e.found, 0)),
       stay: stays.length >= 3 ? median(stays) : null,
