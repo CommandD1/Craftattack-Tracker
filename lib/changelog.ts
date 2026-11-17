@@ -32,7 +32,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     date: "06.11.",
     title: "Staffel-Rückblick je Spieler",
-    text: "Die Staffel eines Spielers in Zahlen, im Profil über „★ Staffel-Rückblick“.",
+    text: "Die Staffel eines Spielers in Zahlen, im Profil über „Staffel-Rückblick“.",
     href: "/spieler",
   },
   {
