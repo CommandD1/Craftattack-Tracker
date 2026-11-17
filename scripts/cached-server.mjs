@@ -49,6 +49,11 @@ const MAX_QUEUE = 400;
 /** Eigene, schmale Spur für Seiten mit vielen Adressen (Crawler laufen alle Ereignisse ab und füllten sonst die
  *  Warteschlange, dann bekamen alle anderen Seiten 503) */
 const LANES = [{ re: /^\/ereignis\//, max: 1, queue: 20, active: 0, /** @type {(() => void)[]} */ q: [] }];
+/**
+ * Browser schicken bei jedem Abruf `Sec-Fetch-Mode` (Seitenaufruf und Navigation innerhalb der Seite), Crawler fast
+ * nie. Besucher laufen deshalb an der schmalen Spur vorbei durch die normale Warteschlange.
+ */
+const isBrowser = (req) => typeof req.headers?.["sec-fetch-mode"] === "string";
 const UPSTREAM_TIMEOUT_MS = 90_000;
 /** Nach dem Umschalten darf der alte Prozess so lange laufende Anfragen beenden */
 const RETIRE_MS = 15_000;
@@ -328,7 +333,7 @@ function release() {
   (queue.shift() ?? background.shift())?.();
 }
 
-const laneFor = (url = "") => LANES.find((l) => l.re.test(url));
+const laneFor = (req) => (isBrowser(req) ? undefined : LANES.find((l) => l.re.test(req.url ?? "")));
 function enterLane(l) {
   if (!l) return Promise.resolve();
   if (l.active < l.max) {
@@ -364,7 +369,7 @@ function fetchUpstream(req, port = current.port) {
 function render(key, req, bg = false) {
   let p = rendering.get(key);
   if (!p) {
-    const lane = laneFor(req.url);
+    const lane = laneFor(req);
     p = enterLane(lane)
       .then(() =>
         slot(bg)
