@@ -30,6 +30,7 @@ import { BOARD_TONE, METRIC_TONE } from "@/lib/statTone";
 import { Head } from "@/components/Head";
 import { HowLink } from "@/components/HowLink";
 import { graphHref } from "@/lib/graphQuery";
+import { Changelog } from "@/components/Changelog";
 
 // Titel, Untertitel und Farben wie auf craftattack.one/stats
 const BOARDS = BOARD_STYLE;
@@ -282,6 +283,7 @@ async function Dashboard() {
                   })}
                 </div>
               </div>
+              <Changelog />
             </aside>
           </div>
           </Fold>
