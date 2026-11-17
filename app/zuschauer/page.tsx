@@ -80,6 +80,12 @@ async function Viewers({ searchParams }: { searchParams: PageProps<"/zuschauer">
             <DataAge at={flows.computedAt} prefix="Auswertung" hint="wird alle 10 Minuten im Hintergrund neu berechnet" />
           </p>
           <CaFilter path="/zuschauer" sp={sp} mode={ca} />
+          {ca !== "alle" && (
+            <p className="muted">
+              Mit Filter zeigt der Tagesgraph nur Streamer, die an dem Tag auf CraftAttack online waren, und die Streamer-Ansicht nur Tage, an denen der Streamer
+              auf CraftAttack live war (live und gleichzeitig online). „Einer“ und „Beide“ unterscheiden sich nur bei den Wanderungen.
+            </p>
+          )}
         </div>
       </section>
 
@@ -117,7 +123,7 @@ async function DayView({ flows, names, day: wanted, all }: { flows: FlowAnalysis
   const d = wanted && days.includes(wanted) ? wanted : days[0];
   if (!d) return <p className="muted">Keine Zuschauerdaten.</p>;
   const [a, b] = dayBounds(d);
-  const stack = await getDayStack(d);
+  const stack = await getDayStack(d, caOfRequest().mode !== "alle");
   const series = stack.series.map((s) => ({ id: s.id, name: s.id ? (names[s.id]?.name ?? s.id) : "Andere", values: s.values }));
   const events = flows.events.filter((e) => e.at >= a && e.at < b);
   const free = events.filter((e) => e.kind === "ende" || e.kind === "einbruch");
@@ -436,7 +442,7 @@ async function StreamerView({
   const streamers = await getStreamers();
   const id = wanted && streamers.includes(wanted) ? wanted : streamers[0];
   if (!id) return <p className="muted">Keine Zuschauerdaten.</p>;
-  const [pd, season] = await Promise.all([getPlayerDay(id, wantedDay), getStreamerSeason(id)]);
+  const [pd, season] = await Promise.all([getPlayerDay(id, wantedDay, caOfRequest().mode), getStreamerSeason(id, caOfRequest().mode !== "alle")]);
   const sorted = [...streamers].sort((a, b) => (names[a]?.name ?? a).localeCompare(names[b]?.name ?? b, "de"));
   const name = names[id]?.name ?? id;
   const src = flows.sources.find((s) => s.id === id);
@@ -493,6 +499,7 @@ async function StreamerView({
       )}
 
       {pd && <StreamerDay pd={pd} names={names} name={name} dayHref={dayHref} />}
+      {!pd && caOfRequest().mode !== "alle" && <p className="muted">{name} war an keinem Tag gleichzeitig live und auf CraftAttack online.</p>}
 
       {season && season.days.length >= 2 && (
         <Fold id="zuschauer.staffel-streamer" title={`${name} über die Staffel`}>
