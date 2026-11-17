@@ -6,6 +6,8 @@ import { getDb } from "./db";
 import { analyzeGroups } from "./groups";
 import { adjacency, distancesFrom } from "./network";
 import { snapshot } from "./snapshots";
+import { caPairTest, onlineIndex, type CaMode } from "./onlineSpans";
+import { loadAllSessions } from "./store";
 
 /**
  * Raid-Auswertung (/raids): wer raidet, wer wird geraidet – nach Anzahl und Zuschauern, fair
@@ -17,6 +19,9 @@ import { snapshot } from "./snapshots";
  * - Gruppe und Abstand aus dem Netz OHNE Raids (geteilte Chats, Titel, Nachrichten), damit Raids sich nicht selbst
  *   „in die Gruppe“ ziehen; verglichen mit einem zufälligen Raid an die gerade Live-Spieler.
  * - Tageszeit (Berlin): Raids je Stunde und Rate = Raids ÷ Stream-Enden mit Gelegenheit.
+ * - Filter „nur CraftAttack“ (CaMode): nur Raids, bei denen der Gebende bzw. beide gerade auf dem Server waren; als
+ *   mögliche Ziele zählen dann nur Live-Spieler, für die das Paar ebenfalls zählt. Raids an nicht erfasste Kanäle
+ *   fallen bei „beide“ weg (das Ziel kann nicht auf dem Server sein).
  */
 
 export interface RaidPlayer {
@@ -70,12 +75,13 @@ const hopKey = (hops: number | undefined) => (hops === undefined ? "0" : hops <=
 
 /** Vorberechnet vom Tracker (lib/snapshotJobs.ts), die Website liest nur das Ergebnis */
 export const RAID_SNAPSHOT_MS = 10 * 60_000;
-export async function getRaidAnalysis(): Promise<RaidAnalysis> {
-  return (await snapshot("raid-analysis", computeRaidAnalysis, RAID_SNAPSHOT_MS)).value;
+export async function getRaidAnalysis(mode: CaMode = "alle"): Promise<RaidAnalysis> {
+  return (await snapshot(mode === "alle" ? "raid-analysis" : `raid-analysis:${mode}`, () => computeRaidAnalysis(mode), RAID_SNAPSHOT_MS)).value;
 }
 
-async function computeRaidAnalysis(): Promise<RaidAnalysis> {
+async function computeRaidAnalysis(mode: CaMode): Promise<RaidAnalysis> {
   const db = await getDb();
+  const pairOk = caPairTest(mode === "alle" ? null : onlineIndex(await loadAllSessions(), Date.now()), mode);
   const [raidRows, streamRows, edges] = await Promise.all([
     db.query<{ id: string; at: Date; player: string; target: string | null; viewers: number | null }>(
       `SELECT id, at, player, meta->>'raidTargetPlayerId' AS target, value AS viewers FROM events WHERE type = 'raid' AND player IS NOT NULL ORDER BY at`,
@@ -163,25 +169,32 @@ async function computeRaidAnalysis(): Promise<RaidAnalysis> {
   let tracked = 0;
   let viewers = 0;
   const days = new Set<string>();
+  let given = 0;
 
   for (const r of raidRows.rows) {
     const t = r.at.getTime();
     const v = Number(r.viewers ?? 0);
+    const external = !r.target || !live.has(r.target) || r.target === r.player;
+    if (pairOk) {
+      // Externes Ziel: kann nicht auf dem Server sein, zählt nur bei „einer“ und nur, wenn der Gebende online war
+      if (external ? mode === "beide" || !pairOk(r.player, r.player, t) : !pairOk(r.player, r.target!, t)) continue;
+    }
     const g = P(r.player);
     const h = hours[hourOf(t)];
     days.add(berlinDay(t));
+    given++;
     g.given++;
     g.givenViewers += v;
     viewers += v;
     h.viewers += v;
-    const cands = liveAt(t, r.player);
+    const cands = liveAt(t, r.player).filter((c) => !pairOk || pairOk(r.player, c, t));
     // Erwartung: jeder Live-Spieler hätte das Ziel sein können
     for (const c of cands) {
       const cp = P(c);
       cp.expected += 1 / cands.length;
       cp.expectedViewers += v / cands.length;
     }
-    if (!r.target || !live.has(r.target) || r.target === r.player) {
+    if (external || !r.target) {
       g.givenExternal++;
       h.external++;
       continue;
@@ -216,14 +229,14 @@ async function computeRaidAnalysis(): Promise<RaidAnalysis> {
   }
   // Gelegenheiten: Stream-Enden, bei denen jemand anderes live war
   for (const e of ends) {
-    if (!liveAt(e.at, e.player).length) continue;
+    if (!liveAt(e.at, e.player).some((c) => !pairOk || pairOk(e.player, c, e.at))) continue;
     P(e.player).opportunities++;
     hours[hourOf(e.at)].ends++;
   }
 
   return {
     at: now,
-    total: raidRows.rows.length,
+    total: given,
     tracked,
     viewers,
     inGroup,

@@ -9,7 +9,7 @@ import { mentionMatcher, titleSeconds } from "./titleMentions";
 import { berlinDay, splitByBerlinDay } from "./berlin";
 import type { DailyNetwork } from "./dailyNetwork";
 import { getState, loadAllSessions } from "./store";
-import { onlineIndex } from "./onlineSpans";
+import { caPairTest, caSpans, onlineIndex, type CaMode } from "./onlineSpans";
 
 /** Zeiträume für die Netz-Seiten */
 export const NETWORK_RANGES: { key: string; label: string; hours: number | null }[] = [
@@ -158,19 +158,22 @@ async function computeNetwork(hours: number | null): Promise<{ nodes: NetworkNod
 }
 
 /**
- * Netz je Tag (Gruppen über die Zeit), vom Tracker alle 10 Minuten vorberechnet. `serverOnly`: nur, was geschah,
- * während mindestens einer der beiden auf dem Server war (Raid, Nachricht: zu dem Zeitpunkt; geteilter Chat und
- * Titel: nur die Zeit, in der einer online war). Wer nicht mehr spielt, verliert so seine Twitch-Verbindungen danach.
+ * Netz je Tag (Gruppen über die Zeit), vom Tracker alle 10 Minuten vorberechnet. `mode` (siehe CaMode): `einer` nur,
+ * was geschah, während mindestens einer der beiden auf dem Server war, `beide` nur, während beide gleichzeitig online
+ * waren (Raid, Nachricht: zu dem Zeitpunkt; geteilter Chat und Titel: nur diese Zeit). Wer nicht mehr spielt, verliert
+ * so seine Twitch-Verbindungen danach.
  */
-export async function getDailyNetwork(serverOnly = false): Promise<{ nodes: NetworkNode[]; daily: DailyNetwork; at: number }> {
-  const { value, at } = await snapshot(serverOnly ? "daily-network:server" : "daily-network", () => computeDailyNetwork(serverOnly), SNAPSHOT_MS);
+export async function getDailyNetwork(mode: CaMode = "alle"): Promise<{ nodes: NetworkNode[]; daily: DailyNetwork; at: number }> {
+  const key = mode === "alle" ? "daily-network" : mode === "einer" ? "daily-network:server" : "daily-network:beide";
+  const { value, at } = await snapshot(key, () => computeDailyNetwork(mode), SNAPSHOT_MS);
   return { ...value, at };
 }
 
-async function computeDailyNetwork(serverOnly: boolean): Promise<{ nodes: NetworkNode[]; daily: DailyNetwork }> {
+async function computeDailyNetwork(mode: CaMode): Promise<{ nodes: NetworkNode[]; daily: DailyNetwork }> {
   const db = await getDb();
   const now = Date.now();
-  const online = serverOnly ? onlineIndex(await loadAllSessions(), now) : null;
+  const online = mode === "alle" ? null : onlineIndex(await loadAllSessions(), now);
+  const pairOk = caPairTest(online, mode);
   const [state, raidRows, chats, messageRows, streams, players] = await Promise.all([
     getState(),
     db.query<{ src: string; dst: string; at: Date }>(
@@ -190,12 +193,12 @@ async function computeDailyNetwork(serverOnly: boolean): Promise<{ nodes: Networ
     db.query<{ id: string; name: string; twitch_login: string | null; live: boolean }>(`SELECT id, name, twitch_login, live IS NOT NULL AS live FROM players`),
   ]);
   const known = (id: string) => Boolean(state.players[id]);
-  // Je Tag zählen; mit `serverOnly` nur, wenn einer der beiden zu dem Zeitpunkt online war
+  // Je Tag zählen; mit Filter nur, wenn einer bzw. beide zu dem Zeitpunkt online waren
   const count = (rows: { src: string; dst: string; at: Date }[]) => {
     const m = new Map<string, { src: string; dst: string; day: string; n: number }>();
     for (const r of rows) {
       const t = r.at.getTime();
-      if (online && !online.at(r.src, t) && !online.at(r.dst, t)) continue;
+      if (pairOk && !pairOk(r.src, r.dst, t)) continue;
       const day = berlinDay(t);
       const k = `${r.src}|${r.dst}|${day}`;
       const e = m.get(k) ?? m.set(k, { src: r.src, dst: r.dst, day, n: 0 }).get(k)!;
@@ -231,14 +234,14 @@ async function computeDailyNetwork(serverOnly: boolean): Promise<{ nodes: Networ
     const start = s.started_at.getTime();
     for (let i = 0; i < ids.length; i++)
       for (let j = i + 1; j < ids.length; j++) {
-        const parts = online ? online.either(ids[i], ids[j], start, end) : [[start, end] as [number, number]];
+        const parts = caSpans(online, mode, ids[i], ids[j], start, end);
         if (!parts.length) continue;
         row(berlinDay(parts[0][0]), ids[i], ids[j]).chats++;
         for (const [pa, pb] of parts)
           splitByBerlinDay(pa, pb, (day, a, b) => {
             row(day, ids[i], ids[j]).chatSeconds += Math.round((b - a) / 1000);
           });
-        if (!s.ended_at && (!online || online.at(ids[i], now) || online.at(ids[j], now))) nowPairs.push([ids[i], ids[j]]);
+        if (!s.ended_at && (!pairOk || pairOk(ids[i], ids[j], now))) nowPairs.push([ids[i], ids[j]]);
       }
   }
   const match = mentionMatcher(players.rows.map((p) => ({ id: p.id, name: p.name, twitchLogin: p.twitch_login })));
@@ -256,7 +259,7 @@ async function computeDailyNetwork(serverOnly: boolean): Promise<{ nodes: Networ
       if (src === e.a) e.titleAB += seconds;
       else e.titleBA += seconds;
     },
-    online ? (src, dst, from, to) => online.either(src, dst, from, to) : undefined,
+    online ? (src, dst, from, to) => caSpans(online, mode, src, dst, from, to) : undefined,
   );
   const days = [...new Set([...rows.values()].map((r) => r.day))].sort();
   const ids = Object.keys(state.players).sort();

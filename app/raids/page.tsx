@@ -9,6 +9,8 @@ import { loadTracker } from "@/lib/data";
 import { num } from "@/lib/format";
 import "@/components/detail/detail.css";
 import { getRaidAnalysis, type RaidPlayer } from "@/lib/raidAnalysis";
+import { caModeOf } from "@/lib/onlineSpans";
+import { CaFilter } from "@/components/CaFilter";
 import { RaidScatter } from "@/components/detail/RaidScatter";
 import { RaidHours } from "@/components/detail/RaidHours";
 import { PairMatrix } from "@/components/detail/PairMatrix";
@@ -63,7 +65,8 @@ const COLS: { key: string; label: string; hint: string; v: (p: RaidPlayer) => nu
 
 async function Raids(props: PageProps<"/raids">) {
   const sp = await props.searchParams;
-  const [a, { state }] = await Promise.all([getRaidAnalysis(), loadTracker()]);
+  const ca = caModeOf(sp);
+  const [a, { state }] = await Promise.all([getRaidAnalysis(ca), loadTracker()]);
   const name = (id: string) => state.players[id]?.name ?? id;
   const uuid = (id: string) => state.players[id]?.uuid ?? "";
   const names: Record<string, [string, string]> = Object.fromEntries(Object.values(state.players).map((x) => [x.id, [x.name, x.uuid]]));
@@ -90,6 +93,7 @@ async function Raids(props: PageProps<"/raids">) {
             Netz ohne Raids (geteilte Chats, Titel, Nachrichten), damit Raids sich nicht selbst zur Gruppe machen. Erfasst werden nur Raids zwischen
             CraftAttack-Spielern; Raids an andere Kanäle sieht der Tracker nicht.
           </p>
+          <CaFilter path="/raids" sp={sp} mode={ca} />
         </div>
       </section>
 
@@ -172,7 +176,7 @@ async function Raids(props: PageProps<"/raids">) {
                     <th>Spieler</th>
                     {COLS.map((c) => (
                       <th key={c.key} className="num" title={c.hint}>
-                        <Link href={`/raids?sort=${c.key}#tabelle`} aria-current={c.key === sort.key ? "true" : undefined} scroll={false}>
+                        <Link href={`/raids?sort=${c.key}${ca === "alle" ? "" : `&ca=${ca}`}#tabelle`} aria-current={c.key === sort.key ? "true" : undefined} scroll={false}>
                           {c.label}
                         </Link>
                       </th>

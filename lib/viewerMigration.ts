@@ -8,6 +8,8 @@ import { snapshot } from "./snapshots";
 import { getNetwork } from "./connections";
 import { adjacency } from "./network";
 import { DEFAULT_WEIGHTS } from "./connectionWeights";
+import { caPairTest, onlineIndex, type CaMode } from "./onlineSpans";
+import { loadAllSessions } from "./store";
 
 /**
  * Zuschauer: Basisdaten (Zuschauerverlauf je Streamer, Starts, Raids, Titel, geteilte Chats, Server-Termine), die
@@ -783,8 +785,9 @@ function berlinHourOf(min: number) {
   return v;
 }
 
-async function computeAll(): Promise<FlowAnalysis> {
-  const [base, chatMoves, net] = await Promise.all([getBase(), loadChatMoves(), getNetwork(null).catch(() => null)]);
+async function computeAll(mode: CaMode = "alle"): Promise<FlowAnalysis> {
+  const [base, chatMoves, net, sessions] = await Promise.all([getBase(), loadChatMoves(), getNetwork(null).catch(() => null), mode === "alle" ? null : loadAllSessions()]);
+  const pairOk = caPairTest(sessions ? onlineIndex(sessions, Date.now()) : null, mode);
   // Nähe im Netz (beide Richtungen zusammen), je Streamer auf Summe 1
   const affinity = new Map<string, Map<string, number>>();
   if (net) {
@@ -805,7 +808,16 @@ async function computeAll(): Promise<FlowAnalysis> {
       if (sum > 0) for (const [k, v] of row) row.set(k, v / sum);
     }
   }
-  const flows = computeFlows({ series: base.series, cover: base.cover, startsBy: base.startsBy, raids: base.raids, hourOf: berlinHourOf, chatMoves, affinity });
+  const flows = computeFlows({
+    series: base.series,
+    cover: base.cover,
+    startsBy: base.startsBy,
+    raids: base.raids,
+    hourOf: berlinHourOf,
+    chatMoves,
+    affinity,
+    allow: pairOk ? (a, b, min) => pairOk(a, b, min * 60_000) : undefined,
+  });
   return {
     ...flows,
     raidRetention: computeRaidRetention(base),
@@ -824,8 +836,9 @@ export interface FlowAnalysis extends FlowResult {
  * Wanderung über die ganze Staffel (Rechnung ~6 s): vom Tracker alle 10 Minuten vorberechnet (lib/snapshots.ts),
  * die Website liest das Ergebnis. `computedAt` sagt, wie alt es ist.
  */
-export async function getFlows(): Promise<FlowAnalysis & { computedAt: number }> {
-  const { value, at } = await snapshot("viewer-flows", computeAll, SNAPSHOT_MS);
+export async function getFlows(mode: CaMode = "alle"): Promise<FlowAnalysis & { computedAt: number }> {
+  // Gefiltert (je ~20 s Rechnung) nur alle 30 Minuten neu
+  const { value, at } = await snapshot(mode === "alle" ? "viewer-flows" : `viewer-flows:${mode}`, () => computeAll(mode), mode === "alle" ? SNAPSHOT_MS : 3 * SNAPSHOT_MS);
   return { ...value, computedAt: at };
 }
 

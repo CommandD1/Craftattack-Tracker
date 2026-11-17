@@ -7870,3 +7870,19 @@ a.rh-badge:focus-visible {
   margin-top: 16px;
   font-size: 0.8125rem;
 }
+
+/* Auswahl „nur CraftAttack“ (components/CaFilter.tsx): Links im Stil der Knopfreihe */
+.ca-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 16px;
+}
+.ca-filter__label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.875rem;
+}

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Suspense } from "react";
+import { cache, Suspense } from "react";
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { PageSkeleton } from "@/components/Skeletons";
@@ -15,6 +15,8 @@ import { FlowList, HourlyChart, MethodNote, PairTable, RampChart, SourceTable, S
 import { loadTracker } from "@/lib/data";
 import { dayBounds, getDays, getDayStack, getFlows, getPlayerDay, getStreamerSeason, getStreamers, type ChartMarker, type FlowAnalysis } from "@/lib/viewerMigration";
 import { num } from "@/lib/format";
+import { caModeOf, type CaMode } from "@/lib/onlineSpans";
+import { CaFilter } from "@/components/CaFilter";
 
 export const metadata: Metadata = {
   title: "Zuschauer",
@@ -45,9 +47,14 @@ export default function Page(props: PageProps<"/zuschauer">) {
 
 const str = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
 
+/** Auswahl „nur CraftAttack“ dieser Anfrage, damit jeder Link auf der Seite sie behält */
+const caOfRequest = cache((): { mode: CaMode } => ({ mode: "alle" }));
+
 function href(params: Record<string, string | undefined>) {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v) q.set(k, v);
+  const ca = caOfRequest().mode;
+  if (ca !== "alle") q.set("ca", ca);
   const s = q.toString();
   return s ? `/zuschauer?${s}` : "/zuschauer";
 }
@@ -56,7 +63,9 @@ async function Viewers({ searchParams }: { searchParams: PageProps<"/zuschauer">
   await connection();
   const sp = await searchParams;
   const view: View = VIEWS.some((v) => v.key === sp.ansicht) ? (sp.ansicht as View) : "tag";
-  const [{ state }, flows] = await Promise.all([loadTracker(), getFlows()]);
+  const ca = caModeOf(sp);
+  caOfRequest().mode = ca;
+  const [{ state }, flows] = await Promise.all([loadTracker(), getFlows(ca)]);
   const names: Names = Object.fromEntries(Object.values(state.players).map((p) => [p.id, { name: p.name, uuid: p.uuid }]));
   const streamerHref = (id: string) => href({ ansicht: "streamer", spieler: id });
 
@@ -70,6 +79,7 @@ async function Viewers({ searchParams }: { searchParams: PageProps<"/zuschauer">
             Wohin Zuschauer gehen, wenn ein Stream endet, einbricht oder raidet, und ob sie bleiben. <MethodNote />{" "}
             <DataAge at={flows.computedAt} prefix="Auswertung" hint="wird alle 10 Minuten im Hintergrund neu berechnet" />
           </p>
+          <CaFilter path="/zuschauer" sp={sp} mode={ca} />
         </div>
       </section>
 
@@ -440,6 +450,7 @@ async function StreamerView({
     <>
       <form className="mig__pick" method="get" action="/zuschauer">
         <input type="hidden" name="ansicht" value="streamer" />
+        {caOfRequest().mode !== "alle" && <input type="hidden" name="ca" value={caOfRequest().mode} />}
         <PlayerSearch name="spieler" defaultValue={id} label="Streamer" submitOnPick players={sorted.map((s) => ({ id: s, name: names[s]?.name ?? s, uuid: names[s]?.uuid }))} />
         <noscript>
           <button type="submit" className="tag">
