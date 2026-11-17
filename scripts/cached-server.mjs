@@ -46,6 +46,9 @@ const REWARM_PARALLEL = 2;
 const MAX_BYTES = 120 * 1024 * 1024;
 const MAX_RENDERS = 3;
 const MAX_QUEUE = 400;
+/** Eigene, schmale Spur für Seiten mit vielen Adressen (Crawler laufen alle Ereignisse ab und füllten sonst die
+ *  Warteschlange, dann bekamen alle anderen Seiten 503) */
+const LANES = [{ re: /^\/ereignis\//, max: 1, queue: 20, active: 0, /** @type {(() => void)[]} */ q: [] }];
 const UPSTREAM_TIMEOUT_MS = 90_000;
 /** Nach dem Umschalten darf der alte Prozess so lange laufende Anfragen beenden */
 const RETIRE_MS = 15_000;
@@ -325,6 +328,22 @@ function release() {
   (queue.shift() ?? background.shift())?.();
 }
 
+const laneFor = (url = "") => LANES.find((l) => l.re.test(url));
+function enterLane(l) {
+  if (!l) return Promise.resolve();
+  if (l.active < l.max) {
+    l.active++;
+    return Promise.resolve();
+  }
+  if (l.q.length >= l.queue) return Promise.reject(Object.assign(new Error("Spur voll"), { busy: true }));
+  return new Promise((resolve) => l.q.push(resolve)).then(() => void l.active++);
+}
+function leaveLane(l) {
+  if (!l) return;
+  l.active--;
+  l.q.shift()?.();
+}
+
 /** Holt die Antwort von Next.js vollständig (gzip angefragt) */
 function fetchUpstream(req, port = current.port) {
   return new Promise((resolve, reject) => {
@@ -345,8 +364,13 @@ function fetchUpstream(req, port = current.port) {
 function render(key, req, bg = false) {
   let p = rendering.get(key);
   if (!p) {
-    p = slot(bg)
-      .then(() => fetchUpstream(req).finally(release))
+    const lane = laneFor(req.url);
+    p = enterLane(lane)
+      .then(() =>
+        slot(bg)
+          .then(() => fetchUpstream(req).finally(release))
+          .finally(() => leaveLane(lane)),
+      )
       .then((entry) => {
         entry.key = key;
         if (entry.status === 200 && !entry.headers["set-cookie"]) store(key, entry);
