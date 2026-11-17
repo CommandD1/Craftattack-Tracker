@@ -1,6 +1,6 @@
 import "server-only";
 import { getDailyNetwork, getNetwork } from "./connections";
-import { getFlows, SNAPSHOT_MS } from "./viewerMigration";
+import { getCaDays, getFlows, SNAPSHOT_MS } from "./viewerMigration";
 import { snapshot } from "./snapshots";
 import { AFK_SNAPSHOT, AFK_SNAPSHOT_MS, computeAllAfkSpans } from "./analytics";
 import { BOARD_TOTALS_MS, BOARD_TOTALS_SNAPSHOT, computeBoardTotals } from "./store";
@@ -15,6 +15,7 @@ const JOBS: [string, () => Promise<unknown>][] = [
   ["Zuschauerwanderung", () => getFlows()],
   ["Zuschauerwanderung (einer online)", () => getFlows("einer")],
   ["Zuschauerwanderung (beide online)", () => getFlows("beide")],
+  ["Tage auf CraftAttack", () => getCaDays()],
   // Netz der ganzen Staffel (Profil, Gruppen-Seiten, Zuschauer); die Netz-Seite rechnet Zeiträume aus dem Tagesnetz
   ["Netz Staffel", () => getNetwork(null)],
   ["Netz je Tag", () => getDailyNetwork()],

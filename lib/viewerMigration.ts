@@ -10,6 +10,7 @@ import { adjacency } from "./network";
 import { DEFAULT_WEIGHTS } from "./connectionWeights";
 import { caPairTest, onlineIndex, type CaMode } from "./onlineSpans";
 import { loadAllSessions } from "./store";
+import { splitByBerlinDay } from "./berlin";
 
 /**
  * Zuschauer: Basisdaten (Zuschauerverlauf je Streamer, Starts, Raids, Titel, geteilte Chats, Server-Termine), die
@@ -323,6 +324,44 @@ function computeRaidRetention(base: Base): RaidRetention {
   return { curve, arrived: raids.length ? median(raids.map((r) => r.arrived)) : 0, raids: raids.sort((x, y) => y.at - x.at), byTarget, skipped };
 }
 
+/* ------------------------------------------------------------------ Tage auf CraftAttack */
+
+/**
+ * Für den Filter „nur CraftAttack“ auf /zuschauer: je Spieler die Tage (Berlin), an denen er auf dem Server online
+ * war, und die Tage, an denen er gleichzeitig live und online war. Klein, vom Tracker vorberechnet (die Website
+ * lädt keine Sessions).
+ */
+export interface CaDays {
+  online: Record<string, string[]>;
+  live: Record<string, string[]>;
+}
+export async function getCaDays(): Promise<CaDays> {
+  return (await snapshot("ca-days", computeCaDays, SNAPSHOT_MS)).value;
+}
+async function computeCaDays(): Promise<CaDays> {
+  const [base, sessions] = await Promise.all([getBase(), loadAllSessions()]);
+  const now = Date.now();
+  const online = onlineIndex(sessions, now);
+  const on = new Map<string, Set<string>>();
+  for (const x of sessions) {
+    const a = Date.parse(x.start);
+    const b = x.end ? Date.parse(x.end) : now;
+    if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) continue;
+    const set = on.get(x.player) ?? on.set(x.player, new Set()).get(x.player)!;
+    splitByBerlinDay(a, b, (day) => set.add(day));
+  }
+  const live: Record<string, string[]> = {};
+  for (const [id, sr] of base.series) {
+    const days = new Set<string>();
+    for (let i = 0; i < sr.t.length; i++) {
+      const ms = sr.t[i] * 60_000;
+      if (online.at(id, ms)) days.add(dayOf(ms));
+    }
+    if (days.size) live[id] = [...days].sort();
+  }
+  return { online: Object.fromEntries([...on].map(([id, d]) => [id, [...d].sort()])), live };
+}
+
 /* ------------------------------------------------------------------ Tagesverlauf */
 
 export interface DayStack {
@@ -350,8 +389,10 @@ function seasonTop(base: Base): string[] {
     .map((x) => x.id);
 }
 
-export async function getDayStack(day: string): Promise<DayStack> {
-  const base = await getBase();
+/** `caOnly`: nur Streamer, die an diesem Tag auf CraftAttack online waren */
+export async function getDayStack(day: string, caOnly = false): Promise<DayStack> {
+  const [base, ca] = await Promise.all([getBase(), caOnly ? getCaDays() : null]);
+  const onDay = ca ? new Set(Object.entries(ca.online).filter(([, d]) => d.includes(day)).map(([id]) => id)) : null;
   const [a, b] = dayBounds(day);
   const t0 = a / 60_000;
   const t1 = b / 60_000;
@@ -366,6 +407,7 @@ export async function getDayStack(day: string): Promise<DayStack> {
   const series: DayStack["series"] = top.map((id) => ({ id, values: new Array<number>(bins).fill(0) }));
   const table: DayStack["table"] = [];
   for (const [id, s] of base.series) {
+    if (onDay && !onDay.has(id)) continue;
     const vals = new Array<number>(bins).fill(0);
     let minutes = 0;
     let peak = 0;
@@ -581,13 +623,16 @@ function marketAt(base: Base, t: number): number | null {
   return m.get(Math.floor(t / 5)) ?? null;
 }
 
-export async function getPlayerDay(id: string, wanted?: string): Promise<PlayerDay | null> {
-  const [base, flows] = await Promise.all([getBase(), getFlows()]);
+/** `ca`: Filter „nur CraftAttack“; dann nur Tage, an denen der Streamer auf CraftAttack live war (live und online) */
+export async function getPlayerDay(id: string, wanted?: string, ca: CaMode = "alle"): Promise<PlayerDay | null> {
+  const [base, flows, caDays] = await Promise.all([getBase(), getFlows(ca), ca === "alle" ? null : getCaDays()]);
   const s = base.series.get(id);
   if (!s || s.t.length === 0) return null;
-  const daySet = new Set<string>();
+  let daySet = new Set<string>();
   for (let i = 0; i < s.t.length; i += 10) daySet.add(dayOf(s.t[i] * 60_000));
   daySet.add(dayOf(s.t[s.t.length - 1] * 60_000));
+  if (caDays) daySet = new Set(caDays.live[id] ?? []);
+  if (!daySet.size) return null;
   const days = [...daySet].sort().reverse();
   const day = wanted && daySet.has(wanted) ? wanted : days[0];
   const [a, b] = dayBounds(day);
@@ -896,8 +941,10 @@ export interface StreamerSeason {
 
 const hourFmtSeason = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", hourCycle: "h23", timeZone: "Europe/Berlin" });
 
-export async function getStreamerSeason(id: string): Promise<StreamerSeason | null> {
-  const base = await getBase();
+/** `caOnly`: nur Tage, an denen der Streamer auf CraftAttack live war */
+export async function getStreamerSeason(id: string, caOnly = false): Promise<StreamerSeason | null> {
+  const [base, caDays] = await Promise.all([getBase(), caOnly ? getCaDays() : null]);
+  const caSet = caDays ? new Set(caDays.live[id] ?? []) : null;
   const s = base.series.get(id);
   if (!s || !s.t.length) return null;
   const tot = totals(base);
@@ -953,7 +1000,7 @@ export async function getStreamerSeason(id: string): Promise<StreamerSeason | nu
     per.set(d, c);
   }
   const days: SeasonDay[] = [...per]
-    .filter(([, c]) => c.n >= 20)
+    .filter(([d, c]) => c.n >= 20 && (!caSet || caSet.has(d)))
     .sort((a, b) => (a[0] < b[0] ? -1 : 1))
     .map(([day, c]) => {
       const m = marketDay.get(day);
