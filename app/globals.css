@@ -7886,3 +7886,15 @@ a.rh-badge:focus-visible {
   letter-spacing: 0.04em;
   font-size: 0.875rem;
 }
+
+/* Klickbare Graphen (Startseite): ganze Kurve öffnet den Graphen */
+.chart-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.chart-link:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 4px;
+}

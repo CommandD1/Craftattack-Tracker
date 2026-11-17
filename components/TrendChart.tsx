@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import type { TrendPoint } from "@/lib/analytics";
 import { num } from "@/lib/format";
 import { EstimateRects, EstimateTip, useEstimateGaps } from "./Estimates";
@@ -15,8 +16,11 @@ const SERIES = [
   { key: "viewers", label: "Zuschauer gesamt", color: "var(--twitch)", area: false },
 ] as const;
 
-/** Verlauf der letzten 6/24/72 Stunden: drei Kurven, jede auf ihr eigenes Maximum skaliert. */
-export function TrendChart({ points, now }: { points: TrendPoint[]; now: number }) {
+/**
+ * Verlauf der letzten 6/24/72 Stunden: drei Kurven, jede auf ihr eigenes Maximum skaliert. Mit `hrefs` (je
+ * Zeitraum in Stunden) öffnet ein Klick auf die Kurven den Graphen mit demselben Zeitraum.
+ */
+export function TrendChart({ points, now, hrefs }: { points: TrendPoint[]; now: number; hrefs?: Partial<Record<(typeof RANGES)[number], string>> }) {
   const [hours, setHours] = useState<(typeof RANGES)[number]>(24);
   const [hover, setHover] = useState<number | null>(null);
   const ref = useRef<SVGSVGElement>(null);
@@ -61,24 +65,35 @@ export function TrendChart({ points, now }: { points: TrendPoint[]; now: number 
   const h = hover !== null ? data[hover] : null;
   const tipLeft = h ? x(h.at) / W : 0;
 
+  const link = hrefs?.[hours];
+  const plot = (
+    <svg ref={ref} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="trend__svg" role="img" aria-label="Verlauf: Spieler online, Streams live, Zuschauer" onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
+      <EstimateRects zones={zones} x={x} t0={t0} t1={t1} height={H - pad} />
+      <line x1={0} x2={W} y1={H - pad} y2={H - pad} className="trend__grid" vectorEffect="non-scaling-stroke" />
+      <path d={`${path("online")}L${W},${H - pad}L0,${H - pad}Z`} fill="var(--presence)" opacity={0.35} />
+      {SERIES.map((s) => (
+        <path key={s.key} d={path(s.key)} fill="none" stroke={s.color} strokeWidth={2.5} vectorEffect="non-scaling-stroke" />
+      ))}
+      {h && <line x1={x(h.at)} x2={x(h.at)} y1={0} y2={H - pad} className="trend__cursor" vectorEffect="non-scaling-stroke" />}
+      {[0, 0.5, 1].map((f) => (
+        <text key={f} x={f * W} y={H - 4} textAnchor={f === 0 ? "start" : f === 1 ? "end" : "middle"} className="trend__axis">
+          {hours > 24 ? dtf.format(t0 + span * f) : tf.format(t0 + span * f)}
+        </text>
+      ))}
+    </svg>
+  );
+
   return (
     <div className="trend">
       <Chips hours={hours} setHours={setHours} />
       <div className="trend__plot">
-        <svg ref={ref} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="trend__svg" role="img" aria-label="Verlauf: Spieler online, Streams live, Zuschauer" onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
-          <EstimateRects zones={zones} x={x} t0={t0} t1={t1} height={H - pad} />
-          <line x1={0} x2={W} y1={H - pad} y2={H - pad} className="trend__grid" vectorEffect="non-scaling-stroke" />
-          <path d={`${path("online")}L${W},${H - pad}L0,${H - pad}Z`} fill="var(--presence)" opacity={0.35} />
-          {SERIES.map((s) => (
-            <path key={s.key} d={path(s.key)} fill="none" stroke={s.color} strokeWidth={2.5} vectorEffect="non-scaling-stroke" />
-          ))}
-          {h && <line x1={x(h.at)} x2={x(h.at)} y1={0} y2={H - pad} className="trend__cursor" vectorEffect="non-scaling-stroke" />}
-          {[0, 0.5, 1].map((f) => (
-            <text key={f} x={f * W} y={H - 4} textAnchor={f === 0 ? "start" : f === 1 ? "end" : "middle"} className="trend__axis">
-              {hours > 24 ? dtf.format(t0 + span * f) : tf.format(t0 + span * f)}
-            </text>
-          ))}
-        </svg>
+        {link ? (
+          <Link href={link} className="chart-link" aria-label="Im Graph öffnen" title="Im Graph öffnen">
+            {plot}
+          </Link>
+        ) : (
+          plot
+        )}
         {h && (
           <div className="spark__tip trend__tip" style={{ left: `${tipLeft * 100}%`, transform: `translateX(${tipLeft > 0.7 ? "-100%" : tipLeft < 0.3 ? "0" : "-50%"})` }} role="status">
             <span className="spark__tip-time">{dtf.format(h.at)}</span>
