@@ -199,10 +199,15 @@ async function Dashboard() {
             <div className="spark-card__head">
               <span className="eyebrow">Verlauf</span>
             </div>
-            <TrendChart points={trend} now={now} />
-            <Link className="how-link" href={graphHref(["onlineCount", "liveCount", "viewers"], [], "3d")}>
-              Im Graph öffnen →
-            </Link>
+            <TrendChart
+              points={trend}
+              now={now}
+              hrefs={{
+                6: graphHref(["onlineCount", "liveCount", "viewers"], [], "6h"),
+                24: graphHref(["onlineCount", "liveCount", "viewers"], [], "24h"),
+                72: graphHref(["onlineCount", "liveCount", "viewers"], [], "3d"),
+              }}
+            />
           </div>
           <div className="tl-grid">
             <div className="feed-col">
@@ -226,14 +231,18 @@ async function Dashboard() {
                   <span className="eyebrow">Online · seit Start</span>
                   <span className="num spark-card__val">{s ? num(s.onlineCount) : "–"}</span>
                 </div>
-                <Sparkline points={hist.map((h) => ({ at: h.at, v: h.onlineCount }))} label="Online" />
+                <Link href={graphHref("onlineCount")} className="chart-link" aria-label="Online im Graph öffnen" title="Im Graph öffnen">
+                  <Sparkline points={hist.map((h) => ({ at: h.at, v: h.onlineCount }))} label="Online" />
+                </Link>
               </div>
               <div className="box spark-card" data-tone="white">
                 <div className="spark-card__head">
                   <span className="eyebrow">Zuschauer · seit Start</span>
                   <span className="num spark-card__val">{num(viewers)}</span>
                 </div>
-                <Sparkline points={hist.map((h) => ({ at: h.at, v: h.viewers }))} label="Zuschauer" />
+                <Link href={graphHref("viewers")} className="chart-link" aria-label="Zuschauer im Graph öffnen" title="Im Graph öffnen">
+                  <Sparkline points={hist.map((h) => ({ at: h.at, v: h.viewers }))} label="Zuschauer" />
+                </Link>
               </div>
               <div className="box spark-card" data-tone="white">
                 <div className="spark-card__head">
