@@ -78,16 +78,16 @@ export const CHANGELOG: ChangelogEntry[] = [
     href: "/graph?metric=onlineCount&zeit=3d",
   },
   {
-    date: "31.10.",
-    title: "Gruppen mit Anführer, Kern und Rand",
-    text: "Wer eine Gruppe anführt, wer zum Kern gehört und warum jemand dazuzählt.",
-    href: "/verbindungen?gruppen=1",
-  },
-  {
     date: "01.11.",
     title: "Top-Clips",
     text: "Die meistgesehenen Clips auf der Übersicht und im Profil.",
     href: "/ereignisse?t=clip",
+  },
+  {
+    date: "31.10.",
+    title: "Gruppen mit Anführer, Kern und Rand",
+    text: "Wer eine Gruppe anführt, wer zum Kern gehört und warum jemand dazuzählt.",
+    href: "/verbindungen?gruppen=1",
   },
   {
     date: "29.10.",

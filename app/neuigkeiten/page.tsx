@@ -6,10 +6,16 @@ export const metadata: Metadata = { title: "Neuigkeiten" };
 
 const MONTHS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 
-/** Einträge nach Monat gruppiert (Liste ist schon neueste zuerst sortiert) */
+/** TT.MM. → sortierbare Zahl MMTT */
+const order = (e: ChangelogEntry) => {
+  const [d, m] = e.date.split(".").map(Number);
+  return m * 100 + d;
+};
+
+/** Einträge nach Monat gruppiert, neueste zuerst (auch wenn die Liste einmal nicht sortiert ist) */
 function byMonth(list: ChangelogEntry[]) {
   const out: { month: string; items: ChangelogEntry[] }[] = [];
-  for (const e of list) {
+  for (const e of [...list].sort((a, b) => order(b) - order(a))) {
     const month = MONTHS[Number(e.date.split(".")[1]) - 1] ?? "";
     if (out.at(-1)?.month !== month) out.push({ month, items: [] });
     out.at(-1)!.items.push(e);
