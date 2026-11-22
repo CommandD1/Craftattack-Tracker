@@ -6,7 +6,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { PageSkeleton } from "@/components/Skeletons";
 import { loadTracker } from "@/lib/data";
-import { getHistoryAll, getTwitchSubscriptionBoard } from "@/lib/store";
+import { getAllSessions, getHistoryAll, getTwitchSubscriptionBoard } from "@/lib/store";
+import { craftScope } from "@/lib/craftScope";
 import { BOARD_KEYS, type BoardKey } from "@/lib/types";
 import { boardValue, num, duration, dateTime } from "@/lib/format";
 import { StatusLine } from "@/components/StatusLine";
@@ -59,9 +60,11 @@ async function Dashboard() {
   // Globale Zuschauer: nur Streams von Spielern, die gerade auf dem Server sind
   const viewers = liveList.filter((l) => l.onServer !== false).reduce((a, l) => a + l.viewers, 0);
   const isShown = await getFeedFilter();
+  // Nur CraftAttack: Twitch-Ereignisse aus Streams ohne Server-Zeit bleiben auf /ereignisse?wo=alles
+  const inCa = craftScope(events, await getAllSessions(), Object.values(state.players), now);
   // Von hinten suchen, bis 25 gefunden sind (nicht alle Ereignisse der Staffel filtern)
   const recent: typeof events = [];
-  for (let i = events.length - 1; i >= 0 && recent.length < 25; i--) if (isShown(events[i])) recent.push(events[i]);
+  for (let i = events.length - 1; i >= 0 && recent.length < 25; i--) if (isShown(events[i]) && inCa(events[i])) recent.push(events[i]);
   // Gesamte Laufzeit (gebündelt), nicht nur die letzten Stunden
   const hist = histAll.points.length >= 2 ? histAll.points : state.history;
   const trackedPlayers = Object.keys(state.players).length;

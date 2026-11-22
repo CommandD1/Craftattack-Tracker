@@ -5,7 +5,8 @@ import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { getHistoryRange } from "@/lib/analytics";
-import { getActiveSharedChatSessions, getHistoryAll } from "@/lib/store";
+import { getActiveSharedChatSessions, getAllSessions, getHistoryAll } from "@/lib/store";
+import { craftScope } from "@/lib/craftScope";
 import { getStreamTotals } from "@/lib/earnings";
 import { getStreamFollowerGains } from "@/lib/streamFollowers";
 import { ago, eur, num } from "@/lib/format";
@@ -68,9 +69,11 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
   // Zählt global nur, wer dabei auch auf dem Server ist
   const viewers = live.filter((p) => p.online).reduce((s, p) => s + (p.live?.viewers ?? 0), 0);
   const peak = hist.reduce((m, h) => Math.max(m, h.v), 0);
+  // Nur CraftAttack: Streams, in denen der Streamer auf dem Server war (alles unter „Alle“ → Alles)
+  const inCa = craftScope(events, await getAllSessions(), players, now);
   const twitchEvents = [...events]
     .reverse()
-    .filter((e) => e.where === "twitch" && Date.parse(e.at) >= since)
+    .filter((e) => e.where === "twitch" && Date.parse(e.at) >= since && inCa(e))
     .slice(0, 40);
   const rangeLabel = range.hours === null ? "gesamt" : `letzte ${range.label}`;
 
@@ -239,7 +242,7 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
         <div className="wrap">
           <div className="section-head">
             <h2 className="t-2">Stream-Chronik</h2>
-            <Link className="btn btn--small" data-tone="white" href={`/ereignisse?wo=twitch${range.hours === null ? "" : `&zeit=${range.key}`}`}>
+            <Link className="btn btn--small" data-tone="white" href={`/ereignisse?g=twitch${range.hours === null ? "" : `&zeit=${range.key}`}`}>
               Alle
             </Link>
           </div>

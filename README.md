@@ -63,6 +63,11 @@ sich höchstens einmal pro Minute, solange der Tab sichtbar ist.
 
 Koordinaten liefert die API nicht; „wo“ heißt immer: auf dem Server oder auf Twitch.
 
+Standard überall ist **CraftAttack** (`lib/craftScope.ts`, Community: `lib/onlineSpans.ts`): Twitch-Ereignisse (Live gehen,
+Titel, Raids, Chat, geteilter Chat …) erscheinen nur aus Streams, in denen der Streamer auf dem Server war; Verbindungen,
+Zuschauer und Raids zählen nur, während mindestens einer der beiden online war. **Alles** (`?wo=alles`, Community
+`?ca=alle`) zeigt auch den Rest.
+
 ## Rücksicht auf craftattack.one
 
 - `/api/stats` wird in zufälligen Abständen von 45 bis 75 Sekunden abgefragt (im Mittel einmal pro Minute).

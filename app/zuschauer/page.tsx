@@ -15,7 +15,7 @@ import { FlowList, HourlyChart, MethodNote, PairTable, RampChart, SourceTable, S
 import { loadTracker } from "@/lib/data";
 import { dayBounds, getDays, getDayStack, getFlows, getPlayerDay, getStreamerSeason, getStreamers, type ChartMarker, type FlowAnalysis } from "@/lib/viewerMigration";
 import { num } from "@/lib/format";
-import { caModeOf, type CaMode } from "@/lib/onlineSpans";
+import { CA_DEFAULT, caModeOf, caParam, type CaMode } from "@/lib/onlineSpans";
 import { CaFilter } from "@/components/CaFilter";
 
 export const metadata: Metadata = {
@@ -48,13 +48,13 @@ export default function Page(props: PageProps<"/zuschauer">) {
 const str = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
 
 /** Auswahl „nur CraftAttack“ dieser Anfrage, damit jeder Link auf der Seite sie behält */
-const caOfRequest = cache((): { mode: CaMode } => ({ mode: "alle" }));
+const caOfRequest = cache((): { mode: CaMode } => ({ mode: CA_DEFAULT }));
 
 function href(params: Record<string, string | undefined>) {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v) q.set(k, v);
   const ca = caOfRequest().mode;
-  if (ca !== "alle") q.set("ca", ca);
+  if (caParam(ca)) q.set("ca", caParam(ca));
   const s = q.toString();
   return s ? `/zuschauer?${s}` : "/zuschauer";
 }
@@ -456,7 +456,7 @@ async function StreamerView({
     <>
       <form className="mig__pick" method="get" action="/zuschauer">
         <input type="hidden" name="ansicht" value="streamer" />
-        {caOfRequest().mode !== "alle" && <input type="hidden" name="ca" value={caOfRequest().mode} />}
+        {caParam(caOfRequest().mode) && <input type="hidden" name="ca" value={caParam(caOfRequest().mode)} />}
         <PlayerSearch name="spieler" defaultValue={id} label="Streamer" submitOnPick players={sorted.map((s) => ({ id: s, name: names[s]?.name ?? s, uuid: names[s]?.uuid }))} />
         <noscript>
           <button type="submit" className="tag">

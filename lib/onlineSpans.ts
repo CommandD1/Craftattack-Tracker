@@ -20,22 +20,24 @@ export interface OnlineIndex {
 }
 
 /**
- * Filter „nur CraftAttack“ der Community-Seiten: `alle` = alle Twitch-Daten, `einer` = nur, während mindestens einer
- * der beiden auf dem Server war, `beide` = nur, während beide gleichzeitig online waren.
+ * Filter „CraftAttack / Alles“ der Community-Seiten: `einer` (Standard, „CraftAttack“) = nur, während mindestens einer
+ * der beiden auf dem Server war, `beide` = nur, während beide gleichzeitig online waren, `alle` = alle Twitch-Daten.
  */
 export type CaMode = "alle" | "einer" | "beide";
-export const CA_MODES: CaMode[] = ["alle", "einer", "beide"];
-/** Adress-Parameter `?ca=einer|beide` (früher `?server=1` = einer) */
+export const CA_MODES: CaMode[] = ["einer", "beide", "alle"];
+export const CA_DEFAULT: CaMode = "einer";
+/** Adress-Parameter `?ca=alle|beide`; ohne Angabe CraftAttack (`einer`, früher `?ca=einer` bzw. `?server=1`) */
 export function caModeOf(sp: Record<string, string | string[] | undefined>): CaMode {
   const v = sp.ca;
-  if (v === "einer" || v === "beide") return v;
-  return sp.server === "1" ? "einer" : "alle";
+  return v === "alle" || v === "beide" ? v : CA_DEFAULT;
 }
-export const CA_LABEL: Record<CaMode, string> = { alle: "Alle Twitch-Daten", einer: "Einer online", beide: "Beide online" };
+/** Wert für `?ca=` in Links; leer beim Standard */
+export const caParam = (m: CaMode) => (m === CA_DEFAULT ? "" : m);
+export const CA_LABEL: Record<CaMode, string> = { einer: "CraftAttack", beide: "Beide auf CraftAttack", alle: "Alles" };
 export const CA_HINT: Record<CaMode, string> = {
-  alle: "Alles von Twitch, auch wenn gerade niemand auf CraftAttack war",
   einer: "Nur, während mindestens einer der beiden auf CraftAttack online war",
   beide: "Nur, während beide gleichzeitig auf CraftAttack online waren",
+  alle: "Alles von Twitch, auch wenn gerade niemand auf CraftAttack war",
 };
 
 /** Prüft je Paar und Zeitpunkt (ms), ob es im Modus zählt; `null` bei `alle` */

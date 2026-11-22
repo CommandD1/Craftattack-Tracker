@@ -9,7 +9,7 @@ import { loadTracker } from "@/lib/data";
 import { num } from "@/lib/format";
 import "@/components/detail/detail.css";
 import { getRaidAnalysis, type RaidPlayer } from "@/lib/raidAnalysis";
-import { caModeOf } from "@/lib/onlineSpans";
+import { caModeOf, caParam } from "@/lib/onlineSpans";
 import { CaFilter } from "@/components/CaFilter";
 import { RaidScatter } from "@/components/detail/RaidScatter";
 import { RaidHours } from "@/components/detail/RaidHours";
@@ -176,7 +176,7 @@ async function Raids(props: PageProps<"/raids">) {
                     <th>Spieler</th>
                     {COLS.map((c) => (
                       <th key={c.key} className="num" title={c.hint}>
-                        <Link href={`/raids?sort=${c.key}${ca === "alle" ? "" : `&ca=${ca}`}#tabelle`} aria-current={c.key === sort.key ? "true" : undefined} scroll={false}>
+                        <Link href={`/raids?sort=${c.key}${caParam(ca) ? `&ca=${caParam(ca)}` : ""}#tabelle`} aria-current={c.key === sort.key ? "true" : undefined} scroll={false}>
                           {c.label}
                         </Link>
                       </th>

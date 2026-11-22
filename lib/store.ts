@@ -839,9 +839,42 @@ interface PlayerChat {
 }
 
 /** Chat eines Spielers fürs Profil: beide Richtungen plus die häufigsten Partner. Nutzt die Indizes auf sender_id/channel_id. */
-export async function getPlayerTwitchChat(id: string, limit = 30): Promise<PlayerChat> {
+export async function getPlayerTwitchChat(
+  id: string,
+  limit = 30,
+  /** Nur Nachrichten, für die das gilt (z. B. CraftAttack-Filter, lib/craftScope.ts); Summen und Partner zählen dann nur diese */
+  keep?: (m: { at: string; senderId: string; channelId: string }) => boolean,
+): Promise<PlayerChat> {
   const db = await getDb();
   const cols = "id, at, sender_id, sender_name, channel_id, channel_name, message, shared_with";
+  const partners = (rows: { id: string; name: string; count: string | number }[]) => rows.map((r) => ({ id: r.id, name: r.name, count: Number(r.count) }));
+  if (keep) {
+    // Schlanke Zeilen aller Nachrichten prüfen, dann nur die neuesten passenden vollständig laden
+    const light = await db.query<{ id: string; at: Date; sender_id: string; sender_name: string; channel_id: string; channel_name: string }>(
+      `SELECT id, at, sender_id, sender_name, channel_id, channel_name FROM twitch_chat_messages
+        WHERE sender_id = $1 OR channel_id = $1 ORDER BY at DESC, id DESC`,
+      [id],
+    );
+    const ok = light.rows.filter((r) => keep({ at: r.at.toISOString(), senderId: r.sender_id, channelId: r.channel_id }));
+    const tally = (rows: typeof ok, key: "channel" | "sender") => {
+      const m = new Map<string, { id: string; name: string; count: number }>();
+      for (const r of rows) {
+        const pid = key === "channel" ? r.channel_id : r.sender_id;
+        const e = m.get(pid) ?? m.set(pid, { id: pid, name: key === "channel" ? r.channel_name : r.sender_name, count: 0 }).get(pid)!;
+        e.count++;
+      }
+      return [...m.values()].sort((a, b) => b.count - a.count);
+    };
+    const sentRows = ok.filter((r) => r.sender_id === id);
+    const recvRows = ok.filter((r) => r.channel_id === id);
+    const ids = [...new Set([...sentRows.slice(0, limit), ...recvRows.slice(0, limit)].map((r) => r.id))];
+    const full = ids.length ? (await db.query<ChatRow>(`SELECT ${cols} FROM twitch_chat_messages WHERE id = ANY($1)`, [ids])).rows : [];
+    const byId = new Map(full.map((r) => [r.id, r]));
+    const pick = (rows: typeof ok) => rows.slice(0, limit).flatMap((r) => (byId.has(r.id) ? [chatFromRow(byId.get(r.id)!)] : []));
+    const w = tally(sentRows, "channel");
+    const v = tally(recvRows, "sender");
+    return { sent: pick(sentRows), received: pick(recvRows), sentTotal: sentRows.length, receivedTotal: recvRows.length, writesIn: w.slice(0, 6), visitors: v.slice(0, 6) };
+  }
   const [sent, received, writesIn, visitors] = await Promise.all([
     db.query<ChatRow>(`SELECT ${cols} FROM twitch_chat_messages WHERE sender_id = $1 ORDER BY at DESC, id DESC LIMIT $2`, [id, limit]),
     db.query<ChatRow>(`SELECT ${cols} FROM twitch_chat_messages WHERE channel_id = $1 ORDER BY at DESC, id DESC LIMIT $2`, [id, limit]),
@@ -856,7 +889,6 @@ export async function getPlayerTwitchChat(id: string, limit = 30): Promise<Playe
       [id],
     ),
   ]);
-  const partners = (rows: { id: string; name: string; count: string }[]) => rows.map((r) => ({ id: r.id, name: r.name, count: Number(r.count) }));
   const w = partners(writesIn.rows);
   const v = partners(visitors.rows);
   return {
