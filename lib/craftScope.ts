@@ -39,19 +39,23 @@ export interface LiveLike {
   online: boolean;
 }
 
-const cache = new WeakMap<TrackerEvent[], WeakMap<SessionLike[], { at: number; test: (e: TrackerEvent) => boolean }>>();
+/**
+ * Ein einziger Eintrag. Nicht nach der Identität der Ereignis-Liste: loadTracker() liefert, solange jemand live
+ * ist, je Aufruf eine neue Kopie (withLiveLinks), dann würde bei jedem Seitenaufruf neu gerechnet. Länge und
+ * letztes Ereignis reichen, um neue Ereignisse zu erkennen.
+ */
+let cache: { at: number; n: number; last: string | undefined; sessions: SessionLike[]; test: (e: TrackerEvent) => boolean } | null = null;
 
 /**
  * Prüfung „gehört zu CraftAttack“ für Ereignisse. `events` aufsteigend nach Zeit (wie aus loadTracker/getState);
- * je Ereignis- und Session-Liste eine Minute zwischengespeichert.
+ * eine Minute zwischengespeichert.
  */
 export function craftScope(events: TrackerEvent[], sessions: SessionLike[], players: LiveLike[], now: number): (e: TrackerEvent) => boolean {
-  const hit = cache.get(events)?.get(sessions);
-  if (hit && now - hit.at < 60_000) return hit.test;
+  const n = events.length;
+  const last = events[n - 1]?.id;
+  if (cache && cache.n === n && cache.last === last && cache.sessions === sessions && now - cache.at < 60_000) return cache.test;
   const test = build(events, sessions, players, now);
-  const inner = cache.get(events) ?? new WeakMap();
-  inner.set(sessions, { at: now, test });
-  cache.set(events, inner);
+  cache = { at: now, n, last, sessions, test };
   return test;
 }
 
