@@ -31,7 +31,7 @@ Expensive analyses are precomputed by the tracker every ~10 min into table `snap
 | Startup jobs (warm caches, official events, heads/skins, Twitch history) | `instrumentation.ts` |
 | Event detail page `/ereignis/<id>`, raid analysis `/raids` | `app/ereignis/[id]`, `app/raids`, `components/detail/`, `lib/eventDetail.ts` (`statOf()`: new event types need an entry or get no chart), `lib/eventPair.ts`, `lib/raidAnalysis.ts` |
 | Hidden test pages (`/vorschau/<key>/…`, key in `~/.config/actracker/vorschau.key`) | `app/vorschau/[key]/` with `previewGate()` from `lib/preview.ts` – try new features here before going public; `/vorschau/<key>/gesichter` (face labeling), `/vorschau/<key>/voicechat` (voice group stats) and `/vorschau/<key>/chat` (in-game chat cleanup, OCR names → players) for the recap-video VOD scan (`lib/faceReview.ts`, `lib/voiceSummary.ts`, `lib/chatReview.ts`, files in `FACE_REVIEW_DIR`, default `~/craftattack-stats/review`); `/vorschau/<key>/vergleich?a=<id>&b=<id>` (player comparison, `lib/playerCompare.ts`) |
-| Ops scripts | `scripts/deploy.sh`, `scripts/autodeploy.sh` (push to main → live), `scripts/cached-server.mjs`, `scripts/watchdog.mjs`, `scripts/backup.sh` (+ `RESTORE.md`), `scripts/systemd/` |
+| Ops scripts | `scripts/deploy.sh`, `scripts/autodeploy.sh` (push to main → live), `scripts/cached-server.mjs`, `scripts/watchdog.mjs`, `scripts/heap-report.mjs` (heap via IPC), `scripts/memtest.mjs` (memory test), `scripts/backup.sh` (+ `RESTORE.md`), `scripts/systemd/` |
 | Dormant estimate mode (`/schaetzung`, `CA_ESTIMATE=1`) | `lib/estimateMode.ts`, `scripts/estimate.mjs` – shut down, kept for reuse |
 
 ## Rules that bite
@@ -42,6 +42,13 @@ Expensive analyses are precomputed by the tracker every ~10 min into table `snap
   copied into the DB). Respect the backoff in `lib/craftattackFetch.ts`; never add workarounds for blocks.
 - Memory is tight (`--max-old-space-size=280`): don't load whole tables per request. Precompute into `snapshots`
   or wrap in `createSwrCache`, and keep new in-memory series compact.
+- Every module-level cache (Map, object, array that outlives a request) needs an upper bound: a fixed key set, or
+  size/idle eviction. `createSwrCache` evicts by itself (48 entries, 30 min unread); a hand-rolled `new Map()` keyed by
+  player, URL, time range or query param does not, and filled the heap until the site crashed (22.11.2026, PR #188).
+  `WeakMap` keyed by a per-request object caches nothing.
+- Production guard: `scripts/cached-server.mjs` restarts Next.js without downtime when the heap stays above 85 % for
+  2 min; `scripts/watchdog.mjs` pushes a warning on repeated restarts or an out-of-memory crash. That hides a leak
+  from visitors, it does not fix it.
 - Changes to AFK detection: bump `AFK_HISTORY_VERSION` in `lib/backfill.ts` so events are rebuilt from history,
   and test the rebuild on a copy of the DB first.
 - Adding columns to `player_history.extra_stats` = append to the order in `lib/playerStats.ts`, never reorder.
@@ -55,6 +62,8 @@ npm ci                      # in a fresh worktree; symlinked node_modules break 
 rm -rf .next*/types && npx next typegen
 npx tsc --noEmit            # any error blocks the merge
 npm run lint
+# Touches pages, lib/ or caches: memory test against a production build (~10 min, see header of the script)
+npx next build && DATABASE_URL=… node scripts/memtest.mjs   # exit 1 = heap budget exceeded or grows per round
 ```
 
 Running locally needs only `DATABASE_URL` (add `?sslmode=disable` for a local Postgres without TLS). Check UI

@@ -22,6 +22,11 @@
  * Versionen liegen zusätzlich 7 Tage in `.next-static-archive`.
  *
  * Endet der aktive Next.js-Prozess unerwartet, endet auch dieser Prozess (systemd startet neu).
+ *
+ * Speicher: Next.js meldet alle 15 s seinen Heap (scripts/heap-report.mjs über IPC). Liegt er zwei Minuten lang
+ * durchgehend über RECYCLE_AT des Limits, startet dieser Prozess dieselbe Version neu, genauso ohne Ausfall wie
+ * beim Versionswechsel, statt sie in den Speicherabbruch laufen zu lassen („Website startet gerade“). Stand und
+ * Neustarts stehen in WEB_HEAP_STATE (für scripts/watchdog.mjs: mehrere Neustarts = vermutlich ein Speicherleck).
  * `/schaetzung` ist abgeschaltet und leitet auf die Startseite.
  *
  * Unbekannte Adressen (erstes Pfadstück ist keine Seite, Route, Weiterleitung oder Datei aus public/) bekommen eine
@@ -32,8 +37,10 @@ import http from "node:http";
 import { spawn } from "node:child_process";
 import { gunzipSync } from "node:zlib";
 import { createRequire } from "node:module";
-import { createReadStream, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { extname, join, normalize, resolve, sep } from "node:path";
+import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { dirname, extname, join, normalize, resolve, sep } from "node:path";
+import { homedir } from "node:os";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { timingSafeEqual } from "node:crypto";
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -72,6 +79,16 @@ const TYPES = { ".js": "application/javascript; charset=utf-8", ".css": "text/cs
 
 const log = (...a) => console.log("[cache]", ...a);
 
+/** Vorsorglicher Neustart: Heap über diesem Anteil des Limits, RECYCLE_SAMPLES Meldungen (je 15 s) am Stück */
+const RECYCLE_AT = 0.85;
+const RECYCLE_SAMPLES = 8;
+/** Frühestens so lange nach dem Start einer Version (Vorwärmen braucht kurz viel) */
+const RECYCLE_MIN_AGE_MS = 10 * 60_000;
+/** Für zwei Prozesse kurz nebeneinander muss der Server so viel frei haben, sonst später erneut versuchen */
+const RECYCLE_MIN_AVAILABLE = 400 * 1024 * 1024;
+const HEAP_STATE = process.env.WEB_HEAP_STATE ?? join(homedir(), ".local/state/actracker-web-heap.json");
+const HEAP_REPORT = pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), "heap-report.mjs")).href;
+
 /* ---------- Next.js als Kindprozess(e) ---------- */
 const nextBin = createRequire(import.meta.url).resolve("next/dist/bin/next");
 const activeDist = () => {
@@ -83,11 +100,17 @@ const activeDist = () => {
 };
 
 function startNext(dist, port) {
-  const child = spawn(process.execPath, ["--max-old-space-size=280", "--max-semi-space-size=16", nextBin, "start", "-p", String(port), "-H", "127.0.0.1"], {
+  const child = spawn(process.execPath, ["--max-old-space-size=280", "--max-semi-space-size=16", "--import", HEAP_REPORT, nextBin, "start", "-p", String(port), "-H", "127.0.0.1"], {
     env: { ...process.env, PORT: String(port), ...(dist === ".next" ? {} : { NEXT_DIST_DIR: dist }) },
-    stdio: "inherit",
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
   });
-  const inst = { child, port, dist, retired: false };
+  /** @type {{ child: import("node:child_process").ChildProcess; port: number; dist: string; retired: boolean; started: number; heap: { used: number; limit: number; at: number }[] }} */
+  const inst = { child, port, dist, retired: false, started: Date.now(), heap: [] };
+  child.on("message", (m) => {
+    if (!m?.heap) return;
+    inst.heap.push(m.heap);
+    if (inst.heap.length > RECYCLE_SAMPLES) inst.heap.shift();
+  });
   child.on("exit", (code, signal) => {
     if (inst.retired) return;
     if (current === inst) {
@@ -121,11 +144,11 @@ function get(port, path, timeout = UPSTREAM_TIMEOUT_MS) {
   });
 }
 
-/** Neue Version starten, vorwärmen, umschalten (SIGUSR2) */
-async function switchVersion() {
+/** Neue Version starten, vorwärmen, umschalten (SIGUSR2); `restart`: dieselbe Version frisch starten (Speicher) */
+async function switchVersion(restart = false) {
   if (switching) return log("Wechsel läuft schon");
-  const dist = activeDist();
-  if (dist === current.dist) return log(`${dist} läuft bereits`);
+  const dist = restart ? current.dist : activeDist();
+  if (!restart && dist === current.dist) return log(`${dist} läuft bereits`);
   // Im Ordner liegt ein neuer Build: dessen Routenliste neu lesen (sonst gälten neue Seiten als unbekannt → 404)
   knownByDist.delete(dist);
   switching = true;
@@ -165,6 +188,42 @@ async function switchVersion() {
   switching = false;
 }
 process.on("SIGUSR2", () => void switchVersion().catch((e) => ((switching = false), console.error("[cache] Wechsel fehlgeschlagen:", e))));
+
+/* ---------- Speicher: vorsorglich neu starten statt abstürzen ---------- */
+let recycles = [];
+try {
+  recycles = JSON.parse(readFileSync(HEAP_STATE, "utf8")).recycles ?? [];
+} catch {}
+const memAvailable = () => {
+  try {
+    return Number(/MemAvailable:\s+(\d+)/.exec(readFileSync("/proc/meminfo", "utf8"))?.[1] ?? Infinity) * 1024;
+  } catch {
+    return Infinity;
+  }
+};
+let lowMemLogged = 0;
+setInterval(() => {
+  const inst = current;
+  const h = inst.heap;
+  const last = h.at(-1);
+  const now = Date.now();
+  recycles = recycles.filter((r) => now - Date.parse(r.at) < 24 * 3600_000);
+  try {
+    mkdirSync(dirname(HEAP_STATE), { recursive: true });
+    writeFileSync(HEAP_STATE, JSON.stringify({ at: new Date(now).toISOString(), used: last?.used ?? null, limit: last?.limit ?? null, started: new Date(inst.started).toISOString(), recycles }));
+  } catch {}
+  if (switching || now - inst.started < RECYCLE_MIN_AGE_MS || h.length < RECYCLE_SAMPLES) return;
+  if (!h.every((s) => s.used > s.limit * RECYCLE_AT && now - s.at < 3 * 60_000)) return;
+  if (memAvailable() < RECYCLE_MIN_AVAILABLE) {
+    if (now - lowMemLogged > 10 * 60_000) log(`Heap ${Math.round(last.used / 1e6)}/${Math.round(last.limit / 1e6)} MB, aber zu wenig freier Arbeitsspeicher für einen Neustart ohne Ausfall`);
+    lowMemLogged = now;
+    return;
+  }
+  const mb = Math.round(last.used / 1e6);
+  log(`Speicher-Neustart: Heap ${mb}/${Math.round(last.limit / 1e6)} MB nach ${Math.round((now - inst.started) / 60_000)} Min.`);
+  recycles.push({ at: new Date(now).toISOString(), heapMb: mb, afterMin: Math.round((now - inst.started) / 60_000) });
+  void switchVersion(true).catch((e) => ((switching = false), console.error("[cache] Speicher-Neustart fehlgeschlagen:", e)));
+}, 30_000).unref();
 
 /**
  * Zuletzt besuchte Seiten (ohne RSC-Varianten) plus WARM mit der neuen Version rendern. Die alte bedient so lange
