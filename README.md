@@ -100,14 +100,19 @@ Auf einem Rechner brauchen beide verschiedene Ports, z. B. `PORT=3001 npm run st
 ### Live-Server
 
 - `npm run start:cached` (`scripts/cached-server.mjs`) steht vor der Website: Kurzzeit-Cache für viele Besucher,
-  höchstens zwei gleichzeitige Renderings, Wechsel auf neue Versionen ohne Ausfall.
+  höchstens zwei gleichzeitige Renderings, Wechsel auf neue Versionen ohne Ausfall. Bleibt der Heap von Next.js
+  zwei Minuten über 85 % des Limits, startet er die Website genauso ohne Ausfall neu (gemeldet über
+  `scripts/heap-report.mjs`, Stand in `~/.local/state/actracker-web-heap.json`).
 - `scripts/deploy.sh` rollt aus: `git pull`, Build in den freien Ordner `.next-a` / `.next-b`, vorwärmen,
   umschalten, danach den Tracker-Dienst neu starten. Schlägt der Build fehl, bleibt alles, wie es war.
 - `scripts/autodeploy.sh` (Timer `scripts/systemd/actracker-autodeploy.*`) prüft jede Minute, ob es auf `main` von
   [CommandD1/Craftattack-Tracker](https://github.com/CommandD1/Craftattack-Tracker) neue Commits gibt, und ruft dann
   `deploy.sh` auf. Ein Push auf `main` ist so nach wenigen Minuten live; Erfolg oder Fehler kommen per ntfy.
 - `scripts/watchdog.mjs` prüft alle paar Minuten Tunnel, Tracker, Website, Dienste und Speicherplatz und meldet
-  anhaltende Probleme per ntfy (`NTFY_URL`).
+  anhaltende Probleme per ntfy (`NTFY_URL`), auch Abstürze der Website wegen vollem Speicher und mehrere
+  vorsorgliche Neustarts in 6 Stunden (Hinweis auf ein Speicherleck).
+- `scripts/memtest.mjs` ist der Speichertest vor dem Mergen: startet einen Build wie in Produktion, ruft alle
+  Hauptseiten und Spielerprofile mehrmals ab und schlägt fehl, wenn zu viel Speicher liegen bleibt.
 
 ### Render
 

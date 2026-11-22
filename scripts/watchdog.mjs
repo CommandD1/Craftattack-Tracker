@@ -7,7 +7,8 @@
  *   NTFY_URL=https://ntfy.sh/<geheimes-thema> node scripts/watchdog.mjs
  *
  * Geprüft: Tunnel (SOCKS-Port), Tracker (letzte erfolgreiche Abfrage, Fehlertext), Website (intern und öffentlich),
- * Hintergrunddienste, freier Speicherplatz, VOD-Chat-Nachtrag (Sperre durch Twitch).
+ * Hintergrunddienste, freier Speicherplatz, VOD-Chat-Nachtrag (Sperre durch Twitch), Speicher der Website
+ * (Absturz wegen vollem Heap, gehäufte vorsorgliche Neustarts = vermutlich ein Speicherleck).
  * Zustand in WATCHDOG_STATE (Standard ~/.local/state/actracker-watchdog.json).
  */
 import { execFile } from "node:child_process";
@@ -25,6 +26,8 @@ const WEB = process.env.WATCHDOG_WEB ?? "http://127.0.0.1:3010/bot";
 const PUBLIC = process.env.WATCHDOG_PUBLIC ?? "https://craftattack.hiorcraft.tv/";
 /** Speicher des Website-Dienstes (Root-Unit, cgroup v2) */
 const WEB_CGROUP = process.env.WATCHDOG_WEB_CGROUP ?? "/sys/fs/cgroup/system.slice/actracker-web.service";
+/** Heap und vorsorgliche Neustarts der Website (schreibt scripts/cached-server.mjs) */
+const WEB_HEAP_STATE = process.env.WEB_HEAP_STATE ?? `${homedir()}/.local/state/actracker-web-heap.json`;
 const BACKUP_STATE = process.env.WATCHDOG_BACKUP_STATE ?? `${homedir()}/.local/state/actracker-backup.json`;
 const PROXY_PORT = Number(process.env.WATCHDOG_PROXY_PORT ?? 1080);
 const MIN = 60_000;
@@ -128,6 +131,34 @@ async function check() {
     /* cgroup nicht lesbar: nicht prüfen */
   }
 
+  // Website-Heap: Absturz (Speicherabbruch) oder mehrere vorsorgliche Neustarts (cached-server) = Speicherleck
+  const crashes = (await sh("journalctl", ["-u", "actracker-web", "--since", "-3 hours", "--no-pager", "-q", "-o", "cat", "-g", "heap out of memory|Reached heap limit"]))
+    .split("\n")
+    .filter((l) => /heap/i.test(l)).length;
+  if (crashes > 0)
+    problems.webcrash = {
+      title: "Website wegen Speicher abgestürzt",
+      message: `Die Website ist in den letzten 3 Stunden ${crashes}× wegen vollem Speicher abgestürzt (Besucher sahen kurz „Website startet gerade“). Sie startet sich selbst neu, aber vermutlich steckt ein Speicherleck dahinter: bitte melden.`,
+      priority: "high",
+      tags: "warning",
+      after: 0,
+    };
+  let heap = null;
+  try {
+    heap = JSON.parse(readFileSync(WEB_HEAP_STATE, "utf8"));
+  } catch {
+    /* noch kein Stand (alte Version des Caches) */
+  }
+  const recent = (heap?.recycles ?? []).filter((r) => Date.now() - Date.parse(r.at) < 6 * 3600_000);
+  if (recent.length >= 2)
+    problems.webleak = {
+      title: "Website verliert Speicher",
+      message: `Die Website musste in 6 Stunden ${recent.length}× vorsorglich neu gestartet werden (jeweils nach ${recent.map((r) => r.afterMin).join(", ")} Min.). Besucher merken davon nichts, aber vermutlich steckt ein Speicherleck in einer neuen Änderung: bitte bei Gelegenheit melden.`,
+      priority: "default",
+      tags: "chart_with_upwards_trend",
+      after: 0,
+    };
+
   // Ganzer Server: wenig freier Arbeitsspeicher und Swap fast voll → alles wird langsam
   const mem = Object.fromEntries(
     readFileSync("/proc/meminfo", "utf8")
@@ -159,7 +190,8 @@ async function check() {
       }
       return Math.round(sum / 1024);
     };
-    const line = `${new Date().toISOString()} avail=${Math.round(availMb)} swap=${Math.round(swapUsed * 100)}% web=${await rss("actracker-web", false)} tracker=${await rss("actracker-tracker", true)} vodchat=${await rss("actracker-vodchat", true)} vodbackfill=${await rss("actracker-vodbackfill", true)}\n`;
+    const webHeap = heap?.used && Date.now() - Date.parse(heap.at) < 5 * MIN ? ` webheap=${Math.round(heap.used / 1e6)}/${Math.round(heap.limit / 1e6)}` : "";
+    const line = `${new Date().toISOString()} avail=${Math.round(availMb)} swap=${Math.round(swapUsed * 100)}% web=${await rss("actracker-web", false)}${webHeap} tracker=${await rss("actracker-tracker", true)} vodchat=${await rss("actracker-vodchat", true)} vodbackfill=${await rss("actracker-vodbackfill", true)}\n`;
     const log = `${homedir()}/.local/state/actracker-mem.log`;
     appendFileSync(log, line);
     const lines = readFileSync(log, "utf8").split("\n");
@@ -281,7 +313,7 @@ for (const key of Object.keys(state)) {
   if (state[key].notified) {
     state[key].okSince ??= now;
     if (now - state[key].okSince < STABLE_MS) continue;
-    await notify({ title: "Läuft wieder", message: `Erledigt: ${key === "tunnel" ? "Tunnel ist wieder verbunden" : key === "polls" ? "Minecraft-Daten kommen wieder" : key === "web" ? "Website ist wieder erreichbar" : key === "webmem" ? "Website hat wieder genug Speicher" : key === "ram" ? "Server hat wieder genug Arbeitsspeicher" : key === "backup" ? "Datenbank-Sicherung läuft wieder" : key === "backupOffsite" ? "Sicherung auswärts klappt wieder" : key} (Problem seit ${berlin(state[key].since)} Uhr).`, priority: "low", tags: "white_check_mark" });
+    await notify({ title: "Läuft wieder", message: `Erledigt: ${key === "tunnel" ? "Tunnel ist wieder verbunden" : key === "polls" ? "Minecraft-Daten kommen wieder" : key === "web" ? "Website ist wieder erreichbar" : key === "webmem" ? "Website hat wieder genug Speicher" : key === "webcrash" ? "Website seit 3 Stunden ohne Speicher-Absturz" : key === "webleak" ? "Website ohne gehäufte Speicher-Neustarts" : key === "ram" ? "Server hat wieder genug Arbeitsspeicher" : key === "backup" ? "Datenbank-Sicherung läuft wieder" : key === "backupOffsite" ? "Sicherung auswärts klappt wieder" : key} (Problem seit ${berlin(state[key].since)} Uhr).`, priority: "low", tags: "white_check_mark" });
     console.log(`erledigt: ${key}`);
   }
   delete state[key];
