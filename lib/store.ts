@@ -1708,6 +1708,26 @@ export async function getAllSessions(): Promise<StoredSession[]> {
   return cached("allSessions", 60_000, loadAllSessions);
 }
 
+/**
+ * Zeiten ohne Minecraft-Daten (Tracker aus, Tunnel getrennt, craftattack.one sperrt): Lücken über 15 Min. zwischen
+ * zwei Ständen in `history` (sonst alle 30 s). Für den CraftAttack-Filter (lib/craftScope.ts), der dort auf den
+ * Stream-Titel ausweicht. Wenige Dutzend Einträge.
+ */
+export async function getTrackerGaps(): Promise<{ from: number; to: number }[]> {
+  return cached("trackerGaps", 5 * 60_000, async () => {
+    const db = await getDb();
+    const rows = await db.query<{ prev: Date; at: Date }>(
+      `SELECT prev, at FROM (SELECT at, lag(at) OVER (ORDER BY at) AS prev FROM history) x
+        WHERE prev IS NOT NULL AND at - prev > interval '15 minutes' ORDER BY at`,
+    );
+    // Lücke bis jetzt: kein Stand seit 15 Min.
+    const last = (await db.query<{ at: Date | null }>(`SELECT max(at) AS at FROM history`)).rows[0]?.at;
+    const gaps = rows.rows.map((r) => ({ from: r.prev.getTime(), to: r.at.getTime() }));
+    if (last && Date.now() - last.getTime() > 15 * 60_000) gaps.push({ from: last.getTime(), to: Date.now() });
+    return gaps;
+  });
+}
+
 /* ---------- Statistik-Seite: alle Daten, gebündelt ---------- */
 
 const statsSwr = createSwrCache();

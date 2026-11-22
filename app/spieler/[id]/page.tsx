@@ -22,7 +22,7 @@ import { sparkRows, sparkSeries } from "@/lib/sparkSeries";
 import { ClipGrid } from "@/components/ClipGrid";
 import { getTopClips } from "@/lib/clips";
 import { EstimatePlayer, PlayerEstimateSummary } from "@/components/Estimates";
-import { getAllSessions, getFullBoard, getPlayerHistory, getPlayerSharedChatSessions, getPlayerTopHistory, getPlayerTwitchChat, getTwitchCheerBoard, getTwitchCheerProfile, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
+import { getTrackerGaps, getAllSessions, getFullBoard, getPlayerHistory, getPlayerSharedChatSessions, getPlayerTopHistory, getPlayerTwitchChat, getTwitchCheerBoard, getTwitchCheerProfile, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
 import { SharedChatList } from "@/components/SharedChatList";
 import { ChatFeed, ChatPartners } from "@/components/ChatFeed";
 import { companionsOf, overlapsFor } from "@/lib/overlap";
@@ -621,7 +621,7 @@ async function TimelineSection({ params, searchParams }: { params: Params; searc
   ].sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
   // Verlauf: alles, woran der Spieler beteiligt ist – auch als Täter, Raid-Ziel, Schenker oder Kanal
   const isShown = await getFeedFilter();
-  const inCa = scope === "ca" ? craftScope(events, allSessions, Object.values(state.players), now) : null;
+  const inCa = scope === "ca" ? craftScope(events, allSessions, Object.values(state.players), now, await getTrackerGaps()) : null;
   const shown = events.filter((e) => eventPlayers(e).includes(id) && isShown(e) && (!inCa || inCa(e)));
   // Sichtbar sind ohnehin nur die ersten (ShowMore); der Rest steht unter „Alle …“ in /ereignisse
   const recent = [...shown].reverse().slice(0, 50);
@@ -799,7 +799,7 @@ async function ChatSection({ params, searchParams }: { params: Params; searchPar
   const [{ id, state, events, now, p }, { scope, keep }] = await Promise.all([ctxFor(params), scopeFrom(searchParams)]);
   if (!p) return null;
   // CraftAttack: Nachrichten und geteilte Chats nur aus Streams, in denen der Streamer auf dem Server war (lib/craftScope.ts)
-  const inCa = scope === "ca" ? craftScope(events, await getAllSessions(), Object.values(state.players), now) : null;
+  const inCa = scope === "ca" ? craftScope(events, await getAllSessions(), Object.values(state.players), now, await getTrackerGaps()) : null;
   const [chat, allShared] = await Promise.all([
     getPlayerTwitchChat(id, 20, inCa ? (m) => inCa({ id: "", at: m.at, type: "chat", where: "twitch", player: m.senderId, meta: { channelId: m.channelId } }) : undefined),
     getPlayerSharedChatSessions(id, inCa ? 100 : 20),

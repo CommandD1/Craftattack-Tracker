@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { PageSkeleton } from "@/components/Skeletons";
 import { loadTracker } from "@/lib/data";
-import { getAllSessions, getHistoryAll, getTwitchSubscriptionBoard } from "@/lib/store";
+import { getTrackerGaps, getAllSessions, getHistoryAll, getTwitchSubscriptionBoard } from "@/lib/store";
 import { craftScope } from "@/lib/craftScope";
 import { BOARD_KEYS, type BoardKey } from "@/lib/types";
 import { boardValue, num, duration, dateTime } from "@/lib/format";
@@ -61,7 +61,7 @@ async function Dashboard() {
   const viewers = liveList.filter((l) => l.onServer !== false).reduce((a, l) => a + l.viewers, 0);
   const isShown = await getFeedFilter();
   // Nur CraftAttack: Twitch-Ereignisse aus Streams ohne Server-Zeit bleiben auf /ereignisse?wo=alles
-  const inCa = craftScope(events, await getAllSessions(), Object.values(state.players), now);
+  const inCa = craftScope(events, await getAllSessions(), Object.values(state.players), now, await getTrackerGaps());
   // Von hinten suchen, bis 25 gefunden sind (nicht alle Ereignisse der Staffel filtern)
   const recent: typeof events = [];
   for (let i = events.length - 1; i >= 0 && recent.length < 25; i--) if (isShown(events[i]) && inCa(events[i])) recent.push(events[i]);

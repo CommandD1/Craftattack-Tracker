@@ -9,7 +9,7 @@ import type { EventType } from "@/lib/types";
 import { num } from "@/lib/format";
 import { EventFeed } from "@/components/EventFeed";
 import { EVENT_ICON, Icon } from "@/components/Icons";
-import { getAllSessions } from "@/lib/store";
+import { getTrackerGaps, getAllSessions } from "@/lib/store";
 import { getPlayerEventTimeState } from "@/lib/playerEventStatus";
 import { PlayerFilter } from "@/components/PlayerFilter";
 import { ScrollToHighlight } from "@/components/ScrollToHighlight";
@@ -67,7 +67,7 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
   let base = [...events].reverse().filter(isShown);
   if (since) base = base.filter((e) => Date.parse(e.at) >= since);
   if (scope === "ca") {
-    const inCa = craftScope(events, await getAllSessions(), Object.values(state.players), now);
+    const inCa = craftScope(events, await getAllSessions(), Object.values(state.players), now, await getTrackerGaps());
     base = base.filter(inCa);
   }
   if (players.length) base = base.filter((e) => eventPlayers(e).some((id) => players.includes(id)));
