@@ -45,9 +45,9 @@ export function HubTabs() {
   const sp = useSearchParams();
   const current = hubOf(path);
   if (!current || current.hub.tabs.length < 2) return <span />;
-  // Community: die Auswahl „nur CraftAttack“ (?ca=) gilt für alle Reiter und bleibt beim Wechsel
+  // Community: die Auswahl „CraftAttack / Alles“ (?ca=) gilt für alle Reiter und bleibt beim Wechsel
   const ca = current.hub.key === "community" ? sp.get("ca") : null;
-  const keep = ca === "einer" || ca === "beide" ? `?ca=${ca}` : "";
+  const keep = ca === "alle" || ca === "beide" ? `?ca=${ca}` : "";
   return (
     <nav className="subnav" aria-label={current.hub.label}>
       <ul className="subnav__in">

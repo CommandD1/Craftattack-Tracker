@@ -47,8 +47,8 @@ async function Community({ searchParams }: { searchParams: PageProps<"/verbindun
               Verbindung, desto dicker die Linie und desto näher die Köpfe; mit Spieler seine Verbindungen. <b>Distanz</b>: wer allen am nächsten steht; mit Spieler
               alle nach dem kürzesten Weg zu ihm (Raids, Titel und Nachrichten zählen nur in ihre Richtung). <b>Gruppen</b>: wer untereinander deutlich enger
               verbunden ist als mit dem Rest (Louvain), benannt nach dem Mitglied mit der meisten Aufmerksamkeit; das sagt nichts über echte Freundschaften.
-              <b> Nur CraftAttack</b>: „Einer online“ zählt nur, was geschah, während mindestens einer der beiden auf CraftAttack online war, „Beide online“
-              nur, während beide gleichzeitig dort waren; in Lücken des Trackers gilt niemand als online. Die Auswahl gilt auch für Zuschauer und Raids. Kopf anklicken wählt den Spieler aus, Rechtsklick öffnet sein Profil.
+              <b> Daten</b>: „CraftAttack“ (Standard) zählt nur, was geschah, während mindestens einer der beiden auf CraftAttack online war, „Beide auf CraftAttack“
+              nur, während beide gleichzeitig dort waren, „Alles“ alle Twitch-Daten; in Lücken des Trackers gilt niemand als online. Die Auswahl gilt auch für Zuschauer und Raids. Kopf anklicken wählt den Spieler aus, Rechtsklick öffnet sein Profil.
             </Explain>{" "}
             <DataAge at={Math.min(all.at, einer.at, beide.at)} prefix="Auswertung" hint="wird alle 10 Minuten im Hintergrund neu berechnet" />
           </p>

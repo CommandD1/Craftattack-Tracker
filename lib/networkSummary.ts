@@ -1,14 +1,11 @@
 import "server-only";
-import { getNetwork } from "./connections";
+import { getDailyNetwork, getNetwork } from "./connections";
 import { adjacency } from "./network";
 import { analyzeGroups, type GroupAnalysis } from "./groups";
 import { DEFAULT_WEIGHTS, type LinkCounts } from "./connectionWeights";
 import type { NetworkNode } from "./connections";
+import { sumDays } from "./dailyNetwork";
 
-/**
- * Netz der ganzen Staffel mit Standard-Gewichten und fertigen Gruppen, für Auszüge auf anderen Seiten (Profil).
- * Einmal gerechnet und zwei Minuten behalten: sonst liefe die Gruppensuche bei jedem Profilaufruf.
- */
 export interface NetworkSummary {
   nodes: NetworkNode[];
   edges: LinkCounts[];
@@ -16,16 +13,27 @@ export interface NetworkSummary {
   analysis: GroupAnalysis;
 }
 
-const TTL_MS = 2 * 60_000;
-let cached: { at: number; value: Promise<NetworkSummary> } | null = null;
+/**
+ * `ca` (Standard): nur, was geschah, während mindestens einer der beiden auf CraftAttack war (Netz je Tag „einer
+ * online“, über die Staffel summiert); `alles`: alle Twitch-Daten.
+ */
+export type NetworkScope = "ca" | "alles";
 
-export function getNetworkSummary(): Promise<NetworkSummary> {
-  if (cached && Date.now() - cached.at < TTL_MS) return cached.value;
-  const value = getNetwork(null).then(({ nodes, edges }) => ({ nodes, edges, out: adjacency(edges, DEFAULT_WEIGHTS), analysis: analyzeGroups(edges, DEFAULT_WEIGHTS) }));
-  cached = { at: Date.now(), value };
+const TTL_MS = 2 * 60_000;
+const cached = new Map<NetworkScope, { at: number; value: Promise<NetworkSummary> }>();
+
+export function getNetworkSummary(scope: NetworkScope = "ca"): Promise<NetworkSummary> {
+  const hit = cached.get(scope);
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.value;
+  const base =
+    scope === "alles"
+      ? getNetwork(null).then(({ nodes, edges }) => ({ nodes, edges }))
+      : getDailyNetwork("einer").then(({ nodes, daily }) => ({ nodes, edges: sumDays(daily, 0, daily.days.length - 1) }));
+  const value = base.then(({ nodes, edges }) => ({ nodes, edges, out: adjacency(edges, DEFAULT_WEIGHTS), analysis: analyzeGroups(edges, DEFAULT_WEIGHTS) }));
+  cached.set(scope, { at: Date.now(), value });
   // Fehler nicht zwei Minuten lang behalten
   value.catch(() => {
-    if (cached?.value === value) cached = null;
+    if (cached.get(scope)?.value === value) cached.delete(scope);
   });
   return value;
 }

@@ -44,6 +44,8 @@ import { DayHighlights } from "@/components/DayHighlights";
 import { HowLink, PresenceLegend } from "@/components/HowLink";
 import { graphHref, type Metric } from "@/lib/graphQuery";
 import { getNetworkSummary } from "@/lib/networkSummary";
+import { craftScope, scopeOf, type Scope } from "@/lib/craftScope";
+import { ScopeToggle } from "@/components/ScopeToggle";
 import { getAdvancementBoard } from "@/lib/playerAdvancements";
 import { AdvancementBoard } from "@/components/AdvancementBoard";
 import { closeness, distancesFrom } from "@/lib/network";
@@ -96,19 +98,19 @@ export default function Page(props: PageProps<"/spieler/[id]">) {
         <ActivitySection params={params} />
       </Suspense>
       <Suspense fallback={<SectionSkeleton title="Verbindungen" height={180} />}>
-        <NetworkSection params={params} />
+        <NetworkSection params={params} searchParams={searchParams} />
       </Suspense>
       <Suspense fallback={<SectionSkeleton title="Fortschritte" height={360} />}>
         <AdvancementsSection params={params} />
       </Suspense>
       <Suspense fallback={<TimelineSkeleton />}>
-        <TimelineSection params={params} />
+        <TimelineSection params={params} searchParams={searchParams} />
       </Suspense>
       <Suspense fallback={<DetailsSkeleton />}>
         <DetailsSection params={params} />
       </Suspense>
       <Suspense fallback={<ChatSkeleton />}>
-        <ChatSection params={params} />
+        <ChatSection params={params} searchParams={searchParams} />
       </Suspense>
       {/* Clips zuletzt: schön anzusehen, aber keine Daten, die man sonst nicht sieht */}
       <Suspense fallback={null}>
@@ -211,6 +213,12 @@ const getMine = cache(async (raw: string) => {
 const graphHrefFor = (id: string) => (metric: string) => graphHref(metric as Metric, [id]);
 
 /* ---------- Abschnitte ---------- */
+
+/** „CraftAttack / Alles“ aus `?wo=alles` (lib/craftScope.ts); `tag` (Highlights) bleibt beim Umschalten erhalten */
+async function scopeFrom(searchParams: PageProps<"/spieler/[id]">["searchParams"]): Promise<{ scope: Scope; keep: Record<string, string | undefined> }> {
+  const sp = await searchParams;
+  return { scope: scopeOf(sp.wo), keep: { tag: typeof sp.tag === "string" ? sp.tag : undefined } };
+}
 
 async function HeadSection({ params }: { params: Params }) {
   const { p } = await ctxFor(params);
@@ -588,9 +596,9 @@ async function DetailsSection({ params }: { params: Params }) {
   );
 }
 
-async function TimelineSection({ params }: { params: Params }) {
+async function TimelineSection({ params, searchParams }: { params: Params; searchParams: PageProps<"/spieler/[id]">["searchParams"] }) {
   const { id: raw } = await params;
-  const { id, state, now, p, events } = await getCtx(raw);
+  const [{ id, state, now, p, events }, { scope, keep }] = await Promise.all([getCtx(raw), scopeFrom(searchParams)]);
   if (!p) return null;
   const [history, allSessions, afkSpans, mine] = await Promise.all([getPlayerHistory(id), getAllSessions(), getPlayerAfkSpans(id), getMine(raw)]);
   const sparkHistory = thinHistory(history);
@@ -613,7 +621,8 @@ async function TimelineSection({ params }: { params: Params }) {
   ].sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
   // Verlauf: alles, woran der Spieler beteiligt ist – auch als Täter, Raid-Ziel, Schenker oder Kanal
   const isShown = await getFeedFilter();
-  const shown = events.filter((e) => eventPlayers(e).includes(id) && isShown(e));
+  const inCa = scope === "ca" ? craftScope(events, allSessions, Object.values(state.players), now) : null;
+  const shown = events.filter((e) => eventPlayers(e).includes(id) && isShown(e) && (!inCa || inCa(e)));
   // Sichtbar sind ohnehin nur die ersten (ShowMore); der Rest steht unter „Alle …“ in /ereignisse
   const recent = [...shown].reverse().slice(0, 50);
   const getTimeState = await getPlayerEventTimeState({
@@ -633,11 +642,15 @@ async function TimelineSection({ params }: { params: Params }) {
           <div>
             <Fold
               id="profil.verlauf"
+              titleId="verlauf-h"
               title="Verlauf"
               aside={
-                <Link className="btn btn--small" data-tone="white" href={`/ereignisse?spieler=${encodeURIComponent(id)}`}>
-                  Alle {num(shown.length)}
-                </Link>
+                <>
+                  <ScopeToggle path={`/spieler/${encodeURIComponent(id)}`} scope={scope} keep={keep} hash="verlauf-h" />
+                  <Link className="btn btn--small" data-tone="white" href={`/ereignisse?spieler=${encodeURIComponent(id)}${scope === "alles" ? "&wo=alles" : ""}`}>
+                    Alle {num(shown.length)}
+                  </Link>
+                </>
               }
             >
               <ShowMore height={1400} label="Ereignisse">
@@ -782,10 +795,18 @@ async function TimelineSection({ params }: { params: Params }) {
   );
 }
 
-async function ChatSection({ params }: { params: Params }) {
-  const { id, state, events, now, p } = await ctxFor(params);
+async function ChatSection({ params, searchParams }: { params: Params; searchParams: PageProps<"/spieler/[id]">["searchParams"] }) {
+  const [{ id, state, events, now, p }, { scope, keep }] = await Promise.all([ctxFor(params), scopeFrom(searchParams)]);
   if (!p) return null;
-  const [chat, sharedSessions] = await Promise.all([getPlayerTwitchChat(id, 20), getPlayerSharedChatSessions(id)]);
+  // CraftAttack: Nachrichten und geteilte Chats nur aus Streams, in denen der Streamer auf dem Server war (lib/craftScope.ts)
+  const inCa = scope === "ca" ? craftScope(events, await getAllSessions(), Object.values(state.players), now) : null;
+  const [chat, allShared] = await Promise.all([
+    getPlayerTwitchChat(id, 20, inCa ? (m) => inCa({ id: "", at: m.at, type: "chat", where: "twitch", player: m.senderId, meta: { channelId: m.channelId } }) : undefined),
+    getPlayerSharedChatSessions(id, inCa ? 100 : 20),
+  ]);
+  const sharedSessions = inCa
+    ? allShared.filter((s) => inCa({ id: "", at: s.startedAt, type: "shared_chat_start", where: "twitch", meta: { sharedChatPlayers: s.participants.join(",") } })).slice(0, 20)
+    : allShared;
   const chatVods = chatVodLinks(events);
   return (
     <>
@@ -795,6 +816,7 @@ async function ChatSection({ params }: { params: Params }) {
           <Fold
             id="profil.chat"
             titleId="chat-h"
+            aside={<ScopeToggle path={`/spieler/${encodeURIComponent(id)}`} scope={scope} keep={keep} hash="chat-h" />}
             title={
               <>
                 Chat <Explain>Nachrichten zwischen {p.name} und anderen Spielern in Twitch-Chats.</Explain>
@@ -867,10 +889,16 @@ async function ChatSection({ params }: { params: Params }) {
  * Auszug aus „Community“: wer diesem Spieler im Netz am nächsten ist und in welcher Gruppe er ist (Standard-Gewichte,
  * ganze Staffel). Ausführlich auf /naehe und /gruppen.
  */
-async function NetworkSection({ params }: { params: Params }) {
-  const { id } = await ctxFor(params);
-  const { nodes, edges, out, analysis } = await getNetworkSummary();
-  if (!edges.some((e) => e.a === id || e.b === id)) return <EmptySection title="Verbindungen" text="Noch keine Raids, geteilten Chats oder Chat-Nachrichten mit anderen Spielern." />;
+async function NetworkSection({ params, searchParams }: { params: Params; searchParams: PageProps<"/spieler/[id]">["searchParams"] }) {
+  const [{ id }, { scope, keep }] = await Promise.all([ctxFor(params), scopeFrom(searchParams)]);
+  const { nodes, edges, out, analysis } = await getNetworkSummary(scope);
+  if (!edges.some((e) => e.a === id || e.b === id))
+    return (
+      <EmptySection
+        title="Verbindungen"
+        text={scope === "ca" ? "Noch keine Raids, geteilten Chats oder Chat-Nachrichten mit anderen Spielern, während einer der beiden auf CraftAttack war." : "Noch keine Raids, geteilten Chats oder Chat-Nachrichten mit anderen Spielern."}
+      />
+    );
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const name = (x: string) => byId.get(x)?.name ?? x;
   const near = [...distancesFrom(id, out, "von").values()].filter((r) => r.id !== id).sort((a, b) => a.dist - b.dist).slice(0, 10);
@@ -885,9 +913,12 @@ async function NetworkSection({ params }: { params: Params }) {
           titleId="net-h"
           title="Verbindungen"
           aside={
-            <Link className="btn btn--small" data-tone="white" href={`/verbindungen?ansicht=distanz&spieler=${encodeURIComponent(id)}`}>
+            <>
+            <ScopeToggle path={`/spieler/${encodeURIComponent(id)}`} scope={scope} keep={keep} hash="net-h" />
+            <Link className="btn btn--small" data-tone="white" href={`/verbindungen?ansicht=distanz&spieler=${encodeURIComponent(id)}${scope === "alles" ? "&ca=alle" : ""}`}>
               Ringe ansehen
             </Link>
+            </>
           }
         >
           <div className="pnet">

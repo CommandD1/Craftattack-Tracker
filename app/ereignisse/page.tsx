@@ -14,6 +14,7 @@ import { getPlayerEventTimeState } from "@/lib/playerEventStatus";
 import { PlayerFilter } from "@/components/PlayerFilter";
 import { ScrollToHighlight } from "@/components/ScrollToHighlight";
 import { PresenceLegend } from "@/components/HowLink";
+import { SCOPE_HINT, SCOPE_LABEL, craftScope, scopeOf, type Scope } from "@/lib/craftScope";
 
 
 export const metadata: Metadata = { title: "Ereignisse" };
@@ -44,8 +45,11 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
   const sp = await searchParams;
   const t = EVENT_TYPES.includes(str(sp.t) as EventType) ? (str(sp.t) as EventType) : undefined;
   // Einzeltyp gewinnt über die Gruppe; Gruppe des Typs wird mit angezeigt
-  const g = t ? EVENT_GROUPS.find((grp) => grp.types.includes(t))?.key : str(sp.g);
-  const where = str(sp.wo) === "server" || str(sp.wo) === "twitch" ? str(sp.wo) : undefined;
+  // Früher `wo=twitch` (nur Twitch) – heute die Kategorie Twitch
+  const g = t ? EVENT_GROUPS.find((grp) => grp.types.includes(t))?.key : str(sp.g) ?? (str(sp.wo) === "twitch" ? "twitch" : undefined);
+  // Standard CraftAttack: Twitch-Ereignisse nur aus Streams auf dem Server (lib/craftScope.ts)
+  const scope: Scope = scopeOf(str(sp.wo));
+  const where = scope === "alles" ? "alles" : undefined;
   const zeit = TIME_RANGES.some((r) => r.key === str(sp.zeit)) ? str(sp.zeit) : undefined;
   // Hervorgehobenes Ereignis (Klick auf eine Kachel): seine Seite wird gezeigt
   const ev = str(sp.ev);
@@ -62,7 +66,10 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
   const isShown = await getFeedFilter();
   let base = [...events].reverse().filter(isShown);
   if (since) base = base.filter((e) => Date.parse(e.at) >= since);
-  if (where) base = base.filter((e) => e.where === where);
+  if (scope === "ca") {
+    const inCa = craftScope(events, await getAllSessions(), Object.values(state.players), now);
+    base = base.filter(inCa);
+  }
   if (players.length) base = base.filter((e) => eventPlayers(e).some((id) => players.includes(id)));
 
   const types = t ? [t] : typesForGroup(g);
@@ -171,23 +178,15 @@ async function Events({ searchParams }: { searchParams: PageProps<"/ereignisse">
             </div>
 
             <div className="ev-filters__row">
-              <p className="eyebrow">Wo</p>
-              <ul className="filters" aria-label="Wo">
-                <li>
-                  <Link className="tag" aria-current={!where ? "true" : undefined} href={`/ereignisse${qs({ ...q, wo: undefined })}`}>
-                    Überall
-                  </Link>
-                </li>
-                <li>
-                  <Link className="tag" aria-current={where === "server" ? "true" : undefined} href={`/ereignisse${qs({ ...q, wo: "server" })}`}>
-                    Auf dem Server
-                  </Link>
-                </li>
-                <li>
-                  <Link className="tag" aria-current={where === "twitch" ? "true" : undefined} href={`/ereignisse${qs({ ...q, wo: "twitch" })}`}>
-                    Auf Twitch
-                  </Link>
-                </li>
+              <p className="eyebrow">Daten</p>
+              <ul className="filters" aria-label="Daten">
+                {(["ca", "alles"] as const).map((sc) => (
+                  <li key={sc}>
+                    <Link className="tag" aria-current={scope === sc ? "true" : undefined} title={SCOPE_HINT[sc]} href={`/ereignisse${qs({ ...q, wo: sc === "alles" ? "alles" : undefined })}`}>
+                      {SCOPE_LABEL[sc]}
+                    </Link>
+                  </li>
+                ))}
               </ul>
             </div>
 

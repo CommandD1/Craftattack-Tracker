@@ -10,7 +10,7 @@ import { PlayerSearch } from "./PlayerSearch";
 import type { GraphEdge, GraphNode } from "./ConnectionGraph";
 import type { CommunityCtx } from "./communityCtx";
 import { sumDays, type DailyNetwork } from "@/lib/dailyNetwork";
-import { CA_HINT, CA_LABEL, CA_MODES, type CaMode } from "@/lib/onlineSpans";
+import { CA_HINT, CA_LABEL, CA_MODES, caParam, type CaMode } from "@/lib/onlineSpans";
 import { DEFAULT_WEIGHTS, KIND_INFO, LINK_KINDS, weigh } from "@/lib/connectionWeights";
 import { analyzeGroups, resolutionForCount } from "@/lib/groups";
 import { isMutual, type Direction } from "@/lib/network";
@@ -108,7 +108,7 @@ export function CommunityExplorer({
     const put = (k: string, v: string) => (v ? u.searchParams.set(k, v) : u.searchParams.delete(k));
     put("ansicht", view === "netz" ? "" : view);
     u.searchParams.delete("server");
-    put("ca", ca === "alle" ? "" : ca);
+    put("ca", caParam(ca));
     put("spieler", focus);
     if (loaded) put("gruppen", s.groups ? "1" : "");
     // Mit null, damit Next.js die Adresse übernimmt (sonst setzt die Minuten-Aktualisierung sie zurück)
@@ -297,7 +297,7 @@ export function CommunityExplorer({
               <Toggle on={s.groups} onClick={() => set({ groups: !s.groups })} title="Wer untereinander deutlich enger verbunden ist als mit dem Rest (Louvain). Sagt nichts über echte Freundschaften.">
                 Gruppen
               </Toggle>
-              <Seg label="Nur CraftAttack" items={CA_ITEMS} value={ca} onPick={setCa} />
+              <Seg label="Daten" items={CA_ITEMS} value={ca} onPick={setCa} />
             </div>
             {s.groups && (
               <div className="cs__groupbar">

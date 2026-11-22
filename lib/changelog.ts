@@ -12,6 +12,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: "22.11.",
+    title: "Standard: nur CraftAttack",
+    text: "Ereignisse, Profile, Verbindungen, Zuschauer und Raids zeigen Twitch-Daten nur noch aus Streams auf dem Server. „Alles“ zeigt auch den Rest.",
+    href: "/ereignisse",
+  },
+  {
     date: "17.11.",
     title: "Filter „Nur CraftAttack“",
     text: "Verbindungen, Zuschauer und Raids zählen auf Wunsch nur, was passierte, während einer oder beide auf dem Server waren.",
