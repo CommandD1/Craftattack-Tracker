@@ -5,7 +5,7 @@ import { PageSkeleton } from "@/components/Skeletons";
 import type { Metadata } from "next";
 import { loadTracker } from "@/lib/data";
 import { getHistoryRange } from "@/lib/analytics";
-import { getActiveSharedChatSessions, getAllSessions, getHistoryAll } from "@/lib/store";
+import { getActiveSharedChatSessions, getAllSessions, getHistoryAll, getTrackerGaps } from "@/lib/store";
 import { craftScope } from "@/lib/craftScope";
 import { getStreamTotals } from "@/lib/earnings";
 import { getStreamFollowerGains } from "@/lib/streamFollowers";
@@ -70,7 +70,7 @@ async function Live({ searchParams }: { searchParams: PageProps<"/live">["search
   const viewers = live.filter((p) => p.online).reduce((s, p) => s + (p.live?.viewers ?? 0), 0);
   const peak = hist.reduce((m, h) => Math.max(m, h.v), 0);
   // Nur CraftAttack: Streams, in denen der Streamer auf dem Server war (alles unter „Alle“ → Alles)
-  const inCa = craftScope(events, await getAllSessions(), players, now);
+  const inCa = craftScope(events, await getAllSessions(), players, now, await getTrackerGaps());
   const twitchEvents = [...events]
     .reverse()
     .filter((e) => e.where === "twitch" && Date.parse(e.at) >= since && inCa(e))

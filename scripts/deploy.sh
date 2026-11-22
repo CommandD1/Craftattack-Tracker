@@ -98,7 +98,7 @@ if [[ -n "$front_changed" ]]; then
     [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$URL/api/version")" == 200 ]] && break
     sleep 2
   done
-  for path in / /spieler /bestenlisten /live /ereignisse /verlauf /graph /verbindungen /gruppen /naehe /zuschauer /statistik; do
+  for path in / /spieler /bestenlisten /live /ereignisse /graph /verbindungen "/verbindungen?gruppen=1" "/verbindungen?ansicht=distanz" /zuschauer /statistik; do
     curl -s -o /dev/null --max-time 90 "$URL$path" || true
   done
   echo "[deploy] Hauptseiten vorgeladen"

@@ -29,7 +29,7 @@ const ROUNDS = Number(arg("rounds", 3));
 const BUDGET_MB = Number(arg("budget", 200));
 const GROWTH_MB = Number(arg("growth", 12));
 const PARALLEL = 2;
-const PAGES = ["/", "/spieler", "/bestenlisten", "/live", "/ereignisse", "/ereignisse?wo=alles", "/graph", "/verbindungen", "/verbindungen?ca=alle", "/gruppen", "/naehe", "/zuschauer", "/zuschauer?ca=alle", "/raids", "/statistik"];
+const PAGES = ["/", "/spieler", "/bestenlisten", "/live", "/ereignisse", "/ereignisse?wo=alles", "/graph", "/verbindungen", "/verbindungen?ca=alle", "/verbindungen?gruppen=1", "/verbindungen?ansicht=distanz", "/zuschauer", "/zuschauer?ca=alle", "/raids", "/statistik"];
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL fehlt");
 const here = dirname(fileURLToPath(import.meta.url));

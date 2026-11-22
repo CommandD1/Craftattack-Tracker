@@ -5,8 +5,10 @@
  * online war. Ohne `server-only`, nur Rechnen.
  *
  * Ein Stream gilt als CraftAttack-Stream, wenn sich eine Server-Session des Streamers mit ihm überschneidet oder der
- * Tracker beim Start „auf dem Server“ vermerkt hat (meta.onServer). In Tracker-Lücken ohne Sessions zählt nur dieser
- * Vermerk. (meta.peakViewersOnServer am Stream-Ende ist der Höchstwert der Staffel, nicht des Streams – taugt nicht.)
+ * Tracker beim Start „auf dem Server“ vermerkt hat (meta.onServer). Fällt der Stream in eine Tracker-Lücke (keine
+ * Minecraft-Daten, also auch keine Sessions), zählt ersatzweise „CraftAttack“ im Titel: Außerhalb von Lücken lag so
+ * ein Stream zu 96 % wirklich auf dem Server (778 von 809, Stand 22.11.2026), ohne den Titel waren es 19 %.
+ * (meta.peakViewersOnServer am Stream-Ende ist der Höchstwert der Staffel, nicht des Streams – taugt nicht.)
  */
 import type { TrackerEvent } from "./types";
 import { onlineIndex, type SessionLike } from "./onlineSpans";
@@ -33,6 +35,15 @@ interface Stream {
   ca: boolean;
 }
 
+/** Zeit ohne Minecraft-Daten (lib/store.ts getTrackerGaps) */
+export interface Gap {
+  from: number;
+  to: number;
+}
+
+/** CraftAttack im Stream-Titel („CraftAttack 14“, „Craft Attack“, „CA14“, „#CA“) */
+export const CA_TITLE = /craft\s*attack|\bca\s*14\b|#ca\b/i;
+
 export interface LiveLike {
   id: string;
   liveSince: string | null;
@@ -44,51 +55,56 @@ export interface LiveLike {
  * ist, je Aufruf eine neue Kopie (withLiveLinks), dann würde bei jedem Seitenaufruf neu gerechnet. Länge und
  * letztes Ereignis reichen, um neue Ereignisse zu erkennen.
  */
-let cache: { at: number; n: number; last: string | undefined; sessions: SessionLike[]; test: (e: TrackerEvent) => boolean } | null = null;
+let cache: { at: number; n: number; last: string | undefined; sessions: SessionLike[]; gaps: Gap[]; test: (e: TrackerEvent) => boolean } | null = null;
 
 /**
  * Prüfung „gehört zu CraftAttack“ für Ereignisse. `events` aufsteigend nach Zeit (wie aus loadTracker/getState);
  * eine Minute zwischengespeichert.
  */
-export function craftScope(events: TrackerEvent[], sessions: SessionLike[], players: LiveLike[], now: number): (e: TrackerEvent) => boolean {
+export function craftScope(events: TrackerEvent[], sessions: SessionLike[], players: LiveLike[], now: number, gaps: Gap[] = []): (e: TrackerEvent) => boolean {
   const n = events.length;
   const last = events[n - 1]?.id;
-  if (cache && cache.n === n && cache.last === last && cache.sessions === sessions && now - cache.at < 60_000) return cache.test;
-  const test = build(events, sessions, players, now);
-  cache = { at: now, n, last, sessions, test };
+  if (cache && cache.n === n && cache.last === last && cache.sessions === sessions && cache.gaps === gaps && now - cache.at < 60_000) return cache.test;
+  const test = build(events, sessions, players, now, gaps);
+  cache = { at: now, n, last, sessions, gaps, test };
   return test;
 }
 
-function build(events: TrackerEvent[], sessions: SessionLike[], players: LiveLike[], now: number): (e: TrackerEvent) => boolean {
+function build(events: TrackerEvent[], sessions: SessionLike[], players: LiveLike[], now: number, gaps: Gap[]): (e: TrackerEvent) => boolean {
   const online = onlineIndex(sessions, now);
   const played = (id: string, from: number, to: number) => online.either(id, id, from, to).length > 0;
+  const inGap = (from: number, to: number) => gaps.some((g) => g.from < to && g.to > from);
   const streams = new Map<string, Stream[]>();
-  const open = new Map<string, { start: number; flag: boolean }>();
-  const push = (id: string, start: number, end: number, flag: boolean) => {
+  /** flag: beim Start auf dem Server; title: ein Titel des Streams nennt CraftAttack */
+  const open = new Map<string, { start: number; flag: boolean; title: boolean }>();
+  const push = (id: string, start: number, end: number, flag: boolean, title = false) => {
     const list = streams.get(id) ?? streams.set(id, []).get(id)!;
-    list.push({ start, end, ca: flag || played(id, start, end) });
+    list.push({ start, end, ca: flag || played(id, start, end) || (title && inGap(start, end)) });
   };
+  const titled = (e: TrackerEvent) => typeof e.meta?.title === "string" && CA_TITLE.test(e.meta.title);
   for (const e of events) {
-    if (!e.player || (e.type !== "stream_start" && e.type !== "stream_end")) continue;
+    if (!e.player || (e.type !== "stream_start" && e.type !== "stream_end" && e.type !== "stream_title")) continue;
     const t = Date.parse(e.at);
     const prev = open.get(e.player);
-    if (e.type === "stream_start") {
+    if (e.type === "stream_title") {
+      if (prev && titled(e)) prev.title = true;
+    } else if (e.type === "stream_start") {
       // Start ohne Ende davor: der vorige Stream endete spätestens jetzt
-      if (prev) push(e.player, prev.start, Math.min(t, prev.start + OPEN_MAX_MS), prev.flag);
+      if (prev) push(e.player, prev.start, Math.min(t, prev.start + OPEN_MAX_MS), prev.flag, prev.title);
       const started = typeof e.meta?.startedAt === "string" ? Date.parse(e.meta.startedAt) : NaN;
-      open.set(e.player, { start: Number.isFinite(started) ? Math.min(started, t) : t, flag: e.meta?.onServer === true });
+      open.set(e.player, { start: Number.isFinite(started) ? Math.min(started, t) : t, flag: e.meta?.onServer === true, title: titled(e) });
     } else {
       const started = typeof e.meta?.startedAt === "string" ? Date.parse(e.meta.startedAt) : NaN;
       const start = Number.isFinite(started) ? started : prev?.start ?? t - Number(e.meta?.streamSeconds ?? 0) * 1000;
-      push(e.player, start, t, Boolean(prev?.flag));
+      push(e.player, start, t, Boolean(prev?.flag), Boolean(prev?.title));
       open.delete(e.player);
     }
   }
   const live = new Map(players.map((p) => [p.id, p]));
   for (const [id, o] of open) {
     const p = live.get(id);
-    if (p?.liveSince) push(id, Math.min(o.start, Date.parse(p.liveSince)), now, o.flag || p.online);
-    else push(id, o.start, Math.min(now, o.start + OPEN_MAX_MS), o.flag);
+    if (p?.liveSince) push(id, Math.min(o.start, Date.parse(p.liveSince)), now, o.flag || p.online, o.title);
+    else push(id, o.start, Math.min(now, o.start + OPEN_MAX_MS), o.flag, o.title);
   }
   for (const p of players) {
     // Laufender Stream, dessen Start vor der Erfassung lag

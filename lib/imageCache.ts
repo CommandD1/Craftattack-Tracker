@@ -1,6 +1,7 @@
 import "server-only";
 import { craftAttackPausedResponse, fetchCraftAttack, USER_AGENT } from "./craftattackFetch";
 import { getDb } from "./db";
+import { runsTracker } from "./mode";
 
 /**
  * Bilder (Köpfe, Skins) mit Zwischenspeicher in der Datenbank. Quellen werden der Reihe nach versucht:
@@ -63,12 +64,16 @@ export async function serveImage(sources: ImageSource[]): Promise<Response> {
 /** Bilder, die craftattack.one nicht hat (404), einen Tag lang nicht erneut anfragen */
 const missing = new Map<string, number>();
 
-/** Quelle craftattack.one: übersprungen, solange Anfragen pausiert sind (nach einer Sperre) oder das Bild fehlt */
+/**
+ * Quelle craftattack.one: übersprungen, solange Anfragen pausiert sind (nach einer Sperre) oder das Bild fehlt.
+ * Auf der Website nie abgerufen, nur der gespeicherte Eintrag (auch ein alter); neue holt der Tracker
+ * (warmCraftAttackImages, stündlich). Fehlt er noch, kommt die nächste Quelle (mc-heads.net …).
+ */
 export function craftAttackImage(key: string, url: string): ImageSource {
   return {
     key,
     load: async () => {
-      if (craftAttackPausedResponse(url)) return null;
+      if (!runsTracker() || craftAttackPausedResponse(url)) return null;
       const miss = missing.get(url);
       if (miss && Date.now() - miss < FRESH_MS) return null;
       const r = await fetchCraftAttack(url, { headers: { "user-agent": USER_AGENT }, cache: "no-store", signal: AbortSignal.timeout(8_000) });

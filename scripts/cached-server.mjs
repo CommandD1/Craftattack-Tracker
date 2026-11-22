@@ -65,7 +65,7 @@ const UPSTREAM_TIMEOUT_MS = 90_000;
 /** Nach dem Umschalten darf der alte Prozess so lange laufende Anfragen beenden */
 const RETIRE_MS = 15_000;
 /** Vor dem Umschalten immer rendern, auch wenn sie gerade niemand besucht hat */
-const WARM = ["/", "/spieler", "/bestenlisten", "/live", "/ereignisse", "/verlauf", "/graph", "/verbindungen", "/gruppen", "/naehe", "/zuschauer", "/statistik"];
+const WARM = ["/", "/spieler", "/bestenlisten", "/live", "/ereignisse", "/graph", "/verbindungen", "/verbindungen?gruppen=1", "/verbindungen?ansicht=distanz", "/zuschauer", "/statistik"];
 const DIST_DIRS = [".next-a", ".next-b", ".next"];
 /** Statische Dateien früherer Versionen (scripts/deploy.sh hebt sie 7 Tage auf), für Seiten, die noch offen sind */
 const STATIC_ARCHIVE = ".next-static-archive";

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { PageSkeleton } from "@/components/Skeletons";
@@ -47,6 +48,9 @@ function rel(ms: number) {
 }
 
 async function Detail(props: PageProps<"/ereignis/[id]">) {
+  // Zuerst: getEventDetail/getFeedFilter lesen Date.now(), bevor loadTracker() die Anfrage als dynamisch markiert;
+  // das meldete Next.js bei jedem Aufruf als Fehler (~1.300 Zeilen pro Stunde im Protokoll)
+  await connection();
   const { id: raw } = await props.params;
   const id = decodeURIComponent(raw);
   const [d, { state }, isShown] = await Promise.all([getEventDetail(id), loadTracker(), getFeedFilter()]);
