@@ -404,10 +404,12 @@ function netCompare(net: NetworkSummary, idA: string, idB: string): NetCompare {
 
 async function viewerCompare(idA: string, idB: string): Promise<ViewerCompare> {
   const [flows, raids, sA, sB] = await Promise.all([
-    getFlows().catch(() => null),
-    getRaidAnalysis().catch(() => null),
-    getStreamerSeason(idA).catch(() => null),
-    getStreamerSeason(idB).catch(() => null),
+    // Fokus Server: Wanderung und Raids nur, wenn einer der beiden Beteiligten auf dem Server war; Streamtage nur
+    // Tage, an denen der Streamer auf CraftAttack live war (Ø Zuschauer und Stunden setzt getComparison genau)
+    getFlows("einer").catch(() => null),
+    getRaidAnalysis("einer").catch(() => null),
+    getStreamerSeason(idA, true).catch(() => null),
+    getStreamerSeason(idB, true).catch(() => null),
   ]);
   const side = (id: string, s: Awaited<ReturnType<typeof getStreamerSeason>>): ViewerSide => {
     const days = s?.days ?? [];
@@ -643,6 +645,9 @@ export async function getComparison(idA: string, idB: string): Promise<CompareDa
       .map((x): [number, number] => [Date.parse(x.start), x.end ? Date.parse(x.end) : now])
       .sort((x, y) => x[0] - y[0]);
   const [avgA, avgB] = await Promise.all([getOnServerViewers(idA, spans(idA)).catch(() => null), getOnServerViewers(idB, spans(idB)).catch(() => null)]);
+  // Zuschauer-Abschnitt: Ø und Stunden ebenfalls nur auf dem Server
+  viewers.a = { ...viewers.a, avg: avgA, hours: (a.streamOnServerSeconds ?? 0) / 3600 };
+  viewers.b = { ...viewers.b, avg: avgB, hours: (b.streamOnServerSeconds ?? 0) / 3600 };
   const twitchRows: CompareRow[] = [
     { key: "followers", label: "Follower", icon: "users", a: a.followersAt ? a.followersOnServer : null, b: b.followersAt ? b.followersOnServer : null, show: num, win: "mehr", metric: "followers" as Metric, hint: "Follower-Zuwachs" },
     { key: "twitchSubs", label: "Twitch Subs", icon: "gift", a: subsA.total, b: subsB.total, show: num, win: "mehr", metric: "twitchSubs" as Metric },

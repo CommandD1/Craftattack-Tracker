@@ -190,7 +190,8 @@ interface AudienceSnapshot {
   pairs: Record<AudienceKind, Record<string, number>>;
 }
 
-export const AUDIENCE_SNAPSHOT = "audience-overlap";
+/** Nur, solange der Streamer auf dem Server war (Spalte on_server) */
+export const AUDIENCE_SNAPSHOT = "audience-overlap:server";
 export const AUDIENCE_SNAPSHOT_MS = 60 * 60_000;
 
 /** Eigene Abos (auch Weiterführen eines geschenkten); Geschenke zählen bei den Verschenkern */
@@ -202,10 +203,10 @@ export async function computeAudience(): Promise<AudienceSnapshot> {
   const db = await getDb();
   const rows = (
     await db.query<{ k: AudienceKind; a: string; b: string | null; n: number }>(
-      `WITH s AS (SELECT DISTINCT channel_id c, lower(from_login) u FROM twitch_subs WHERE kind IN ${OWN_SUB} AND from_login <> ''),
-            g AS (SELECT DISTINCT channel_id c, lower(from_login) u FROM twitch_subs WHERE kind IN ${GIFT} AND from_login <> '' AND lower(from_login) <> '${ANON}'),
-            ch AS (SELECT DISTINCT channel_id c, lower(from_login) u FROM twitch_cheers WHERE from_login <> ''),
-            cl AS (SELECT DISTINCT player c, lower(creator_name) u FROM twitch_clips WHERE creator_name <> ''),
+      `WITH s AS (SELECT DISTINCT channel_id c, lower(from_login) u FROM twitch_subs WHERE on_server AND kind IN ${OWN_SUB} AND from_login <> ''),
+            g AS (SELECT DISTINCT channel_id c, lower(from_login) u FROM twitch_subs WHERE on_server AND kind IN ${GIFT} AND from_login <> '' AND lower(from_login) <> '${ANON}'),
+            ch AS (SELECT DISTINCT channel_id c, lower(from_login) u FROM twitch_cheers WHERE on_server AND from_login <> ''),
+            cl AS (SELECT DISTINCT player c, lower(creator_name) u FROM twitch_clips WHERE on_server AND creator_name <> ''),
             al AS (SELECT 'subs' k, * FROM s UNION ALL SELECT 'gifts', * FROM g UNION ALL SELECT 'cheers', * FROM ch UNION ALL SELECT 'clips', * FROM cl)
        SELECT x.k, x.c a, y.c b, count(*)::int n FROM al x JOIN al y ON x.k = y.k AND x.u = y.u AND x.c < y.c GROUP BY 1, 2, 3
        UNION ALL SELECT k, c, NULL, count(*)::int FROM al GROUP BY 1, 2`,
@@ -256,7 +257,7 @@ async function topGifters(idA: string, idB: string, players: Record<string, Play
     return (
       await db.query<{ login: string; a: number; b: number }>(
         `SELECT lower(from_login) login, count(*) FILTER (WHERE channel_id = $1)::int a, count(*) FILTER (WHERE channel_id = $2)::int b
-           FROM twitch_subs WHERE channel_id IN ($1, $2) AND kind = 'subgift' AND from_login <> '' AND lower(from_login) <> '${ANON}'
+           FROM twitch_subs WHERE channel_id IN ($1, $2) AND on_server AND kind = 'subgift' AND from_login <> '' AND lower(from_login) <> '${ANON}'
           GROUP BY 1 HAVING count(*) FILTER (WHERE channel_id = $1) > 0 AND count(*) FILTER (WHERE channel_id = $2) > 0
           ORDER BY least(count(*) FILTER (WHERE channel_id = $1), count(*) FILTER (WHERE channel_id = $2)) DESC, count(*) DESC LIMIT 5`,
         [idA, idB],
