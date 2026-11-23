@@ -12,7 +12,7 @@ import { overlapsFor } from "./overlap";
 import { pairIds } from "./eventPair";
 import { playtimeOf, trackedSecondsOf } from "./playtime";
 import { getPlayerAfkSpans, spanSeconds } from "./analytics";
-import { getFlows, getStreamerSeason } from "./viewerMigration";
+import { getFlows, getOnServerViewers, getStreamerSeason } from "./viewerMigration";
 import { getRaidAnalysis, type RaidPlayer } from "./raidAnalysis";
 import { getAdvancementBoard } from "./playerAdvancements";
 import { ADV_BY_ID } from "./advancements";
@@ -30,8 +30,8 @@ import type { Metric } from "./graphQuery";
 
 export type Side = "a" | "b";
 
-/** Wann ein Wert „gewinnt“: mehr ist besser, oder neutral (Tode, Schaden erlitten, AFK …) – zählt dann nicht */
-export type Win = "mehr" | null;
+/** Wann ein Wert „gewinnt“: mehr ist besser, weniger ist besser (Tode, Schaden erlitten, Totems, AFK) oder gar nicht */
+export type Win = "mehr" | "weniger" | null;
 
 export interface CompareRow {
   key: string;
@@ -214,8 +214,18 @@ const BOARD_LABEL: Record<BoardKey, string> = {
   foodEaten: "Essen",
 };
 
-/** Kennzahlen, bei denen „mehr“ kein Sieg ist: Pech, Verlust oder Nebenwirkung */
-const NEUTRAL = new Set<string>(["deaths", "totemsUsed", "damageTaken", "distanceFallen", "itemsDropped", "afkSeconds", "afkShare"]);
+/**
+ * Kennzahlen, bei denen weniger besser ist (Pech, Verlust, Untätigkeit). Fallen und fallen gelassene Items wachsen
+ * mit der Spielzeit, nicht mit Ungeschick, und zählen deshalb normal (mehr = besser).
+ */
+const LOWER_WINS = new Set<string>(["deaths", "totemsUsed", "damageTaken", "afkSeconds", "afkShare"]);
+const winOf = (k: string): Win => (LOWER_WINS.has(k) ? "weniger" : "mehr");
+
+/** Wer bei einer Kennzahl vorne liegt (null = Gleichstand, fehlender Wert oder zählt nicht) */
+export function leadOf(r: Pick<CompareRow, "a" | "b" | "win">): Side | null {
+  if (!r.win || r.a === null || r.b === null || r.a === r.b) return null;
+  return r.a > r.b === (r.win === "mehr") ? "a" : "b";
+}
 
 const extraOf = (p: PlayerState, k: ExtraStatKey) => {
   const v = p.detail?.stats[k];
@@ -232,7 +242,7 @@ function statRows(a: PlayerState, b: PlayerState, now: number): { board: Compare
     a: k === "playtimeSeconds" ? playA || null : (a.stats[k] ?? null),
     b: k === "playtimeSeconds" ? playB || null : (b.stats[k] ?? null),
     show: (v: number) => boardValue(k, v),
-    win: NEUTRAL.has(k) ? null : "mehr",
+    win: winOf(k),
     rankA: a.ranks?.[k]?.rank ?? null,
     rankB: b.ranks?.[k]?.rank ?? null,
     metric: k as Metric,
@@ -245,7 +255,7 @@ function statRows(a: PlayerState, b: PlayerState, now: number): { board: Compare
     a: extraOf(a, k),
     b: extraOf(b, k),
     show: FORMATTERS[EXTRA_STATS[k].format],
-    win: NEUTRAL.has(k) ? null : "mehr",
+    win: winOf(k),
     rankA: a.detail?.ranks[k]?.rank ?? null,
     rankB: b.detail?.ranks[k]?.rank ?? null,
     metric: EXTRA_STATS[k].metric as Metric,
@@ -260,17 +270,18 @@ function statRows(a: PlayerState, b: PlayerState, now: number): { board: Compare
 export const STRENGTH_MIN_HOURS = 10;
 
 /**
- * „Stärke“: Für jede Kennzahl, bei der mehr besser ist, das Perzentil des Spielers unter allen mit Wert
- * (1 = bester); der Durchschnitt darüber. Absolute Werte, also wer insgesamt am meisten geschafft hat.
+ * „Stärke“: Für jede Kennzahl das Perzentil des Spielers unter allen mit Wert (1 = bester; bei Tode, Schaden
+ * erlitten, Totems und AFK umgedreht: wenig = gut); der Durchschnitt darüber. Absolute Werte.
  */
 export function strengthBoard(players: Record<string, PlayerState>, now: number): Strength[] {
   const list = Object.values(players).filter((p) => playtimeOf(p, now).seconds >= STRENGTH_MIN_HOURS * 3600);
-  const keys: { label: string; get: (p: PlayerState) => number | null }[] = [
-    ...BOARD_KEYS.filter((k) => !NEUTRAL.has(k)).map((k) => ({
+  const keys: { label: string; lower: boolean; get: (p: PlayerState) => number | null }[] = [
+    ...BOARD_KEYS.map((k) => ({
       label: BOARD_LABEL[k],
+      lower: LOWER_WINS.has(k),
       get: (p: PlayerState) => (k === "playtimeSeconds" ? playtimeOf(p, now).seconds || null : (p.stats[k] ?? null)),
     })),
-    ...EXTRA_STAT_KEYS.filter((k) => !NEUTRAL.has(k)).map((k) => ({ label: EXTRA_STATS[k].label as string, get: (p: PlayerState) => extraOf(p, k) })),
+    ...EXTRA_STAT_KEYS.map((k) => ({ label: EXTRA_STATS[k].label as string, lower: LOWER_WINS.has(k), get: (p: PlayerState) => extraOf(p, k) })),
   ];
   const acc = new Map<string, { sum: number; n: number; best: { label: string; pct: number } }>();
   for (const k of keys) {
@@ -288,11 +299,12 @@ export function strengthBoard(players: Record<string, PlayerState>, now: number)
       }
       let eq = lo;
       while (eq < sorted.length && sorted[eq] === v) eq++;
-      const pct = (lo + (eq - lo - 1) / 2) / Math.max(1, sorted.length - 1);
+      const up = (lo + (eq - lo - 1) / 2) / Math.max(1, sorted.length - 1);
+      const pct = k.lower ? 1 - up : up;
       const c = acc.get(id) ?? { sum: 0, n: 0, best: { label: k.label, pct: -1 } };
       c.sum += pct;
       c.n++;
-      if (pct > c.best.pct) c.best = { label: k.label, pct };
+      if (pct > c.best.pct) c.best = { label: k.lower ? `${k.label} (wenig)` : k.label, pct };
       acc.set(id, c);
     }
   }
@@ -491,7 +503,7 @@ function findInsights(d: Omit<CompareData, "insights">, nameOf: (id: string) => 
         const ra = r.a / d.hoursA;
         const rb = r.b / d.hoursB;
         const fh = Math.max(ra, rb) / Math.min(ra, rb);
-        if (fh >= 2) push("anders", Math.log2(fh), `stat:${g.key}`, `${ra > rb ? A : B} schafft je Stunde ${dec(fh)}× so viel „${r.label}“ wie ${ra > rb ? B : A}.`);
+        if (fh >= 2) push("anders", Math.log2(fh), `stat:${g.key}`, `${ra > rb ? A : B} ${r.win === "weniger" ? "hat" : "schafft"} je Stunde ${dec(fh)}× so viel „${r.label}“ wie ${ra > rb ? B : A}.`);
         else if (fh <= 1.08 && f <= 1.15) push("gleich", 1.2 - (fh - 1) * 5, `stat:${g.key}`, `„${r.label}“ fast gleich: ${r.show(r.a)} und ${r.show(r.b)}.`);
       } else if (f >= 2.5) push("anders", Math.log2(f) * 0.8, `stat:${g.key}`, `${r.a > r.b ? A : B} hat bei „${r.label}“ ${dec(f)}× so viel wie ${r.a > r.b ? B : A}.`);
       else if (f <= 1.05) push("gleich", 1, `stat:${g.key}`, `„${r.label}“ fast gleich: ${r.show(r.a)} und ${r.show(r.b)}.`);
@@ -624,21 +636,29 @@ export async function getComparison(idA: string, idB: string): Promise<CompareDa
   const onlineB = trackedSecondsOf(b, now);
   const { board, extra } = statRows(a, b, now);
 
+  // Twitch nur, solange der Streamer auf dem Server war (Abos, Bits und Einnahmen zählen ohnehin so)
+  const spans = (id: string) =>
+    sessions
+      .filter((x) => x.player === id)
+      .map((x): [number, number] => [Date.parse(x.start), x.end ? Date.parse(x.end) : now])
+      .sort((x, y) => x[0] - y[0]);
+  const [avgA, avgB] = await Promise.all([getOnServerViewers(idA, spans(idA)).catch(() => null), getOnServerViewers(idB, spans(idB)).catch(() => null)]);
   const twitchRows: CompareRow[] = [
-    { key: "followers", label: "Follower auf dem Server", icon: "users", a: a.followersAt ? a.followersOnServer : null, b: b.followersAt ? b.followersOnServer : null, show: num, win: "mehr", metric: "followers" as Metric, hint: "Follower-Zuwachs, während der Streamer auf dem Server war" },
+    { key: "followers", label: "Follower", icon: "users", a: a.followersAt ? a.followersOnServer : null, b: b.followersAt ? b.followersOnServer : null, show: num, win: "mehr", metric: "followers" as Metric, hint: "Follower-Zuwachs" },
     { key: "twitchSubs", label: "Twitch Subs", icon: "gift", a: subsA.total, b: subsB.total, show: num, win: "mehr", metric: "twitchSubs" as Metric },
-    { key: "twitchBits", label: "Twitch Bits", icon: "bits", a: bitsA.onServer, b: bitsB.onServer, show: num, win: "mehr", metric: "twitchBits" as Metric, hint: "Bits aus Cheers, während der Streamer auf dem Server war" },
-    { key: "twitchEarnings", label: "Twitch-Einnahmen", icon: "coin", a: earnA.total, b: earnB.total, show: eur, win: "mehr", metric: "twitchEarnings" as Metric, hint: "Geschätzt aus Abos und Bits auf dem Server, ohne Werbung" },
-    { key: "avgViewers", label: "Ø Zuschauer", icon: "eye", a: viewers.a.avg, b: viewers.b.avg, show: num, win: "mehr", hint: "Durchschnitt solange live, ohne die erste halbe Stunde, gewichtet nach Stunden" },
-    { key: "peakViewers", label: "Peak-Zuschauer", icon: "trophy", a: a.peakViewers || null, b: b.peakViewers || null, show: num, win: "mehr" },
-    { key: "streamOnServer", label: "Stream auf dem Server", icon: "video", a: a.streamOnServerSeconds || null, b: b.streamOnServerSeconds || null, show: duration, win: "mehr" },
+    { key: "twitchBits", label: "Twitch Bits", icon: "bits", a: bitsA.onServer, b: bitsB.onServer, show: num, win: "mehr", metric: "twitchBits" as Metric, hint: "Bits aus Cheers" },
+    { key: "twitchEarnings", label: "Twitch-Einnahmen", icon: "coin", a: earnA.total, b: earnB.total, show: eur, win: "mehr", metric: "twitchEarnings" as Metric, hint: "Geschätzt aus Abos und Bits, ohne Werbung" },
+    { key: "avgViewers", label: "Ø Zuschauer", icon: "eye", a: avgA, b: avgB, show: num, win: "mehr", hint: "Ohne die erste halbe Stunde des Streams" },
+    { key: "peakViewers", label: "Peak-Zuschauer", icon: "trophy", a: a.peakViewersOnServer || null, b: b.peakViewersOnServer || null, show: num, win: "mehr" },
+    { key: "streamOnServer", label: "Stream-Zeit", icon: "video", a: a.streamOnServerSeconds || null, b: b.streamOnServerSeconds || null, show: duration, win: "mehr" },
   ];
+
 
   const trackerRows: CompareRow[] = [
     { key: "sessions", label: "Sessions", icon: "login", a: a.sessions, b: b.sessions, show: num, win: "mehr" },
     { key: "online", label: "Online-Zeit (Tracker)", icon: "clock", a: onlineA, b: onlineB, show: duration, win: "mehr" },
     { key: "longest", label: "Längste Session", icon: "hourglass", a: a.longestSession || null, b: b.longestSession || null, show: duration, win: "mehr" },
-    { key: "afkShare", label: "AFK-Anteil", icon: "moon", a: onlineA > 0 ? spanSeconds(afkA) / onlineA : null, b: onlineB > 0 ? spanSeconds(afkB) / onlineB : null, show: ratio, win: null, hint: "Anteil der Online-Zeit, in der der Spieler als AFK galt" },
+    { key: "afkShare", label: "AFK-Anteil", icon: "moon", a: onlineA > 0 ? spanSeconds(afkA) / onlineA : null, b: onlineB > 0 ? spanSeconds(afkB) / onlineB : null, show: ratio, win: "weniger", hint: "Anteil der Online-Zeit, in der der Spieler als AFK galt" },
     { key: "advancements", label: "Fortschritte", icon: "star", a: adv.countA || null, b: adv.countB || null, show: num, win: "mehr" },
   ];
 

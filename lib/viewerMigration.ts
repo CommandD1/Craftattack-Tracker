@@ -911,6 +911,28 @@ function totals(base: Base): Map<number, number> {
   return m;
 }
 
+/**
+ * Ø Zuschauer, solange der Streamer live UND auf dem Server war (ohne die erste halbe Stunde des Streams, wie
+ * getStreamerSeason). `spans`: Server-Sessions des Spielers in ms, nach Beginn sortiert.
+ */
+export async function getOnServerViewers(id: string, spans: [number, number][]): Promise<number | null> {
+  const s = (await getBase()).series.get(id);
+  if (!s || !s.t.length || !spans.length) return null;
+  let sum = 0;
+  let n = 0;
+  let j = 0;
+  for (let i = 0; i < s.t.length; i++) {
+    if (s.t[i] - s.sess[i] < 30) continue;
+    const ms = s.t[i] * 60_000;
+    while (j < spans.length && spans[j][1] < ms) j++;
+    if (j >= spans.length) break;
+    if (ms < spans[j][0]) continue;
+    sum += s.v[i];
+    n++;
+  }
+  return n ? sum / n : null;
+}
+
 export interface SeasonDay {
   day: string;
   /** Ø Zuschauer, solange live (ohne die erste halbe Stunde) */
