@@ -869,9 +869,9 @@ function ViewerSection({ d, names }: { d: CompareData; names: Names }) {
             <SideTable
               d={d}
               rows={[
-                { label: "Streamtage", a: num(v.a.days), b: num(v.b.days) },
-                { label: "Stunden live", a: duration(v.a.hours * 3600), b: duration(v.b.hours * 3600) },
-                { label: "Ø Zuschauer", a: v.a.avg !== null ? num(v.a.avg) : "–", b: v.b.avg !== null ? num(v.b.avg) : "–", hint: "Solange live, ohne die erste halbe Stunde" },
+                { label: "Streamtage", a: num(v.a.days), b: num(v.b.days), hint: "Tage, an denen der Streamer auf CraftAttack live war" },
+                { label: "Stunden live", hint: "Stream-Zeit, solange der Streamer auf dem Server war", a: duration(v.a.hours * 3600), b: duration(v.b.hours * 3600) },
+                { label: "Ø Zuschauer", a: v.a.avg !== null ? num(v.a.avg) : "–", b: v.b.avg !== null ? num(v.b.avg) : "–", hint: "Ohne die erste halbe Stunde des Streams" },
                 { label: "Bester Tag", a: v.a.best ? `${dayLabel(v.a.best.day)} · Ø ${num(v.a.best.avg)}` : "–", b: v.b.best ? `${dayLabel(v.b.best.day)} · Ø ${num(v.b.best.avg)}` : "–" },
                 { label: "Anteil am CA-Publikum", a: v.a.share !== null ? pctFine(v.a.share) : "–", b: v.b.share !== null ? pctFine(v.b.share) : "–", hint: "Anteil an allen Zuschauern der CraftAttack-Streams, solange er live war" },
                 {
