@@ -15,6 +15,7 @@ import { duration, num, skinUrl } from "@/lib/format";
 import { graphHref, type Metric } from "@/lib/graphQuery";
 import { STRENGTH_MIN_HOURS, getComparison, startData, type CompareData, type CompareRow, type Friend, type Strength, type ViewerSide } from "@/lib/playerCompare";
 import type { Rhythm } from "@/lib/rhythm";
+import { getThirdParties, type AudienceKind, type CircleKey, type CircleList } from "@/lib/thirdParties";
 import "./vergleich.css";
 
 export const metadata: Metadata = { title: "Spielervergleich" };
@@ -220,6 +221,9 @@ function Compare({ d, names }: { d: CompareData; names: Names }) {
 
       <RhythmSection d={d} />
       <NetworkSection d={d} names={names} />
+      <Suspense fallback={null}>
+        <ThirdSection d={d} names={names} />
+      </Suspense>
       <ViewerSection d={d} names={names} />
       <AdvSection d={d} />
       <TogetherSection d={d} />
@@ -589,6 +593,239 @@ function NetworkSection({ d, names }: { d: CompareData; names: Names }) {
           <div className="cmp-two">
             <FriendList list={n.a.ownCircle} max={maxA} names={names} other={a.id} title={<>Nur im Kreis von {a.name}</>} empty={`Alle Verbindungen von ${a.name} kennen auch ${b.name}.`} />
             <FriendList list={n.b.ownCircle} max={maxB} names={names} other={b.id} title={<>Nur im Kreis von {b.name}</>} empty={`Alle Verbindungen von ${b.name} kennen auch ${a.name}.`} />
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ Gemeinsame Dritte */
+
+const CIRCLE: Record<CircleKey, { title: string; unit: string; hint: string }> = {
+  raidsIn: {
+    title: "Raidet beide",
+    unit: "Raids",
+    hint: "Raids an den einen und an den anderen",
+  },
+  raidsOut: {
+    title: "Wird von beiden geraidet",
+    unit: "Raids",
+    hint: "Raids von beiden an denselben Streamer",
+  },
+  msgsIn: {
+    title: "Schreibt bei beiden im Chat",
+    unit: "Nachrichten",
+    hint: "Chat-Nachrichten im Twitch-Chat beider",
+  },
+  msgsOut: {
+    title: "Beide schreiben bei",
+    unit: "Nachrichten",
+    hint: "Chat-Nachrichten beider im Twitch-Chat desselben Streamers",
+  },
+  shared: {
+    title: "Geteilter Chat mit beiden",
+    unit: "",
+    hint: "Zeit im geteilten Chat (Stream Together) mit dem einen und mit dem anderen",
+  },
+  costream: {
+    title: "Gemeinsam gestreamt mit beiden",
+    unit: "",
+    hint: "Zeit in „Gemeinsam streamen“ mit dem einen und mit dem anderen",
+  },
+  title: {
+    title: "Beide nennen im Stream-Titel",
+    unit: "",
+    hint: "Stream-Zeit mit dem Namen im Titel",
+  },
+};
+
+const AUDIENCE: Record<AudienceKind, { label: string; hint: string }> = {
+  subs: {
+    label: "Abonnenten",
+    hint: "Leute mit eigenem Abo bei beiden (neu, verlängert oder Prime), nach den Sub-Meldungen im Chat",
+  },
+  gifts: {
+    label: "Sub-Verschenker",
+    hint: "Leute, die bei beiden Subs verschenkt haben (ohne anonyme Geschenke)",
+  },
+  cheers: {
+    label: "Cheerer",
+    hint: "Leute, die bei beiden Bits gegeben haben",
+  },
+  clips: {
+    label: "Clipper",
+    hint: "Leute, die bei beiden Clips erstellt haben",
+  },
+};
+
+function ThirdList({ l, d, names }: { l: CircleList; d: CompareData; names: Names }) {
+  const c = CIRCLE[l.key];
+  const max = Math.max(1, ...l.rows.flatMap((r) => [r.a, r.b]));
+  const show = (v: number) => (l.seconds ? duration(v) : num(v));
+  return (
+    <div className="box cmp-friends cmp-third" data-tone="white">
+      <h3 className="eyebrow" title={c.hint}>
+        {c.title} · {num(l.count)}
+      </h3>
+      <ol>
+        {l.rows.map((r) => (
+          <li key={r.id} title={`${d.a.name}: ${show(r.a)}${c.unit ? ` ${c.unit}` : ""} · ${d.b.name}: ${show(r.b)}${c.unit ? ` ${c.unit}` : ""}`}>
+            <Head id={r.id} uuid={names.uuidOf(r.id)} name={names.nameOf(r.id)} size={22} src={32} decorative />
+            <span className="cmp-friends__name">
+              <Link href={`/spieler/${encodeURIComponent(r.id)}`}>{names.nameOf(r.id)}</Link>
+            </span>
+            <span className="cmp-common__bars" aria-hidden="true">
+              <span data-side="a" style={{ width: `${(r.a / max) * 100}%` }} />
+              <span data-side="b" style={{ width: `${(r.b / max) * 100}%` }} />
+            </span>
+            <span className="num cmp-third__v">
+              <span data-side="a">{show(r.a)}</span>
+              <span data-side="b">{show(r.b)}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+async function ThirdSection({ d, names }: { d: CompareData; names: Names }) {
+  const { state } = await loadTracker();
+  const t = await getThirdParties(d.a.id, d.b.id, state.players, d.now);
+  const { a, b } = d;
+  const circle = t.circle.filter((l) => l.rows.length > 0);
+  const au = t.audience;
+  const share = (n: number, of: number) => (of ? pctFine(n / of) : "–");
+  const maxServer = Math.max(1, ...t.server.rows.map((r) => r.seconds));
+  if (!circle.length && !au && !t.server.rows.length) return null;
+  return (
+    <section className="block" data-tone="white">
+      <div className="wrap stack">
+        <h2 className="t-3 cmp-h">
+          <Icon.users width={22} height={22} aria-hidden="true" /> Gemeinsame Dritte
+        </h2>
+        <p className="muted">
+          Wer mit beiden zu tun hat: andere Streamer im Kreis, dasselbe Publikum und wer auf dem Server dabei ist, wenn beide online sind.
+        </p>
+
+        <h3 className="cmp-sub">Kreis</h3>
+        {circle.length === 0 ? (
+          <p className="muted">Niemand, der mit beiden über Raids, Chat, geteilten Chat, gemeinsames Streamen oder Titel verbunden ist.</p>
+        ) : (
+          <>
+            <p className="muted cmp-note">
+              Nur Leute, die bei beiden vorkommen, stärkste zuerst (nach dem kleineren der beiden Werte). Oben {a.name}, unten {b.name}. Raids, Chat und Titel
+              wie im Netz nur aus Zeiten auf CraftAttack.
+            </p>
+            <div className="cmp-three">
+              {circle.map((l) => (
+                <ThirdList key={l.key} l={l} d={d} names={names} />
+              ))}
+            </div>
+          </>
+        )}
+
+        {au && (
+          <>
+            <h3 className="cmp-sub">Publikum</h3>
+            <dl className="grid st-figs">
+              <div className="box st-fig" data-tone="paper">
+                <dt>Publikum deckt sich</dt>
+                <dd className="num">{au.similarity === null ? "–" : pctFine(au.similarity)}</dd>
+                <p className="muted cmp-fig__note">Gemeinsame Abonnenten im Verhältnis zur Größe beider (Wurzel aus dem Produkt)</p>
+              </div>
+              <div className="box st-fig" data-tone="paper">
+                <dt>Platz unter den Ähnlichsten</dt>
+                <dd className="num cmp-score--small">
+                  <span data-side="a">{au.placeA ?? "–"}</span> : <span data-side="b">{au.placeB ?? "–"}</span>
+                </dd>
+                <p className="muted cmp-fig__note">
+                  {b.name} ist Nr. {au.placeA ?? "–"} bei {a.name}, {a.name} Nr. {au.placeB ?? "–"} bei {b.name} (von {num(au.of)} Kanälen)
+                </p>
+              </div>
+            </dl>
+            <div className="cmp-two">
+              <div className="box" data-tone="paper">
+                <table className="cmp-table">
+                  <thead>
+                    <tr>
+                      <th />
+                      <th>Bei beiden</th>
+                      <th data-side="a">Anteil bei {a.name}</th>
+                      <th data-side="b">Anteil bei {b.name}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {au.rows.map((r) => (
+                      <tr key={r.kind} title={AUDIENCE[r.kind].hint}>
+                        <th scope="row">{AUDIENCE[r.kind].label}</th>
+                        <td className="num">{num(r.shared)}</td>
+                        <td className="num">
+                          {share(r.shared, r.a)} <span className="muted">von {num(r.a)}</span>
+                        </td>
+                        <td className="num">
+                          {share(r.shared, r.b)} <span className="muted">von {num(r.b)}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {au.gifters.length > 0 && (
+                <div className="box cmp-friends cmp-third" data-tone="paper">
+                  <h3 className="eyebrow">Größte Sub-Verschenker an beide</h3>
+                  <ol>
+                    {au.gifters.map((g) => {
+                      const max = Math.max(1, ...au.gifters.flatMap((x) => [x.a, x.b]));
+                      return (
+                        <li key={g.login} title={`${a.name}: ${num(g.a)} Subs · ${b.name}: ${num(g.b)} Subs`}>
+                          {g.player ? (
+                            <Head id={g.player} uuid={names.uuidOf(g.player)} name={names.nameOf(g.player)} size={22} src={32} decorative />
+                          ) : (
+                            <span />
+                          )}
+                          <span className="cmp-friends__name">
+                            {g.player ? <Link href={`/spieler/${encodeURIComponent(g.player)}`}>{names.nameOf(g.player)}</Link> : <strong>{g.login}</strong>}
+                          </span>
+                          <span className="cmp-common__bars" aria-hidden="true">
+                            <span data-side="a" style={{ width: `${(g.a / max) * 100}%` }} />
+                            <span data-side="b" style={{ width: `${(g.b / max) * 100}%` }} />
+                          </span>
+                          <span className="num cmp-third__v">
+                            <span data-side="a">{num(g.a)}</span>
+                            <span data-side="b">{num(g.b)}</span>
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        <h3 className="cmp-sub">Auf dem Server</h3>
+        {t.server.rows.length === 0 ? (
+          <p className="muted">{t.server.both > 0 ? "Wenn beide online waren, war sonst kaum jemand dabei." : "Beide waren nie gleichzeitig online."}</p>
+        ) : (
+          <div className="box cmp-friends cmp-third--narrow" data-tone="paper">
+            <h3 className="eyebrow">Am häufigsten dabei, wenn beide online sind · zusammen {duration(t.server.both)}</h3>
+            <ol>
+              {t.server.rows.map((r) => (
+                <li key={r.id} title={`${duration(r.seconds)} von ${duration(t.server.both)}`}>
+                  <Head id={r.id} uuid={names.uuidOf(r.id)} name={names.nameOf(r.id)} size={22} src={32} decorative />
+                  <span className="cmp-friends__name">
+                    <Link href={`/spieler/${encodeURIComponent(r.id)}`}>{names.nameOf(r.id)}</Link>
+                  </span>
+                  <span className="cmp-friends__bar" aria-hidden="true">
+                    <span style={{ width: `${(r.seconds / maxServer) * 100}%` }} />
+                  </span>
+                  <span className="num muted cmp-friends__w">{pct(r.seconds / t.server.both)}</span>
+                </li>
+              ))}
+            </ol>
           </div>
         )}
       </div>

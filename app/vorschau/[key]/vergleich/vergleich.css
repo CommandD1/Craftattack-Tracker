@@ -517,3 +517,30 @@
     grid-row: 1;
   }
 }
+
+/* ------------------------------------------------------------------ Gemeinsame Dritte */
+.cmp-third li,
+.cmp-third li:has(.cmp-common__bars) {
+  grid-template-columns: 22px minmax(0, 1fr) minmax(40px, 90px) auto;
+}
+.cmp-third__v {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 0.7rem;
+  line-height: 1.15;
+}
+.cmp-third__v [data-side="a"] {
+  color: var(--cmp-a);
+}
+.cmp-third__v [data-side="b"] {
+  color: var(--cmp-b);
+}
+.stack > .cmp-sub {
+  font-size: clamp(1.1rem, 2.2vw, 1.3rem);
+  line-height: 1.2;
+  margin-top: 36px;
+}
+.cmp-third--narrow {
+  max-width: 760px;
+}

@@ -5,6 +5,7 @@ import { snapshot } from "./snapshots";
 import { AFK_SNAPSHOT, AFK_SNAPSHOT_MS, computeAllAfkSpans } from "./analytics";
 import { BOARD_TOTALS_MS, BOARD_TOTALS_SNAPSHOT, computeBoardTotals } from "./store";
 import { getRaidAnalysis } from "./raidAnalysis";
+import { AUDIENCE_SNAPSHOT, AUDIENCE_SNAPSHOT_MS, computeAudience } from "./thirdParties";
 
 /**
  * Im Tracker: teure Auswertungen regelmäßig vorberechnen und ablegen (lib/snapshots.ts). Nacheinander, mit Pausen,
@@ -27,6 +28,8 @@ const JOBS: [string, () => Promise<unknown>][] = [
   ["Raids", () => getRaidAnalysis()],
   ["Raids (einer online)", () => getRaidAnalysis("einer")],
   ["Raids (beide online)", () => getRaidAnalysis("beide")],
+  // Gemeinsames Publikum aller Kanalpaare (Spielervergleich), ca. 10 s Datenbank, stündlich
+  ["Gemeinsames Publikum", () => snapshot(AUDIENCE_SNAPSHOT, computeAudience, AUDIENCE_SNAPSHOT_MS)],
 ];
 
 let started = false;
