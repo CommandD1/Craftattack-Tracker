@@ -13,7 +13,7 @@ import { EVENT_META } from "@/lib/events";
 import { ROLE_LABEL } from "@/lib/groups";
 import { duration, num, skinUrl } from "@/lib/format";
 import { graphHref, type Metric } from "@/lib/graphQuery";
-import { STRENGTH_MIN_HOURS, getComparison, startData, type CompareData, type CompareRow, type Friend, type Strength, type ViewerSide } from "@/lib/playerCompare";
+import { STRENGTH_MIN_HOURS, getComparison, leadOf, startData, type CompareData, type CompareRow, type Friend, type Strength, type ViewerSide } from "@/lib/playerCompare";
 import type { Rhythm } from "@/lib/rhythm";
 import { getThirdParties, type AudienceKind, type CircleKey, type CircleList } from "@/lib/thirdParties";
 import "./vergleich.css";
@@ -113,8 +113,8 @@ async function Start({ bad, names }: { bad: boolean; names: Names }) {
               <Icon.crown width={22} height={22} aria-hidden="true" /> Stärkste Spieler
             </h2>
             <p className="muted cmp-note">
-              Für jede Kennzahl, bei der mehr besser ist, zählt, wie viele Spieler man übertrifft; die Stärke ist der Schnitt darüber. Tode, Schaden erlitten, Totems, Fallen, fallen gelassene Items und AFK
-              zählen nicht. Nur Spieler ab {STRENGTH_MIN_HOURS} Std Spielzeit ({num(of)} Spieler).
+              Für jede Kennzahl zählt, wie viele Spieler man übertrifft; die Stärke ist der Schnitt darüber. Bei Toden, erlittenem Schaden, Totems und AFK zählt umgekehrt, wie viele man
+              unterbietet. Nur Spieler ab {STRENGTH_MIN_HOURS} Std Spielzeit ({num(of)} Spieler).
             </p>
             <ol className="cmp-strong">
               {strongest.map((s, i) => (
@@ -172,9 +172,9 @@ async function Start({ bad, names }: { bad: boolean; names: Names }) {
 
 function Compare({ d, names }: { d: CompareData; names: Names }) {
   const { a, b } = d;
-  const rows = d.groups.flatMap((g) => g.rows).filter((r) => r.win && r.a !== null && r.b !== null);
-  const moreA = rows.filter((r) => r.a! > r.b!).length;
-  const moreB = rows.filter((r) => r.b! > r.a!).length;
+  const leads = d.groups.flatMap((g) => g.rows).map(leadOf);
+  const moreA = leads.filter((x) => x === "a").length;
+  const moreB = leads.filter((x) => x === "b").length;
   return (
     <>
       <section className="block block--tight" data-tone="ink">
@@ -187,7 +187,7 @@ function Compare({ d, names }: { d: CompareData; names: Names }) {
                 <span className="muted">:</span>
                 <span data-side="b">{moreB}</span>
               </p>
-              <p className="muted cmp-score__note">Kennzahlen, bei denen einer vorne liegt. Gleichstand, fehlende Werte und Pech-Werte wie Tode zählen nicht.</p>
+              <p className="muted cmp-score__note">Kennzahlen, bei denen einer vorne liegt. Bei Toden, erlittenem Schaden, Totems und AFK gewinnt, wer weniger hat; Gleichstand und fehlende Werte zählen nicht.</p>
             </div>
             <PlayerCard p={b} side="b" s={d.strengthB} of={d.strengthOf} />
           </div>
@@ -201,7 +201,7 @@ function Compare({ d, names }: { d: CompareData; names: Names }) {
           <div className="section-head">
             <h2 className="t-3">Kopf an Kopf</h2>
             <p className="muted">
-              Unter jedem Wert: je Stunde Spielzeit ({dec(d.hoursA)} bzw. {dec(d.hoursB)} Std). Grau = zählt nicht als Sieg. Klick auf eine Kennzahl öffnet beide im Graphen.
+              Unter jedem Wert: je Stunde Spielzeit ({dec(d.hoursA)} bzw. {dec(d.hoursB)} Std). ↓ = weniger ist besser. Klick auf eine Kennzahl öffnet beide im Graphen.
             </p>
           </div>
           <div className="cmp-groups">
@@ -292,8 +292,8 @@ function StatRow({ r, d }: { r: CompareRow; d: CompareData }) {
   const vb = r.b ?? 0;
   const sum = va + vb;
   const shareA = sum > 0 ? va / sum : 0.5;
-  const lead = r.a === null || r.b === null || r.a === r.b ? null : r.a > r.b ? "a" : "b";
-  const factor = lead && Math.min(va, vb) > 0 ? Math.max(va, vb) / Math.min(va, vb) : null;
+  const lead = leadOf(r);
+  const factor = r.a !== null && r.b !== null && r.a !== r.b && Math.min(va, vb) > 0 ? Math.max(va, vb) / Math.min(va, vb) : null;
   // Seltene Zähler (Tode, Totems) je 10 bzw. 100 Std, sonst stünde dort „0 / Std“
   const ph = (v: number | null, hours: number) => {
     if (!r.perHour || v === null || v === 0 || hours < 1) return null;
@@ -307,6 +307,7 @@ function StatRow({ r, d }: { r: CompareRow; d: CompareData }) {
     <>
       {IconCmp && <IconCmp width={16} height={16} aria-hidden="true" />}
       <span>{r.label}</span>
+      {r.win === "weniger" && <span aria-label="weniger ist besser">↓</span>}
     </>
   );
   const label = r.metric ? (
@@ -317,7 +318,7 @@ function StatRow({ r, d }: { r: CompareRow; d: CompareData }) {
     <span title={r.hint}>{text}</span>
   );
   return (
-    <li className="cmp-row" data-lead={lead ?? undefined} data-neutral={r.win ? undefined : ""} title={r.win ? undefined : "Mehr ist hier kein Sieg – zählt nicht zum Stand"}>
+    <li className="cmp-row" data-lead={lead ?? undefined} data-neutral={r.win ? undefined : ""} title={r.win === "weniger" ? "Weniger ist hier besser" : r.win ? undefined : "Zählt nicht zum Stand"}>
       <span className="cmp-row__val num" data-side="a">
         {rank(r.rankA)}
         <strong>{r.a !== null ? r.show(r.a) : "–"}</strong>
