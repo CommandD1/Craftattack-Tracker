@@ -184,9 +184,9 @@ function EventTile({ e, focus, highlight, hrefFor }: { e: TrackerEvent; focus?: 
   const vod = moment && !moment.youtube ? moment.href : null;
   const ytMoment = moment?.youtube ? moment.href : null;
   const liveUrl = typeof e.meta?.liveUrl === "string" ? e.meta.liveUrl : null;
-  const ytUrl = e.type === "youtube_upload" && typeof e.meta?.url === "string" ? e.meta.url : null;
+  const ytUrl = e.type.startsWith("youtube_") && typeof e.meta?.url === "string" ? e.meta.url : null;
   const link = ytUrl
-    ? { href: ytUrl, title: "Auf YouTube ansehen", live: false, youtube: true }
+    ? { href: ytUrl, title: e.type === "youtube_stream_start" || e.type === "youtube_stream_end" ? "Livestream auf YouTube ansehen" : "Auf YouTube ansehen", live: false, youtube: true }
     : ytMoment && !liveUrl
       ? { href: ytMoment, title: "Diesen Moment im YouTube-Livestream ansehen", live: false, youtube: true }
       : liveUrl ? { href: liveUrl, title: "Läuft gerade – Stream auf Twitch ansehen", live: true } : vod ? { href: vod, title: e.type === "clip" ? "Clip auf Twitch ansehen" : e.type === "death" || e.type === "chat" ? "Diesen Moment im VOD ansehen" : "Aufzeichnung auf Twitch ansehen", live: false } : null;

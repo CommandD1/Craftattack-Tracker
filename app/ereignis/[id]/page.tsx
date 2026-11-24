@@ -72,7 +72,7 @@ async function Detail(props: PageProps<"/ereignis/[id]">) {
   const login = p?.twitchLogin ?? p?.live?.login ?? null;
   const moment = momentLink(e);
   // YouTube-Upload: das Video selbst; sonst YouTube-Livestream, wenn es kein Twitch-VOD gibt
-  const youtube = e.type === "youtube_upload" && typeof e.meta?.url === "string" ? e.meta.url : moment?.youtube ? moment.href : null;
+  const youtube = e.type.startsWith("youtube_") && typeof e.meta?.url === "string" ? e.meta.url : moment?.youtube ? moment.href : null;
   const vod =
     moment
       ? moment.href
@@ -192,7 +192,7 @@ async function Detail(props: PageProps<"/ereignis/[id]">) {
             {youtube ? (
               <li>
                 <a className="tag" data-tone="youtube" href={youtube} target="_blank" rel="noopener noreferrer">
-                  ▶ {e.type === "youtube_upload" ? "Auf YouTube ansehen" : "Im YouTube-Livestream ansehen"}
+                  ▶ {e.type === "youtube_video" || e.type === "youtube_short" ? "Auf YouTube ansehen" : "Im YouTube-Livestream ansehen"}
                 </a>
               </li>
             ) : (

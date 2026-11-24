@@ -14,7 +14,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     date: "24.11.",
     title: "YouTube",
-    text: "Uploads zu CraftAttack 14 als Ereignis (Video, Short oder Livestream) und auf jeder Spielerseite die YouTube-Zahlen. YouTube-Livestreams springen ein, wo es kein Twitch-VOD (mehr) gibt: roter Balken im Zeitstrahl und Ereignisse mit Sprung an die Stelle im YouTube-Livestream.",
+    text: "Eigene Ereignisse für YouTube-Videos, -Shorts und YouTube-Livestreams (Live an/aus) zu CraftAttack 14 und auf jeder Spielerseite die YouTube-Zahlen samt Live-Zeit. YouTube-Livestreams springen ein, wo es kein Twitch-VOD (mehr) gibt: roter Balken im Zeitstrahl und Ereignisse mit Sprung an die Stelle im YouTube-Livestream.",
     href: "/ereignisse?g=youtube",
   },
   {

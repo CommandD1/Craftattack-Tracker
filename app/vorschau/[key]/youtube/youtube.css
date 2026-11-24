@@ -1,0 +1,39 @@
+/* Versteckte Seite /vorschau/<key>/youtube (YouTube-Auswertungen) */
+.yt-lead { max-width: 70ch; margin: 8px 0 16px }
+.yt-chart { margin: 0 }
+.yt-chart svg { width: 100%; height: auto; display: block; background: var(--white); border: 3px solid var(--ink) }
+.yt-chart__grid { stroke: color-mix(in srgb, var(--ink) 10%, transparent); stroke-width: 1 }
+.yt-chart__video { fill: var(--youtube); background: var(--youtube) }
+.yt-chart__short { fill: color-mix(in srgb, var(--youtube) 55%, var(--white)); background: color-mix(in srgb, var(--youtube) 55%, var(--white)) }
+.yt-chart__live { fill: color-mix(in srgb, var(--youtube) 60%, var(--ink)); background: color-mix(in srgb, var(--youtube) 60%, var(--ink)) }
+.yt-chart__viewers { fill: none; stroke: var(--twitch); stroke-width: 3 }
+.yt-chart__online { fill: none; stroke: var(--sky); stroke-width: 3; stroke-dasharray: 6 4 }
+.yt-chart__death { stroke: var(--ink); stroke-width: 2; stroke-dasharray: 4 4 }
+.yt-chart__label, .yt-chart__axis { font-size: 13px; fill: var(--ink); font-family: var(--font-body) }
+.yt-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: 0.85rem }
+.yt-legend span { display: inline-flex; align-items: center; gap: 6px }
+.yt-legend i { display: inline-block; width: 14px; height: 14px }
+.yt-legend__line { height: 0 !important; border-top: 3px solid }
+.yt-legend__line--viewers { border-color: var(--twitch) }
+.yt-legend__line--online { border-color: var(--sky); border-top-style: dashed }
+.yt-scroll { overflow-x: auto }
+.yt-table { border-collapse: collapse; width: 100%; font-size: 0.92rem; background: var(--white) }
+.yt-table th, .yt-table td { padding: 6px 10px; border-bottom: 2px solid color-mix(in srgb, var(--ink) 10%, transparent); text-align: left }
+.yt-table thead th { font-family: var(--font-display); font-size: 0.75rem; text-transform: uppercase; white-space: nowrap }
+.yt-num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap }
+.yt-num small { opacity: 0.6 }
+.yt-num strong[data-up] { color: var(--youtube) }
+.yt-table tr[data-yt] td:first-child { box-shadow: inset 4px 0 0 var(--youtube) }
+.yt-who { display: inline-flex; align-items: center; gap: 6px; color: inherit; text-decoration: none }
+.yt-who:hover span { text-decoration: underline }
+.yt-factor { width: 30%; min-width: 120px }
+.yt-factor span { display: block; height: 12px; position: relative; background: linear-gradient(var(--ink), var(--ink)) 50% 0 / 2px 100% no-repeat }
+.yt-factor i { position: absolute; top: 2px; bottom: 2px; background: var(--idle) }
+.yt-factor i[data-up] { background: var(--youtube) }
+.yt-stack { width: 30%; min-width: 120px; white-space: nowrap }
+.yt-stack span { display: inline-block; height: 12px; vertical-align: middle }
+.yt-stack__tw { background: var(--twitch) }
+.yt-stack__yt { background: var(--youtube) }
+.yt-key { display: inline-block; width: 12px; height: 12px; margin: 0 4px 0 10px; vertical-align: -1px }
+.yt-key--tw { background: var(--twitch); margin-left: 0 }
+.yt-key--yt { background: var(--youtube) }

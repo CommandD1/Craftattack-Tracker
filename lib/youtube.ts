@@ -12,8 +12,8 @@ import { YOUTUBE_CHANNELS } from "./youtubeChannels";
  *
  * - Speichert alle Uploads seit YOUTUBE_SINCE in `youtube_videos` (ohne Beschreibung), damit die Spielerseite auch den
  *   CraftAttack-Anteil zeigen kann; Kanaldaten (Abos) in `youtube_channels`.
- * - Uploads zu CraftAttack 14 werden zum Ereignis „youtube_upload“ (Video, Short oder Livestream) mit Link; Aufrufe
- *   werden bei jedem Lauf nachgezogen.
+ * - Uploads zu CraftAttack 14 werden zu Ereignissen mit Link: „YouTube-Video“, „YouTube-Short“, bei Livestreams
+ *   „YouTube-Live an“ (Start) und „YouTube-Live aus“ (Ende, mit Dauer). Aufrufe werden bei jedem Lauf nachgezogen.
  *
  * CraftAttack-Erkennung: „Craft Attack“/CA1x im Titel, oder in der Beschreibung ausdrücklich Staffel 14
  * („Craft Attack 14“, #craftattack14, CA14). Tags zählen nicht (SEO-Listen wie „craft attack 13“ unter jedem Short),
@@ -138,37 +138,44 @@ export async function syncYoutube(): Promise<{ channels: number; fetched: number
     }
   }
 
-  // 4. Ereignisse für CraftAttack-14-Uploads (Aufrufe bestehender Ereignisse nachziehen)
+  // 4. Ereignisse für CraftAttack 14: Video bzw. Short zum Upload; Livestream als „Live an“ (Start) und „Live aus“ (Ende)
   const rows = (
-    await db.query<{ id: string; player: string; published_at: Date; live_start: Date | null; title: string; format: string; duration_s: number | null; views: string; channel: string; name: string; uuid: string }>(
-      `SELECT v.id, v.player, v.published_at, v.live_start, v.title, v.format, v.duration_s, v.views, c.title AS channel, p.name, p.uuid
+    await db.query<{ id: string; player: string; published_at: Date; live_start: Date | null; live_end: Date | null; title: string; format: string; duration_s: number | null; views: string; channel: string; name: string; uuid: string; also_twitch: boolean }>(
+      `SELECT v.id, v.player, v.published_at, v.live_start, v.live_end, v.title, v.format, v.duration_s, v.views, c.title AS channel, p.name, p.uuid,
+              EXISTS (SELECT 1 FROM twitch_vods t WHERE t.player = v.player AND v.live_start IS NOT NULL
+                         AND t.created_at < coalesce(v.live_end, v.live_start + make_interval(secs => coalesce(v.duration_s, 0)))
+                         AND t.created_at + make_interval(secs => t.duration_s) > v.live_start) AS also_twitch
          FROM youtube_videos v JOIN youtube_channels c ON c.id = v.channel_id JOIN players p ON p.id = v.player
         WHERE v.ca14`,
     )
   ).rows;
-  for (const r of rows) await db.query(`UPDATE events SET value = $2 WHERE id = $1 AND value IS DISTINCT FROM $2`, [`yt-${r.id}`, Number(r.views)]);
-  // Nicht mehr als CraftAttack 14 erkannt (z. B. Titel geändert) → Ereignis entfernen
-  await db.query(`DELETE FROM events e USING youtube_videos v WHERE e.type = 'youtube_upload' AND e.id = 'yt-' || v.id AND NOT v.ca14`);
-  const events = await insertPastEvents(
-    rows.map((r): TrackerEvent => ({
-      id: `yt-${r.id}`,
-      at: (r.live_start ?? r.published_at).toISOString(),
-      type: "youtube_upload",
-      player: r.player,
-      playerName: r.name,
-      uuid: r.uuid,
-      where: "youtube",
-      value: Number(r.views),
-      meta: {
-        videoId: r.id,
-        title: r.title,
-        format: r.format,
-        channel: r.channel,
-        durationS: r.duration_s,
-        url: r.format === "short" ? `https://www.youtube.com/shorts/${r.id}` : `https://www.youtube.com/watch?v=${r.id}`,
-      },
-    })),
+  const watch = (id: string, t = 0) => `https://www.youtube.com/watch?v=${id}${t > 0 ? `&t=${Math.floor(t)}s` : ""}`;
+  const pending: TrackerEvent[] = [];
+  for (const r of rows) {
+    const base = { player: r.player, playerName: r.name, uuid: r.uuid, where: "youtube" as const, value: Number(r.views) };
+    const meta = { videoId: r.id, title: r.title, channel: r.channel };
+    if (r.format === "livestream" && r.live_start) {
+      const secs = r.live_end ? Math.round((r.live_end.getTime() - r.live_start.getTime()) / 1000) : r.duration_s;
+      pending.push({ ...base, id: `yts-${r.id}`, at: r.live_start.toISOString(), type: "youtube_stream_start", meta: { ...meta, alsoTwitch: r.also_twitch, url: watch(r.id) } });
+      if (r.live_end) pending.push({ ...base, id: `yte-${r.id}`, at: r.live_end.toISOString(), type: "youtube_stream_end", meta: { ...meta, streamSeconds: secs, alsoTwitch: r.also_twitch, url: watch(r.id, Math.max(0, (secs ?? 0) - 60)) } });
+    } else {
+      pending.push({
+        ...base,
+        id: `yt-${r.id}`,
+        at: r.published_at.toISOString(),
+        type: r.format === "short" ? "youtube_short" : "youtube_video",
+        meta: { ...meta, durationS: r.duration_s, url: r.format === "short" ? `https://www.youtube.com/shorts/${r.id}` : watch(r.id) },
+      });
+    }
+  }
+  // Aufrufe bestehender Ereignisse nachziehen
+  for (const e of pending) await db.query(`UPDATE events SET value = $2 WHERE id = $1 AND value IS DISTINCT FROM $2`, [e.id, e.value]);
+  // Nicht mehr als CraftAttack 14 erkannt (z. B. Titel geändert) → Ereignisse entfernen
+  await db.query(
+    `DELETE FROM events e USING youtube_videos v
+      WHERE e.type LIKE 'youtube\\_%' AND e.id IN ('yt-' || v.id, 'yts-' || v.id, 'yte-' || v.id) AND NOT v.ca14`,
   );
+  const events = await insertPastEvents(pending);
   const linked = await linkYoutubeMoments();
   return { channels: uploads.size, fetched, events, units, linked };
 }

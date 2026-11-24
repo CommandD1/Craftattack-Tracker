@@ -66,6 +66,22 @@ function farmEndSub(e: TrackerEvent, what: string): string | null {
   return [s > 0 ? `Farm ${duration(s)}` : null, n > 0 ? `${num(n)} ${what}` : null].filter(Boolean).join(" · ") || null;
 }
 
+/** Untertitel der YouTube-Uploads: Dauer, Aufrufe, Kanal */
+function ytSub(e: TrackerEvent): string | null {
+  return (
+    [
+      typeof e.meta?.durationS === "number" && e.meta.durationS > 0 ? duration(e.meta.durationS) : null,
+      e.value !== undefined ? `${num(e.value)} Aufrufe` : null,
+      typeof e.meta?.channel === "string" ? `Kanal ${e.meta.channel}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || null
+  );
+}
+
+/** YouTube-Ereignis mit eigenem Link (Video bzw. Livestream) */
+export const isYoutubeEvent = (e: TrackerEvent) => e.type.startsWith("youtube_");
+
 export const EVENT_META: Record<EventType, EventMeta> = {
   join: { label: "Join", tone: "white", text: () => "ist auf den Server gekommen" },
   afk_start: {
@@ -256,24 +272,29 @@ export const EVENT_META: Record<EventType, EventMeta> = {
         .filter(Boolean)
         .join(" · ") || null,
   },
-  youtube_upload: {
-    label: "YouTube",
+  youtube_video: {
+    label: "YouTube-Video",
     tone: "youtube",
-    text: (e) => {
-      const t = `„${e.meta?.title ?? "Video"}“`;
-      if (e.meta?.format === "short") return `hat ein Short auf YouTube hochgeladen: ${t}`;
-      if (e.meta?.format === "livestream") return `war live auf YouTube: ${t}`;
-      return `hat ein Video auf YouTube hochgeladen: ${t}`;
-    },
-    sub: (e) =>
-      [
-        e.meta?.format === "short" ? "Short" : e.meta?.format === "livestream" ? "Livestream" : "Video",
-        typeof e.meta?.durationS === "number" && e.meta.durationS > 0 ? duration(e.meta.durationS) : null,
-        e.value !== undefined ? `${num(e.value)} Aufrufe` : null,
-        typeof e.meta?.channel === "string" ? `Kanal ${e.meta.channel}` : null,
-      ]
-        .filter(Boolean)
-        .join(" · ") || null,
+    text: (e) => `hat ein Video auf YouTube hochgeladen: „${e.meta?.title ?? "Video"}“`,
+    sub: (e) => ytSub(e),
+  },
+  youtube_short: {
+    label: "YouTube-Short",
+    tone: "youtube",
+    text: (e) => `hat ein Short auf YouTube hochgeladen: „${e.meta?.title ?? "Short"}“`,
+    sub: (e) => ytSub(e),
+  },
+  youtube_stream_start: {
+    label: "YouTube-Live an",
+    tone: "youtube",
+    text: (e) => `ist live auf YouTube: „${e.meta?.title ?? "Livestream"}“`,
+    sub: (e) => [e.meta?.alsoTwitch === true ? "Gleichzeitig auf Twitch" : "Nur auf YouTube", typeof e.meta?.channel === "string" ? `Kanal ${e.meta.channel}` : null].filter(Boolean).join(" · ") || null,
+  },
+  youtube_stream_end: {
+    label: "YouTube-Live aus",
+    tone: "youtube",
+    text: (e) => `hat den YouTube-Livestream beendet: „${e.meta?.title ?? "Livestream"}“`,
+    sub: (e) => [typeof e.meta?.streamSeconds === "number" ? `${duration(e.meta.streamSeconds)} live` : null, e.value !== undefined ? `${num(e.value)} Aufrufe` : null].filter(Boolean).join(" · ") || null,
   },
   follower_burst: {
     label: "Follower-Schub",
@@ -383,7 +404,7 @@ export const EVENT_GROUPS: { key: string; label: string; tone: string; types: Ev
   { key: "bau", label: "Bauen & Handel", tone: GROUP_TONE.items, types: ["blocksPlaced", "itemsCrafted", "itemsEnchanted", "tradedWithVillagers"] },
   { key: "natur", label: "Tiere & Natur", tone: GROUP_TONE.tiere, types: ["animalsKilled", "animalsBred", "fishCaught", "bellsRung"] },
   { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title", "subscription", "subscription_gift", "cheer", "clip", "follower_burst", "raid", "chat", "shared_chat_start", "shared_chat_end"] },
-  { key: "youtube", label: "YouTube", tone: "youtube", types: ["youtube_upload"] },
+  { key: "youtube", label: "YouTube", tone: "youtube", types: ["youtube_video", "youtube_short", "youtube_stream_start", "youtube_stream_end"] },
   { key: "highlights", label: "Highlights", tone: "white", types: ["achievement", "first_join", "rank", "milestone", "record"] },
 ];
 
@@ -422,8 +443,14 @@ export function eventBadge(e: TrackerEvent): string | null {
     case "cheer":
       return `${num(e.value ?? 0)} Bits`;
     case "clip":
-    case "youtube_upload":
+    case "youtube_video":
+    case "youtube_short":
+    case "youtube_stream_start":
       return `${num(e.value ?? 0)} Aufrufe`;
+    case "youtube_stream_end": {
+      const s = Number(e.meta?.streamSeconds ?? 0);
+      return s > 0 ? duration(s) : null;
+    }
     case "follower_burst":
       return `+${num(e.delta ?? 0)} Follower`;
     case "raid":
@@ -499,7 +526,10 @@ export const EVENT_TYPES: EventType[] = [
   "subscription_gift",
   "cheer",
   "clip",
-  "youtube_upload",
+  "youtube_video",
+  "youtube_short",
+  "youtube_stream_start",
+  "youtube_stream_end",
   "follower_burst",
   "raid",
   "chat",
