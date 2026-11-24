@@ -417,6 +417,8 @@ async function migrate(db: Db) {
       fetched_at   timestamptz NOT NULL
     )`);
   await db.query(`CREATE INDEX IF NOT EXISTS youtube_videos_player_idx ON youtube_videos (player, published_at)`);
+  // Früherer Sammeltyp „youtube_upload“ (24.11.) → eigene Typen für Video, Short, Live an/aus; lib/youtube.ts legt sie neu an
+  await db.query(`DELETE FROM events WHERE type = 'youtube_upload'`);
   // Live beobachtete „Gemeinsam streamen“-Sessions (Twitch Stream Together) der Spieler-Kanäle, siehe lib/costream.ts
   await db.query(`
     CREATE TABLE IF NOT EXISTS costream_sessions (

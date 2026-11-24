@@ -1049,7 +1049,9 @@ async function YoutubeSection({ params }: { params: Params }) {
     {
       label: "Livestreams",
       value: yt.formats.livestream.n,
-      sub: yt.formats.livestream.n ? `${num(yt.formats.livestream.views)} Aufrufe${yt.youtubeOnlyStreams ? ` · ${num(yt.youtubeOnlyStreams)} nur auf YouTube` : ""}` : "Keine auf YouTube",
+      sub: yt.formats.livestream.n
+        ? `${duration(yt.liveSeconds)} live${yt.liveOnlySeconds ? `, davon ${duration(yt.liveOnlySeconds)} nur auf YouTube (${num(yt.youtubeOnlyStreams)}×)` : ""} · ${num(yt.formats.livestream.views)} Aufrufe`
+        : "Keine auf YouTube",
     },
     { label: "Aufrufe", value: yt.views, sub: `${num(yt.likes)} Likes · ${num(yt.comments)} Kommentare` },
   ];
@@ -1061,7 +1063,7 @@ async function YoutubeSection({ params }: { params: Params }) {
           titleId="youtube-h"
           title="YouTube"
           aside={
-            <Link className="btn btn--small" data-tone="white" href={`/ereignisse?t=youtube_upload&spieler=${encodeURIComponent(id)}`}>
+            <Link className="btn btn--small" data-tone="white" href={`/ereignisse?g=youtube&spieler=${encodeURIComponent(id)}`}>
               Alle Uploads
             </Link>
           }

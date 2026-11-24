@@ -160,8 +160,11 @@ export type EventType =
   | "clip"
   | "follower_burst"
   | "raid"
-  // YouTube-Upload zu CraftAttack 14 (lib/youtube.ts, nachträglich über die YouTube Data API)
-  | "youtube_upload"
+  // YouTube zu CraftAttack 14 (lib/youtube.ts, nachträglich über die YouTube Data API): Uploads und Livestreams
+  | "youtube_video"
+  | "youtube_short"
+  | "youtube_stream_start"
+  | "youtube_stream_end"
   | "chat"
   | "shared_chat_start"
   | "shared_chat_end"
