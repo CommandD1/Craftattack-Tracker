@@ -137,6 +137,26 @@ export const Icon: Record<IconName, (p: P) => ReactNode> = {
   bolt: lucide(Zap),
   tag: lucide(Tag),
   // Eigene Zeichnungen: Totem (gibt es bei Lucide nicht) und Markenlogos
+  // YouTube: Short = Hochformat mit Play, Live an = Sendewellen, Live aus = Sendewellen durchgestrichen
+  ytShort: (p: P) => (
+    <svg {...base} {...p}>
+      <rect x="6" y="2" width="12" height="20" rx="2" />
+      <path d="M10 8.5v7l5.5-3.5z" fill="currentColor" />
+    </svg>
+  ),
+  ytLive: (p: P) => (
+    <svg {...base} {...p}>
+      <circle cx="12" cy="12" r="2" fill="currentColor" />
+      <path d="M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 19.1a10 10 0 0 1 0-14.2M19.1 4.9a10 10 0 0 1 0 14.2" />
+    </svg>
+  ),
+  ytLiveOff: (p: P) => (
+    <svg {...base} {...p}>
+      <circle cx="12" cy="12" r="2" />
+      <path d="M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 19.1a10 10 0 0 1 0-14.2M19.1 4.9a10 10 0 0 1 0 14.2" opacity="0.55" />
+      <path d="M3 3l18 18" />
+    </svg>
+  ),
   totem: (p: P) => (
     <svg {...base} {...p}>
       <path d="M8 3h8v4l2 2v10l-6 2-6-2V9l2-2z" />
