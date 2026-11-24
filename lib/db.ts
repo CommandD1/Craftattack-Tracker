@@ -151,6 +151,8 @@ async function migrate(db: Db) {
   await db.query(`ALTER TABLE tracker_meta ADD COLUMN IF NOT EXISTS extra_events_until timestamptz`);
   // Bis wohin Follower-Schübe aus dem Verlauf geprüft sind (lib/followerBursts.ts)
   await db.query(`ALTER TABLE tracker_meta ADD COLUMN IF NOT EXISTS follower_bursts_until timestamptz`);
+  // Letzte rückwirkende Nachträge (insertPastEvents): [{ at, from, types }] – die Website lädt sie gezielt nach
+  await db.query(`ALTER TABLE tracker_meta ADD COLUMN IF NOT EXISTS backfills jsonb`);
   // Früher ein gemeinsamer Typ „stat“ für alle Zusatzwerte, jetzt je Wert ein eigener
   await db.query(`UPDATE events SET type = meta->>'key' WHERE type = 'stat' AND meta->>'key' IS NOT NULL`);
   await db.query(`CREATE INDEX IF NOT EXISTS events_at_idx ON events (at)`);
