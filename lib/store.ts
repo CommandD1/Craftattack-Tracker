@@ -141,7 +141,18 @@ interface MetaRow {
   pending_deaths: number | null;
   pending_since: Date | null;
   pending_candidates: string[] | null;
+  /** Letzte rückwirkende Nachträge, neueste zuletzt (siehe insertPastEvents) */
+  backfills?: Backfill[] | null;
 }
+
+/** Ein rückwirkender Nachtrag: wann, ab welchem Ereigniszeitpunkt, welche Typen */
+interface Backfill {
+  at: string;
+  from: string;
+  types: string[];
+}
+/** So viele Nachträge merkt sich der Tracker; fehlen der Website ältere, lädt sie vollständig neu */
+const MAX_BACKFILLS = 30;
 
 interface PlayerRow {
   id: string;
@@ -357,6 +368,8 @@ const WEB_FULL_RELOAD_MS = 6 * 3600_000;
  * (VOD-Links, Abo-Minuten, Todesursachen) */
 const WEB_EVENT_WINDOW_MS = 2 * 3600_000;
 const refreshedAt = { light: 0, full: 0 };
+/** Zeitpunkt des neuesten Nachtrags, den die Website schon kennt (null = noch nicht abgeglichen) */
+let backfillSeen: string | null = null;
 let refreshing: Promise<void> | null = null;
 
 function maybeRefreshFromDb() {
@@ -374,6 +387,41 @@ function maybeRefreshFromDb() {
 
 async function reloadAllFromDb() {
   await loadFromDb();
+  // Vollständig geladen: alle bisherigen Nachträge sind dabei
+  backfillSeen = null;
+}
+
+/**
+ * Rückwirkend nachgetragene Ereignisse (älter als das Fenster des leichten Abgleichs) gezielt nachladen: nur die
+ * gemeldeten Typen ab dem frühesten Zeitpunkt. Gibt false zurück, wenn Meldungen fehlen (Liste übergelaufen) –
+ * dann muss vollständig neu geladen werden.
+ */
+async function loadBackfills(meta: MetaRow | undefined, before: Date): Promise<boolean> {
+  const list = meta?.backfills ?? [];
+  const newest = list.at(-1)?.at ?? null;
+  // Erster Abgleich nach dem vollständigen Laden: alles davor steckt schon in der Ladung (1 Minute Sicherheit)
+  if (backfillSeen === null) backfillSeen = new Date((refreshedAt.full || Date.now()) - 60_000).toISOString();
+  const fresh = list.filter((b) => b.at > backfillSeen!);
+  if (!fresh.length) return true;
+  // Älteste gemerkte Meldung ist schon neuer als unser Stand und die Liste voll: dazwischen fehlt etwas
+  if (list.length >= MAX_BACKFILLS && list[0].at > backfillSeen) return false;
+  const types = [...new Set(fresh.flatMap((b) => b.types))];
+  const from = new Date(Math.min(...fresh.map((b) => Date.parse(b.from))));
+  const store = g();
+  if (from < before) {
+    const db = await getDb();
+    const rows = (await db.query<EventRow>(`SELECT * FROM events WHERE type = ANY($1) AND at >= $2 AND at < $3 ORDER BY at, id`, [types, from, before])).rows;
+    const have = new Set(store.events.map((e) => e.id));
+    const added = rows.filter((r) => !have.has(r.id)).map(rowToEvent);
+    if (added.length) {
+      store.events = trimEvents(
+        [...store.events, ...added].sort((x, y) => Date.parse(x.at) - Date.parse(y.at) || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0)),
+      );
+      console.log(`[web] ${added.length} nachgetragene Ereignisse geladen (${types.join(", ")})`);
+    }
+  }
+  backfillSeen = newest ?? backfillSeen;
+  return true;
 }
 
 async function refreshRecentFromDb() {
@@ -404,6 +452,8 @@ async function refreshRecentFromDb() {
   const keep = store.events.filter((e) => Date.parse(e.at) < cutoff);
   store.events = trimEvents([...keep, ...events.map(rowToEvent)]);
   state.eventCount = Math.max(state.eventCount, Number(total?.n ?? 0));
+  // Ältere Nachträge des Trackers (YouTube, Clips, Follower-Schübe …); fehlen Meldungen, beim nächsten Mal alles neu laden
+  if (!(await loadBackfills(meta, since))) refreshedAt.full = 0;
 }
 
 export async function getState(): Promise<TrackerState> {
@@ -1307,6 +1357,23 @@ export async function insertPastEvents(events: TrackerEvent[]): Promise<number> 
     store.events.sort((x, y) => Date.parse(x.at) - Date.parse(y.at) || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
     store.events = trimEvents(store.events);
     if (store.state) store.state.eventCount += added;
+    // Die Website liest laufend nur die letzten Stunden nach; ältere Nachträge (YouTube, Clips, Follower-Schübe)
+    // meldet der Tracker hier, damit sie sie gezielt nachlädt statt erst beim vollständigen Neuladen
+    const entry: Backfill = {
+      at: new Date().toISOString(),
+      from: new Date(Math.min(...addedEvents.map((e) => Date.parse(e.at)))).toISOString(),
+      types: [...new Set(addedEvents.map((e) => e.type))],
+    };
+    await db
+      .query(
+        `UPDATE tracker_meta SET backfills = (
+           SELECT jsonb_agg(x ORDER BY x->>'at') FROM (
+             SELECT x FROM jsonb_array_elements(COALESCE(backfills, '[]'::jsonb) || jsonb_build_array($1::jsonb)) x
+             ORDER BY x->>'at' DESC LIMIT $2) s)
+         WHERE id = 1`,
+        [JSON.stringify(entry), MAX_BACKFILLS],
+      )
+      .catch((err: unknown) => console.warn("[store] Nachtrag nicht vermerkt:", err instanceof Error ? err.message : err));
   }
   return added;
 }
