@@ -29,7 +29,7 @@ const ROUNDS = Number(arg("rounds", 3));
 const BUDGET_MB = Number(arg("budget", 200));
 const GROWTH_MB = Number(arg("growth", 12));
 const PARALLEL = 2;
-const PAGES = ["/", "/spieler", "/bestenlisten", "/live", "/ereignisse", "/ereignisse?wo=alles", "/graph", "/verbindungen", "/verbindungen?ca=alle", "/verbindungen?gruppen=1", "/verbindungen?ansicht=distanz", "/zuschauer", "/zuschauer?ca=alle", "/raids", "/statistik"];
+const PAGES = ["/", "/spieler", "/bestenlisten", "/live", "/ereignisse", "/ereignisse?wo=alles", "/graph", "/verbindungen", "/verbindungen?ca=alle", "/verbindungen?gruppen=1", "/verbindungen?ansicht=distanz", "/zuschauer", "/zuschauer?ca=alle", "/raids", "/statistik", "/vergleich"];
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL fehlt");
 const here = dirname(fileURLToPath(import.meta.url));
@@ -83,8 +83,10 @@ console.log(`Start: ${mb(start.used)} MB (Limit ${mb(start.limit)} MB)`);
 
 const list = await get("/spieler");
 const players = [...new Set([...list.text.matchAll(/href="\/spieler\/([^"/?#]+)"/g)].map((m) => m[1]))];
-const urls = [...PAGES, ...players.map((id) => `/spieler/${id}`)];
-console.log(`${PAGES.length} Seiten + ${players.length} Spielerprofile, ${ROUNDS} Runden`);
+// Dazu zehn Spielervergleiche (Nachbarn in der Liste): je Paar eigene Caches
+const pairs = players.slice(1, 11).map((id, i) => `/vergleich?a=${players[i]}&b=${id}`);
+const urls = [...PAGES, ...players.map((id) => `/spieler/${id}`), ...pairs];
+console.log(`${PAGES.length} Seiten + ${players.length} Spielerprofile + ${pairs.length} Vergleiche, ${ROUNDS} Runden`);
 
 const results = [];
 for (let round = 1; round <= ROUNDS; round++) {

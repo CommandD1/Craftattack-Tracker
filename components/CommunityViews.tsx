@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
+import { compareHref } from "@/lib/compareHref";
 import { ConnectionGraph } from "./ConnectionGraph";
 import { RadialGraph } from "./RadialGraph";
 import { CentralRings } from "./CentralRings";
@@ -22,6 +24,15 @@ export function Person({ c, id, size = 22 }: { c: CommunityCtx; id: string; size
     <button type="button" className="conn__person" onClick={() => c.select(id)} title={`${c.name(id)} auswählen`} data-active={c.focus === id || undefined}>
       <Head id={id} uuid={c.byId.get(id)?.uuid} name={c.name(id)} size={size} decorative /> <span>{c.name(id)}</span>
     </button>
+  );
+}
+
+/** Kleiner Knopf: die zwei Spieler im Spielervergleich öffnen */
+function CompareLink({ c, a, b }: { c: CommunityCtx; a: string; b: string }) {
+  return (
+    <Link className="btn btn--small" data-tone="white" href={compareHref(a, b)} title={`${c.name(a)} und ${c.name(b)} vergleichen`} aria-label={`${c.name(a)} und ${c.name(b)} vergleichen`}>
+      ⇄
+    </Link>
   );
 }
 
@@ -121,6 +132,9 @@ export function NetzView({ c }: { c: CommunityCtx }) {
                   <tr>
                     <th>Spieler</th>
                     <th />
+                    <th>
+                      <span className="sr-only">Vergleich</span>
+                    </th>
                     <th className="num">Raids →</th>
                     <th className="num">← Raids</th>
                     <th className="num">Geteilte Chats</th>
@@ -153,6 +167,9 @@ export function NetzView({ c }: { c: CommunityCtx }) {
                         </td>
                         <td>
                           <Person c={c} id={b} />
+                        </td>
+                        <td>
+                          <CompareLink c={c} a={a} b={b} />
                         </td>
                         <td className="num">{rAB ? num(rAB) : "–"}</td>
                         <td className="num">{rBA ? num(rBA) : "–"}</td>
@@ -346,6 +363,9 @@ export function NaeheView({ c }: { c: CommunityCtx }) {
                 <thead>
                   <tr>
                     <th>Spieler</th>
+                    <th>
+                      <span className="sr-only">Vergleich</span>
+                    </th>
                     <th className="num">Nähe</th>
                     <th className="num">Schritte</th>
                     <th>Weg</th>
@@ -357,6 +377,9 @@ export function NaeheView({ c }: { c: CommunityCtx }) {
                     <tr key={r.id}>
                       <td>
                         <Person c={c} id={r.id} />
+                      </td>
+                      <td>
+                        <CompareLink c={c} a={focus} b={r.id} />
                       </td>
                       <td className="num">
                         <span className="conn__near" style={{ "--near": closeness(r.dist) } as React.CSSProperties}>

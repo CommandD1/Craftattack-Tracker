@@ -1,3 +1,4 @@
+import { compareHref } from "@/lib/compareHref";
 import Link from "next/link";
 import { Fold } from "@/components/Fold";
 import { Explain } from "@/components/Explain";
@@ -274,6 +275,9 @@ async function HeadSection({ params }: { params: Params }) {
               </span>
               <Link className="tag" data-tone="gold" href={`/spieler/${encodeURIComponent(p.id)}/rueckblick`} title="Die Staffel dieses Spielers in Zahlen">
                 ★ Staffel-Rückblick
+              </Link>
+              <Link className="tag" data-tone="white" href={compareHref(p.id)} title={`${p.name} mit einem anderen Spieler vergleichen`}>
+                ⇄ Vergleichen
               </Link>
             </div>
           </div>
@@ -934,6 +938,9 @@ async function NetworkSection({ params, searchParams }: { params: Params; search
                       <Head id={r.id} uuid={byId.get(r.id)?.uuid} name={name(r.id)} size={22} src={32} decorative /> <span>{name(r.id)}</span>
                     </Link>
                     <span className="muted num">{Math.round(closeness(r.dist) * 100)} %</span>
+                    <Link className="pnet__cmp" href={compareHref(id, r.id)} title={`Mit ${name(r.id)} vergleichen`} aria-label={`Mit ${name(r.id)} vergleichen`}>
+                      ⇄
+                    </Link>
                   </li>
                 ))}
               </ol>

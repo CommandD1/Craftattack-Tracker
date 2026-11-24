@@ -12,6 +12,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: "24.11.",
+    title: "Spielervergleich",
+    text: "Zwei Spieler Kopf an Kopf: Statistiken, Rhythmus, gemeinsame Freunde, Zuschauer und wer beide verbindet. Im Profil über „Vergleichen“, in Verbindungen und Zuschauern über ⇄.",
+    href: "/vergleich",
+  },
+  {
     date: "22.11.",
     title: "Standard: nur CraftAttack",
     text: "Ereignisse, Profile, Verbindungen, Zuschauer und Raids zeigen Twitch-Daten nur noch aus Streams auf dem Server. „Alles“ zeigt auch den Rest. Fehlen Minecraft-Daten (Tracker-Lücke), zählt ein Stream mit „CraftAttack“ im Titel.",

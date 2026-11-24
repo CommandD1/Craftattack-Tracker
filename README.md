@@ -27,14 +27,14 @@ und schreibt jede Änderung als Ereignis mit Zeitstempel auf: Joins, Tode, Diama
 4. Vor dem Pull Request müssen `npm run lint` und `npx tsc --noEmit` sauber sein.
 5. Pull Request gegen `main` mit kurzer Beschreibung, was und warum.
 
-Offene Ideen: Discord-Benachrichtigungen bei Highlights, Vergleich zweier Spieler.
+Offene Ideen: Discord-Benachrichtigungen bei Highlights.
 
 ## Seiten
 
 | Bereich | Seiten |
 | --- | --- |
 | Jetzt | `/` Übersicht und Ereignis-Feed · `/live` Streams, Zuschauerkurve · `/events` offizielle Termine |
-| Spieler | `/spieler`, `/spieler/<id>` Profil mit Verlauf, Sessions, Graphen, Stream und Chat |
+| Spieler | `/spieler`, `/spieler/<id>` Profil mit Verlauf, Sessions, Graphen, Stream und Chat · `/spielertypen` · `/vergleich?a=<id>&b=<id>` zwei Spieler Kopf an Kopf |
 | Bestenlisten | `/bestenlisten?liste=<wert>`, z. B. `twitchSubs` oder `followers` |
 | Verlauf | `/ereignisse` Chronik mit Filtern · `/zeitstrahl` · `/graph` eigene Graphen · `/statistik` |
 | Community | `/verbindungen` Netz, Distanz und Gruppen der Spieler · `/zuschauer` |

@@ -11,6 +11,7 @@ import { EVENT_ICON, Icon } from "@/components/Icons";
 import { loadTracker } from "@/lib/data";
 import { getEventDetail } from "@/lib/eventDetail";
 import { getEventPair } from "@/lib/eventPair";
+import { compareHref } from "@/lib/compareHref";
 import { EVENT_META, eventBadge, eventDetailHref, eventHref, eventPlayers } from "@/lib/events";
 import "@/components/detail/detail.css";
 import { getFeedFilter } from "@/lib/feedThresholds";
@@ -176,6 +177,13 @@ async function Detail(props: PageProps<"/ereignis/[id]">) {
               <li className="tag" data-tone="white" title={e.player ? `„${label}“ von ${name} insgesamt` : `„${label}“ insgesamt`}>
                 {num(d.same.nth)}. von {num(d.same.total)}
                 {e.player ? ` bei ${name}` : ""}
+              </li>
+            )}
+            {pair && state.players[pair.giver] && state.players[pair.receiver] && (
+              <li>
+                <Link className="tag" data-tone="white" href={compareHref(pair.giver, pair.receiver)} title="Beide im Spielervergleich öffnen">
+                  ⇄ {pname(pair.giver)} und {pname(pair.receiver)} vergleichen
+                </Link>
               </li>
             )}
             {vod && (
