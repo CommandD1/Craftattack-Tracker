@@ -23,7 +23,7 @@ import { boardValue, duration, eur, num } from "./format";
 import type { Metric } from "./graphQuery";
 
 /**
- * Spielervergleich (Vorschau /vorschau/<key>/vergleich): zwei Spieler Kopf an Kopf – Statistiken, Rhythmus, Netz,
+ * Spielervergleich (/vergleich?a=&b=): zwei Spieler Kopf an Kopf – Statistiken, Rhythmus, Netz,
  * Zuschauer, Raids, Fortschritte und was sie verbindet; dazu automatisch gefundene Gemeinsamkeiten und Unterschiede.
  * Alles aus vorhandenen Quellen, nichts Neues gespeichert.
  */
@@ -756,15 +756,19 @@ function newestFirst(events: TrackerEvent[], chats: number): TrackerEvent[] {
 }
 
 /** Einstieg: stärkste Spieler und die engsten Paare im Netz */
-export async function startData(limit = 8): Promise<{ pairs: { a: string; b: string; points: number }[]; strongest: Strength[]; of: number }> {
+/** Einstieg ohne Paar; `focus` = schon gewählter Spieler 1 → nur seine engsten Verbindungen */
+export async function startData(limit = 8, focus?: string): Promise<{ pairs: { a: string; b: string; points: number }[]; strongest: Strength[]; of: number }> {
   const [{ state, now }, net] = await Promise.all([loadTracker(), getNetworkSummary()]);
   // Beide Richtungen eines Paares zusammen
   const sum = new Map<string, number>();
   for (const [x, m] of net.out) for (const [y, w] of m) sum.set(x < y ? `${x}|${y}` : `${y}|${x}`, (sum.get(x < y ? `${x}|${y}` : `${y}|${x}`) ?? 0) + w);
-  const pairs = [...sum].map(([k, points]) => {
-    const [a, b] = k.split("|");
-    return { a, b, points };
-  });
+  const pairs = [...sum]
+    .map(([k, points]) => {
+      const [x, y] = k.split("|");
+      // Gewählter Spieler immer links
+      return focus && y === focus ? { a: y, b: x, points } : { a: x, b: y, points };
+    })
+    .filter((p) => !focus || p.a === focus);
   const strongest = strengthBoard(state.players, now);
   return { pairs: pairs.sort((p, q) => q.points - p.points).slice(0, limit), strongest: strongest.slice(0, 10), of: strongest.length };
 }

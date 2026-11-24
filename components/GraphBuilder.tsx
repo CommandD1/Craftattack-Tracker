@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { DayProfileChart, daysBetween, type DayLine } from "./DayProfileChart";
 import { EstimateRects, EstimateTip, useEstimateGaps } from "./Estimates";
 import { BASE_PATH } from "@/lib/estimateMode";
 import { fuzzyFilter } from "@/lib/fuzzy";
+import { compareHref } from "@/lib/compareHref";
 import {
   COLORS,
   MAX_METRICS,
@@ -1032,6 +1034,11 @@ export function GraphBuilder({ players, initial, items }: { players: PlayerOptio
               rank={currentScores ? (a, b) => (currentScores[b.id] ?? 0) - (currentScores[a.id] ?? 0) || a.name.localeCompare(b.name, "de") : undefined}
               onOpenChange={setPlayersOpen}
             />
+            {q.spieler.length === 2 && (
+              <Link className="btn btn--small" data-tone="white" href={compareHref(q.spieler[0], q.spieler[1])} title="Die zwei gewählten Spieler im Spielervergleich öffnen">
+                ⇄ Diese zwei vergleichen
+              </Link>
+            )}
           </div>
         )}
 

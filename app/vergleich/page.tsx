@@ -7,8 +7,8 @@ import { Icon } from "@/components/Icons";
 import { PlayerSearch } from "@/components/PlayerSearch";
 import { EventFeed } from "@/components/EventFeed";
 import { TraitBadges, clock } from "@/components/Rhythm";
-import { previewGate } from "@/lib/preview";
 import { loadTracker } from "@/lib/data";
+import { compareHref } from "@/lib/compareHref";
 import { EVENT_META } from "@/lib/events";
 import { ROLE_LABEL } from "@/lib/groups";
 import { duration, num, skinUrl } from "@/lib/format";
@@ -18,7 +18,10 @@ import type { Rhythm } from "@/lib/rhythm";
 import { getThirdParties, type AudienceKind, type CircleKey, type CircleList } from "@/lib/thirdParties";
 import "./vergleich.css";
 
-export const metadata: Metadata = { title: "Spielervergleich" };
+export const metadata: Metadata = {
+  title: "Spielervergleich",
+  description: "Zwei CraftAttack-Spieler Kopf an Kopf: Statistiken, Rhythmus, Netz, gemeinsame Dritte, Zuschauer und Fortschritte.",
+};
 
 const pct = (v: number) => `${Math.round(v * 100)} %`;
 const dec = (v: number) => new Intl.NumberFormat("de-DE", { maximumFractionDigits: v < 10 ? 1 : 0 }).format(v);
@@ -38,8 +41,7 @@ interface Names {
   pair: (a: string, b: string) => string;
 }
 
-async function Inner(props: PageProps<"/vorschau/[key]/vergleich">) {
-  const root = await previewGate(props.params);
+async function Inner(props: PageProps<"/vergleich">) {
   const sp = await props.searchParams;
   const ida = one(sp, "a");
   const idb = one(sp, "b");
@@ -47,11 +49,11 @@ async function Inner(props: PageProps<"/vorschau/[key]/vergleich">) {
   const players = Object.values(state.players)
     .map((p) => ({ id: p.id, name: p.name, uuid: p.uuid, online: p.online, alias: p.twitchLogin }))
     .sort((x, y) => x.name.localeCompare(y.name, "de"));
-  const base = `${root}/vergleich`;
+  const base = "/vergleich";
   const names: Names = {
     nameOf: (id) => state.players[id]?.name ?? id,
     uuidOf: (id) => state.players[id]?.uuid,
-    pair: (a, b) => `${base}?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`,
+    pair: (a, b) => compareHref(a, b),
   };
   const data = ida && idb ? await getComparison(ida, idb) : null;
 
@@ -59,7 +61,7 @@ async function Inner(props: PageProps<"/vorschau/[key]/vergleich">) {
     <>
       <section className="block page-head" data-tone="ender">
         <div className="wrap">
-          <p className="eyebrow">Vorschau · Spieler</p>
+          <p className="eyebrow">Spieler</p>
           <h1 className="t-1">Spielervergleich</h1>
           <p className="lead">Zwei Spieler Kopf an Kopf: was sie gleich und was sie unterschiedlich macht – Statistiken, Rhythmus, Netz, Zuschauer und Fortschritte.</p>
         </div>
@@ -89,15 +91,15 @@ async function Inner(props: PageProps<"/vorschau/[key]/vergleich">) {
         </div>
       </section>
 
-      {!data ? <Start bad={Boolean(ida && idb)} names={names} /> : <Compare d={data} names={names} />}
+      {!data ? <Start bad={Boolean(ida && idb)} focus={ida && !idb && state.players[ida] ? ida : undefined} names={names} /> : <Compare d={data} names={names} />}
     </>
   );
 }
 
 /* ------------------------------------------------------------------ Einstieg */
 
-async function Start({ bad, names }: { bad: boolean; names: Names }) {
-  const { pairs, strongest, of } = await startData();
+async function Start({ bad, focus, names }: { bad: boolean; focus?: string; names: Names }) {
+  const { pairs, strongest, of } = await startData(8, focus);
   const top = strongest[0];
   return (
     <section className="block" data-tone="paper">
@@ -129,7 +131,13 @@ async function Start({ bad, names }: { bad: boolean; names: Names }) {
                     <span style={{ width: `${s.score * 100}%` }} />
                   </span>
                   <span className="num cmp-strong__score">{pct(s.score)}</span>
-                  {top && strongest.length > 1 && (
+                  {focus ? (
+                    s.id !== focus && (
+                      <Link className="btn btn--small" data-tone="white" href={names.pair(focus, s.id)} title={`${names.nameOf(focus)} mit ${names.nameOf(s.id)} vergleichen`}>
+                        Vergleichen
+                      </Link>
+                    )
+                  ) : top && strongest.length > 1 && (
                     <Link
                       className="btn btn--small"
                       data-tone="white"
@@ -145,9 +153,14 @@ async function Start({ bad, names }: { bad: boolean; names: Names }) {
           </div>
           <div className="box" data-tone="white">
             <h2 className="t-3 cmp-h">
-              <Icon.users width={22} height={22} aria-hidden="true" /> Engste Paare
+              <Icon.users width={22} height={22} aria-hidden="true" /> {focus ? `Engste Verbindungen von ${names.nameOf(focus)}` : "Engste Paare"}
             </h2>
-            <p className="muted cmp-note">Die stärksten Verbindungen im Netz (Raids, geteilte Chats, Titel, Chat-Nachrichten) – oder oben zwei beliebige Spieler wählen.</p>
+            <p className="muted cmp-note">
+              {focus
+                ? "Mit wem er im Netz am meisten zu tun hat (Raids, geteilte Chats, Titel, Chat-Nachrichten) – oder oben Spieler 2 wählen."
+                : "Die stärksten Verbindungen im Netz (Raids, geteilte Chats, Titel, Chat-Nachrichten) – oder oben zwei beliebige Spieler wählen."}
+            </p>
+            {focus && !pairs.length && <p className="muted">Keine Verbindungen im Netz.</p>}
             <ul className="cmp-pairs">
               {pairs.map((p) => (
                 <li key={`${p.a}|${p.b}`}>
@@ -1042,9 +1055,9 @@ function TogetherSection({ d }: { d: CompareData }) {
   );
 }
 
-export default function Page(props: PageProps<"/vorschau/[key]/vergleich">) {
+export default function Page(props: PageProps<"/vergleich">) {
   return (
-    <Suspense fallback={<PageSkeleton eyebrow="Vorschau" title="Spielervergleich" figs={0} />}>
+    <Suspense fallback={<PageSkeleton eyebrow="Spieler" title="Spielervergleich" figs={0} />}>
       <Inner {...props} />
     </Suspense>
   );

@@ -30,6 +30,7 @@ export const HUBS: Hub[] = [
     tabs: [
       { href: "/spieler", label: "Spieler" },
       { href: "/spielertypen", label: "Spielertypen" },
+      { href: "/vergleich", label: "Vergleich" },
     ],
   },
   { key: "bestenlisten", label: "Bestenlisten", tabs: [{ href: "/bestenlisten", label: "Bestenlisten" }] },

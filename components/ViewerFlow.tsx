@@ -3,6 +3,7 @@ import { Head } from "./Head";
 import { Explain } from "./Explain";
 import type { FlowEvent, PairFlow, SourceSummary, StartSummary } from "@/lib/viewerFlowCore";
 import { num } from "@/lib/format";
+import { compareHref } from "@/lib/compareHref";
 
 /**
  * Darstellung der Zuschauerwanderung (lib/viewerFlowCore.ts). Server-SVG; Werte stehen zusätzlich als Text
@@ -285,6 +286,14 @@ export function PairTable({ rows, names, dir, streamerHref }: { rows: PairFlow[]
               <i style={{ width: `${(100 * r.start) / max}%` }} className="mig__c3" />
             </span>
             <b className="num">{num(r.viewers)}</b>
+            <Link
+              className="vf__cmp"
+              href={compareHref(dir === "von" ? r.from : r.to, other)}
+              title={`${names[dir === "von" ? r.from : r.to]?.name ?? ""} und ${names[other]?.name ?? other} vergleichen`}
+              aria-label={`Mit ${names[other]?.name ?? other} vergleichen`}
+            >
+              ⇄
+            </Link>
             <span className="muted">
               {r.beta > 0 && <>{pct(r.beta)} je Ende{unsure ? " (unsicher)" : ""}</>}
               {r.raid > 0 && <>{r.beta > 0 ? " · " : ""}Raid {num(r.raid)}</>}

@@ -5962,6 +5962,17 @@ a.st-board__mvlink:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.pnet__near li > a:first-child {
+  margin-right: auto;
+}
+/* Kleiner Vergleichs-Link neben dem Prozentwert */
+.pnet__near .pnet__cmp {
+  font-weight: 400;
+  opacity: 0.6;
+}
+.pnet__near .pnet__cmp:hover {
+  opacity: 1;
+}
 .pnet__group {
   border-left: 8px solid var(--grp);
 }
@@ -6161,9 +6172,16 @@ a.st-board__mvlink:focus-visible {
 }
 .vf__pairs li {
   display: grid;
-  grid-template-columns: minmax(0, 11rem) minmax(60px, 1fr) auto;
+  grid-template-columns: minmax(0, 11rem) minmax(60px, 1fr) auto auto;
   align-items: center;
   gap: 4px 10px;
+}
+.vf__cmp {
+  text-decoration: none;
+  opacity: 0.6;
+}
+.vf__cmp:hover {
+  opacity: 1;
 }
 .vf__pairs li > .muted {
   grid-column: 1 / -1;

@@ -1,4 +1,4 @@
-/* Spielervergleich (Vorschau): Seite 1 = Diamant, Seite 2 = Redstone */
+/* Spielervergleich: Seite 1 = Diamant, Seite 2 = Redstone */
 .vs {
   --cmp-a: var(--diamond);
   --cmp-b: var(--redstone);
