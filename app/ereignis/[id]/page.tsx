@@ -170,7 +170,7 @@ async function Detail(props: PageProps<"/ereignis/[id]">) {
               {dayLong.format(at)} Uhr
             </li>
             <li className="tag" data-tone={e.where === "twitch" ? "twitch" : "white"}>
-              {e.where === "twitch" ? "Auf Twitch" : "Auf dem Server"}
+              {e.where === "twitch" ? "Auf Twitch" : e.where === "youtube" ? "Auf YouTube" : "Auf dem Server"}
             </li>
             {/* Nur bei Ereignissen ohne Zählerstand: dort ist jedes Ereignis genau ein Vorkommen (Tode z. B. gibt es doppelt aus Feed und Stats) */}
             {d.same.total > 0 && e.value === undefined && (

@@ -22,6 +22,7 @@ import { StatSpark } from "@/components/StatSpark";
 import { sparkRows, sparkSeries } from "@/lib/sparkSeries";
 import { ClipGrid } from "@/components/ClipGrid";
 import { getTopClips } from "@/lib/clips";
+import { getYoutubeStats, type YoutubeFormat } from "@/lib/youtubeStats";
 import { EstimatePlayer, PlayerEstimateSummary } from "@/components/Estimates";
 import { getTrackerGaps, getAllSessions, getFullBoard, getPlayerHistory, getPlayerSharedChatSessions, getPlayerTopHistory, getPlayerTwitchChat, getTwitchCheerBoard, getTwitchCheerProfile, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
 import { SharedChatList } from "@/components/SharedChatList";
@@ -112,6 +113,9 @@ export default function Page(props: PageProps<"/spieler/[id]">) {
       </Suspense>
       <Suspense fallback={<ChatSkeleton />}>
         <ChatSection params={params} searchParams={searchParams} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <YoutubeSection params={params} />
       </Suspense>
       {/* Clips zuletzt: schön anzusehen, aber keine Daten, die man sonst nicht sieht */}
       <Suspense fallback={null}>
@@ -1009,6 +1013,96 @@ async function AdvancementsSection({ params }: { params: Params }) {
           }
         >
           <AdvancementBoard mine={board.mine} others={board.others} players={board.players} eventBase={EVENT_DETAIL_BASE ?? undefined} />
+        </Fold>
+      </div>
+    </section>
+  );
+}
+
+const YT_FORMAT: Record<YoutubeFormat, string> = { video: "Video", short: "Short", livestream: "Livestream" };
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "numeric", month: "numeric" });
+
+/** YouTube-Uploads zu CraftAttack 14 (lib/youtube.ts, offizielle YouTube Data API), nach Format getrennt */
+async function YoutubeSection({ params }: { params: Params }) {
+  const { id, p } = await ctxFor(params);
+  const yt = await getYoutubeStats(id);
+  if (!yt || !p) return null;
+  const share = yt.uploadsSeason > 0 ? Math.round((yt.ca14Season / yt.uploadsSeason) * 100) : null;
+  const tiles: { label: string; value: number; sub: string | null }[] = [
+    { label: "Videos", value: yt.formats.video.n, sub: `${num(yt.formats.video.views)} Aufrufe` },
+    { label: "Shorts", value: yt.formats.short.n, sub: `${num(yt.formats.short.views)} Aufrufe` },
+    {
+      label: "Livestreams",
+      value: yt.formats.livestream.n,
+      sub: yt.formats.livestream.n ? `${num(yt.formats.livestream.views)} Aufrufe${yt.youtubeOnlyStreams ? ` · ${num(yt.youtubeOnlyStreams)} nur auf YouTube` : ""}` : "Keine auf YouTube",
+    },
+    { label: "Aufrufe", value: yt.views, sub: `${num(yt.likes)} Likes · ${num(yt.comments)} Kommentare` },
+  ];
+  return (
+    <section className="block block--tight" data-tone="paper" aria-labelledby="youtube-h">
+      <div className="wrap">
+        <Fold
+          id="profil.youtube"
+          titleId="youtube-h"
+          title="YouTube"
+          aside={
+            <Link className="btn btn--small" data-tone="white" href={`/ereignisse?t=youtube_upload&spieler=${encodeURIComponent(id)}`}>
+              Alle Uploads
+            </Link>
+          }
+        >
+          <p className="muted" style={{ marginBottom: 16 }}>
+            {num(yt.uploads)} Uploads zu CraftAttack 14 auf{" "}
+            {yt.channels.map((c, i) => (
+              <span key={c.id}>
+                {i > 0 ? (i === yt.channels.length - 1 ? " und " : ", ") : ""}
+                <a href={`https://www.youtube.com/channel/${c.id}`} target="_blank" rel="noopener">
+                  {c.title}
+                </a>
+                {c.subs !== null ? ` (${num(c.subs)} Abos)` : ""}
+              </span>
+            ))}
+            {yt.first && yt.last ? ` · erster am ${shortDate(yt.first)}, letzter am ${shortDate(yt.last)}` : ""}
+            {share !== null ? ` · ${share} % aller Uploads seit Staffelbeginn drehen sich um CraftAttack` : ""}
+          </p>
+          <dl className="grid st-figs st-figs--auto">
+            {tiles.map((t) => (
+              <div key={t.label} className="box st-fig" data-tone={t.label === "Aufrufe" ? "youtube" : "white"}>
+                <dt>
+                  {t.label}
+                  {t.sub && (
+                    <span className="muted" style={{ display: "block", fontFamily: "var(--font-body)", textTransform: "none", letterSpacing: 0, fontWeight: 400, fontSize: ".8rem", marginTop: 4 }}>
+                      {t.sub}
+                    </span>
+                  )}
+                </dt>
+                <dd>
+                  <FigValue>{num(t.value)}</FigValue>
+                </dd>
+              </div>
+            ))}
+          </dl>
+          {yt.top.length > 0 && (
+            <>
+              <h3 className="t-3" style={{ marginTop: 24 }}>
+                Meistgesehen
+              </h3>
+              <ol className="yt-top">
+                {yt.top.map((v) => (
+                  <li key={v.id}>
+                    <a href={v.format === "short" ? `https://www.youtube.com/shorts/${v.id}` : `https://www.youtube.com/watch?v=${v.id}`} target="_blank" rel="noopener">
+                      {v.title}
+                    </a>
+                    <span className="muted">
+                      {" "}
+                      · {YT_FORMAT[v.format]} · {num(v.views)} Aufrufe · {shortDate(v.at)}
+                      {yt.channels.length > 1 ? ` · ${v.channel}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
         </Fold>
       </div>
     </section>

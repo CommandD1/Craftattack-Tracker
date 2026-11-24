@@ -60,8 +60,9 @@ sich höchstens einmal pro Minute, solange der Tab sichtbar ist.
 | Geteilter Chat (Stream Together) mit Beteiligten, Beginn und Ende | Twitch-API `shared_chat/session` |
 | Follower-Zuwachs während der Serverzeit, Follower-Schübe | öffentliche Twitch-Followerstände je Messung |
 | Stream-Zeiten in Tracker-Lücken, beliebte Clips | Twitch-VODs und Clips (alle 3 Stunden) |
+| YouTube-Uploads zu CraftAttack 14 (Video, Short, Livestream) mit Aufrufen; nur Kanäle, die der Teilnehmer selbst verlinkt (`lib/youtubeChannels.ts`) | YouTube Data API v3 (alle 6 Stunden, rückwirkend ab `YOUTUBE_SINCE`) |
 
-Koordinaten liefert die API nicht; „wo“ heißt immer: auf dem Server oder auf Twitch.
+Koordinaten liefert die API nicht; „wo“ heißt immer: auf dem Server, auf Twitch oder (Uploads) auf YouTube.
 
 Standard überall ist **CraftAttack** (`lib/craftScope.ts`, Community: `lib/onlineSpans.ts`): Twitch-Ereignisse (Live gehen,
 Titel, Raids, Chat, geteilter Chat …) erscheinen nur aus Streams, in denen der Streamer auf dem Server war (fällt der
@@ -135,6 +136,7 @@ Alle Variablen mit Beispielen stehen in `.env.example`.
 | `TRACKER_MODE` | `all`, `web` oder `tracker`, siehe [oben](#website-und-tracker-trennen) |
 | `CRON_SECRET` | Geheimnis für `GET /api/cron/poll` mit `Authorization: Bearer <CRON_SECRET>` (nur an den Tracker richten). Erzeugen mit `openssl rand -hex 32`. |
 | `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` | Twitch-App: Live-Status, Zuschauer, geteilter Chat, VOD-Links, Clips |
+| `YOUTUBE_API_KEY` | Optional, nur Tracker: Schlüssel der YouTube Data API v3 für YouTube-Uploads der Teilnehmer (≈ 1.500 von 10.000 Einheiten am Tag). `YOUTUBE_SINCE` (Standard `2026-09-01`): ältere Uploads werden nicht geholt. |
 | `TWITCH_IRC_NICK`, `TWITCH_IRC_TOKEN` | Twitch-IRC mit `chat:read` für Abos, Raids und Chat-Nachrichten (höchstens 20 JOINs je 10 s) |
 | `WEB_BOT_AUTH_KEY_FILE` / `WEB_BOT_AUTH_KEY` | Ed25519-Schlüssel zum Signieren der Anfragen; die Website veröffentlicht das Verzeichnis unter `/.well-known/http-message-signatures-directory`. Erzeugen mit `openssl genpkey -algorithm ed25519 -out web-bot-auth.pem`. |
 | `CA_PROXY` | Optional, z. B. `socks5://127.0.0.1:1080`: nur Anfragen an craftattack.one laufen darüber, z. B. über die eigene Heimleitung per `ssh -N -R 127.0.0.1:1080 <user>@<server>`. Ohne Proxy schlagen sie fehl, es gibt keinen Ersatzweg. |
@@ -158,6 +160,7 @@ bestehende Daten bleiben.
 | `player_history` | Werte je Spieler und Messpunkt; Zusatzwerte höchstens alle 5 Minuten als `extra_stats integer[]` (Reihenfolge in `lib/playerStats.ts`) |
 | `player_top_history` | Top-Listen je Spieler: geänderte Einträge jede Minute, stündlich ein vollständiger Anker |
 | `twitch_chat_messages` | Nachrichten zwischen Spielern (im geteilten Chat einmal je Nachricht) |
+| `youtube_channels`, `youtube_videos` | YouTube-Kanäle der Teilnehmer (Abos) und alle ihre Uploads seit `YOUTUBE_SINCE` (Format, Dauer, Aufrufe, Likes, Kommentare, Livestream-Zeiten, CraftAttack-Erkennung; ohne Beschreibung) |
 | `shared_chat_sessions` | Geteilte Chats mit Beteiligten, Beginn und Ende |
 | `costream_sessions` | „Gemeinsam streamen“ (Twitch Stream Together) der Spieler-Kanäle: Host, alle Beteiligten, Beginn, zuletzt gesehen, Ende (jede Minute über die Twitch-Web-Schnittstelle, `lib/costream.ts`); `costream_presence`: je Beteiligtem Kommen und Gehen (minutengenau); zusätzlich `twitch_clips.costream_session/costream_guests`: wer zur Zeit des Clip-Inhalts mitgestreamt hat (VOD-Start + vod_offset, nicht Erstellzeit; rückwirkend für alle Clips) |
 

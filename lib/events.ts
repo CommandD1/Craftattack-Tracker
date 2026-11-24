@@ -256,6 +256,25 @@ export const EVENT_META: Record<EventType, EventMeta> = {
         .filter(Boolean)
         .join(" · ") || null,
   },
+  youtube_upload: {
+    label: "YouTube",
+    tone: "youtube",
+    text: (e) => {
+      const t = `„${e.meta?.title ?? "Video"}“`;
+      if (e.meta?.format === "short") return `hat ein Short auf YouTube hochgeladen: ${t}`;
+      if (e.meta?.format === "livestream") return `war live auf YouTube: ${t}`;
+      return `hat ein Video auf YouTube hochgeladen: ${t}`;
+    },
+    sub: (e) =>
+      [
+        e.meta?.format === "short" ? "Short" : e.meta?.format === "livestream" ? "Livestream" : "Video",
+        typeof e.meta?.durationS === "number" && e.meta.durationS > 0 ? duration(e.meta.durationS) : null,
+        e.value !== undefined ? `${num(e.value)} Aufrufe` : null,
+        typeof e.meta?.channel === "string" ? `Kanal ${e.meta.channel}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || null,
+  },
   follower_burst: {
     label: "Follower-Schub",
     tone: "twitch",
@@ -364,6 +383,7 @@ export const EVENT_GROUPS: { key: string; label: string; tone: string; types: Ev
   { key: "bau", label: "Bauen & Handel", tone: GROUP_TONE.items, types: ["blocksPlaced", "itemsCrafted", "itemsEnchanted", "tradedWithVillagers"] },
   { key: "natur", label: "Tiere & Natur", tone: GROUP_TONE.tiere, types: ["animalsKilled", "animalsBred", "fishCaught", "bellsRung"] },
   { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title", "subscription", "subscription_gift", "cheer", "clip", "follower_burst", "raid", "chat", "shared_chat_start", "shared_chat_end"] },
+  { key: "youtube", label: "YouTube", tone: "youtube", types: ["youtube_upload"] },
   { key: "highlights", label: "Highlights", tone: "white", types: ["achievement", "first_join", "rank", "milestone", "record"] },
 ];
 
@@ -402,6 +422,7 @@ export function eventBadge(e: TrackerEvent): string | null {
     case "cheer":
       return `${num(e.value ?? 0)} Bits`;
     case "clip":
+    case "youtube_upload":
       return `${num(e.value ?? 0)} Aufrufe`;
     case "follower_burst":
       return `+${num(e.delta ?? 0)} Follower`;
@@ -478,6 +499,7 @@ export const EVENT_TYPES: EventType[] = [
   "subscription_gift",
   "cheer",
   "clip",
+  "youtube_upload",
   "follower_burst",
   "raid",
   "chat",

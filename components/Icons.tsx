@@ -143,6 +143,11 @@ export const Icon: Record<IconName, (p: P) => ReactNode> = {
       <path d="M8 9h8M9 12h1m4 0h1M10 16h4" />
     </svg>
   ),
+  youtube: (p: P) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" {...p}>
+      <path d="M23 7.2a3 3 0 0 0-2.1-2.1C19 4.6 12 4.6 12 4.6s-7 0-8.9.5A3 3 0 0 0 1 7.2 31 31 0 0 0 .5 12a31 31 0 0 0 .5 4.8 3 3 0 0 0 2.1 2.1c1.9.5 8.9.5 8.9.5s7 0 8.9-.5a3 3 0 0 0 2.1-2.1 31 31 0 0 0 .5-4.8 31 31 0 0 0-.5-4.8zM9.7 15.1V8.9l5.8 3.1-5.8 3.1z" />
+    </svg>
+  ),
   twitch: (p: P) => (
     <svg viewBox="0 0 24 24" fill="currentColor" {...p}>
       <path d="M4 2 2 6v14h5v3h3l3-3h4l5-5V2H4zm16 12-3 3h-5l-3 3v-3H6V4h14v10zM14 7h2v5h-2V7zm-5 0h2v5H9V7z" />

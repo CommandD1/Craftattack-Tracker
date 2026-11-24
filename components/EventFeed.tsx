@@ -182,7 +182,8 @@ function EventTile({ e, focus, highlight, hrefFor }: { e: TrackerEvent; focus?: 
   const info = detail(e);
   const vod = typeof e.meta?.vodUrl === "string" ? e.meta.vodUrl : null;
   const liveUrl = typeof e.meta?.liveUrl === "string" ? e.meta.liveUrl : null;
-  const link = liveUrl ? { href: liveUrl, title: "Läuft gerade – Stream auf Twitch ansehen", live: true } : vod ? { href: vod, title: e.type === "clip" ? "Clip auf Twitch ansehen" : e.type === "death" || e.type === "chat" ? "Diesen Moment im VOD ansehen" : "Aufzeichnung auf Twitch ansehen", live: false } : null;
+  const ytUrl = e.type === "youtube_upload" && typeof e.meta?.url === "string" ? e.meta.url : null;
+  const link = ytUrl ? { href: ytUrl, title: "Auf YouTube ansehen", live: false, youtube: true } : liveUrl ? { href: liveUrl, title: "Läuft gerade – Stream auf Twitch ansehen", live: true } : vod ? { href: vod, title: e.type === "clip" ? "Clip auf Twitch ansehen" : e.type === "death" || e.type === "chat" ? "Diesen Moment im VOD ansehen" : "Aufzeichnung auf Twitch ansehen", live: false } : null;
   const isShared = e.type === "shared_chat_start" || e.type === "shared_chat_end";
   const withHead = Boolean(e.player) && !SERVER_TYPES.has(e.type) && !isShared;
   // Geteilter Chat: Köpfe aller beteiligten Spieler (höchstens vier), auf jeder Seite
@@ -308,8 +309,8 @@ function EventTile({ e, focus, highlight, hrefFor }: { e: TrackerEvent; focus?: 
         </span>
       )}
       {link && (
-        <a className="tile__link" href={link.href} target="_blank" rel="noopener" title={link.title} aria-label={link.title}>
-          {link.live ? <span className="dot dot--live" /> : <Icon.twitch aria-hidden="true" />}
+        <a className={"youtube" in link ? "tile__link tile__link--youtube" : "tile__link"} href={link.href} target="_blank" rel="noopener" title={link.title} aria-label={link.title}>
+          {link.live ? <span className="dot dot--live" /> : "youtube" in link ? <Icon.youtube aria-hidden="true" /> : <Icon.twitch aria-hidden="true" />}
         </a>
       )}
       <span className="sr-only">{sentence}</span>

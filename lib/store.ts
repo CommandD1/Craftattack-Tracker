@@ -34,6 +34,7 @@ const KEEP_IN_MEMORY = new Set<TrackerEvent["type"]>([
   "chat",
   "cheer",
   "clip",
+  "youtube_upload",
   "blocksPlaced",
   "damageTaken",
   "raidsWon",

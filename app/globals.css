@@ -34,6 +34,7 @@ select {
   --sky: #8ccdff;
   --dirt: #8a5a3b;
   --twitch: #9146ff;
+  --youtube: #e62117;
   /* Zeit auf dem Server (wie Spielzeit) und AFK – Zeitstrahl, Sessions, Heatmap, Stundenbalken */
   --presence: var(--sky);
   --idle: color-mix(in srgb, var(--ink) 35%, var(--paper));
@@ -143,6 +144,7 @@ p {
 [data-tone="pink"] { --bg: var(--pink); --fg: var(--on-tone); }
 [data-tone="sky"] { --bg: var(--sky); --fg: var(--on-tone); }
 [data-tone="twitch"] { --bg: var(--twitch); --fg: #fff; }
+[data-tone="youtube"] { --bg: var(--youtube); --fg: #fff; }
 [data-tone="idle"] { --bg: var(--idle); --fg: var(--ink); }
 
 /* ---------- Layout-Primitives ---------- */
@@ -1019,6 +1021,12 @@ a.st-chip-in[data-live="true"] {
 .tile__link:hover {
   background: var(--twitch);
   color: var(--white);
+}
+.tile__link--youtube {
+  color: var(--youtube);
+}
+.tile__link--youtube:hover {
+  background: var(--youtube);
 }
 .tile__link:hover .dot--live {
   box-shadow: 0 0 0 2px var(--white);
@@ -7981,4 +7989,15 @@ a.box.news-card {
   font-size: 0.875rem;
   line-height: 1.4;
   opacity: 0.85;
+}
+
+/* Spielerseite: meistgesehene YouTube-Uploads */
+.yt-top {
+  margin: 8px 0 0;
+  padding-left: 1.4em;
+  display: grid;
+  gap: 6px;
+}
+.yt-top a {
+  font-weight: 600;
 }
