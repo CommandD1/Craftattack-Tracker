@@ -160,6 +160,8 @@ export type EventType =
   | "clip"
   | "follower_burst"
   | "raid"
+  // YouTube-Upload zu CraftAttack 14 (lib/youtube.ts, nachträglich über die YouTube Data API)
+  | "youtube_upload"
   | "chat"
   | "shared_chat_start"
   | "shared_chat_end"
@@ -213,8 +215,8 @@ export interface TrackerEvent {
   player?: string;
   playerName?: string;
   uuid?: string;
-  /** Wo: "server" oder "twitch" */
-  where: "server" | "twitch" | "tracker";
+  /** Wo: "server", "twitch" oder "youtube" (Uploads) */
+  where: "server" | "twitch" | "tracker" | "youtube";
   /** Delta bei Zählern (z. B. +3 Tode) */
   delta?: number;
   /** Neuer Gesamtwert */

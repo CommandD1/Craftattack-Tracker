@@ -50,6 +50,7 @@ export const ICON_NAMES = [
   "bell",
   // Twitch
   "twitch",
+  "youtube",
   "video",
   "videoOff",
   "title",
@@ -139,6 +140,7 @@ export const EVENT_ICON: Record<EventType, IconName> = {
   fishCaught: "fish",
   bellsRung: "bell",
   clip: "clapper",
+  youtube_upload: "youtube",
   follower_burst: SPECIAL_ICON.followers,
   raid: "raid",
   chat: "chat",

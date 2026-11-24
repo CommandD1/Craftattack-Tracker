@@ -5,6 +5,7 @@ import { RATE_KEYS, type PlayerRates, type RateKey } from "@/lib/analytics";
 import { distance, duration, num, dateTime } from "@/lib/format";
 import { BOARD_ICON, Icon } from "./Icons";
 import { BOARD_TONE } from "@/lib/statTone";
+import { momentLink } from "@/lib/events";
 
 const LABEL: Record<RateKey, string> = { deaths: "Tode", diamonds: "Diamanten", blocksBroken: "Blöcke", mobsKilled: "Mobs", distance: "Strecke" };
 const TONE: Record<RateKey, string> = BOARD_TONE;
@@ -105,7 +106,7 @@ export function PlayerInsights({
   const avgOff = avg(vOff);
   const liveDeaths = events.filter((e) => e.type === "death" && e.meta?.live);
   const liveDeathCount = liveDeaths.reduce((s, e) => s + (e.delta ?? 1), 0);
-  const withVod = [...liveDeaths].reverse().filter((e) => typeof e.meta?.vodUrl === "string").slice(0, 5);
+  const withVod = [...liveDeaths].reverse().filter((e) => momentLink(e)).slice(0, 5);
 
   return (
     <section className="block block--tight" data-tone="paper" aria-labelledby="ins-h">
@@ -236,8 +237,8 @@ export function PlayerInsights({
                   <ul className="vods">
                     {withVod.map((e) => (
                       <li key={e.id}>
-                        <a href={String(e.meta!.vodUrl)} target="_blank" rel="noopener" title="Diesen Tod im VOD ansehen">
-                          <Icon.twitch aria-hidden="true" /> Tod {dateTime(e.at)}
+                        <a href={momentLink(e)!.href} target="_blank" rel="noopener" title={momentLink(e)!.youtube ? "Diesen Tod im YouTube-Livestream ansehen" : "Diesen Tod im VOD ansehen"}>
+                          {momentLink(e)!.youtube ? <Icon.youtube aria-hidden="true" /> : <Icon.twitch aria-hidden="true" />} Tod {dateTime(e.at)}
                         </a>
                       </li>
                     ))}

@@ -12,7 +12,7 @@ import { loadTracker } from "@/lib/data";
 import { getEventDetail } from "@/lib/eventDetail";
 import { getEventPair } from "@/lib/eventPair";
 import { compareHref } from "@/lib/compareHref";
-import { EVENT_META, eventBadge, eventDetailHref, eventHref, eventPlayers } from "@/lib/events";
+import { EVENT_META, eventBadge, eventDetailHref, eventHref, eventPlayers, momentLink } from "@/lib/events";
 import "@/components/detail/detail.css";
 import { getFeedFilter } from "@/lib/feedThresholds";
 import { dateTime, distance, duration, hearts, num } from "@/lib/format";
@@ -70,9 +70,12 @@ async function Detail(props: PageProps<"/ereignis/[id]">) {
   const sentence = [e.player ? `${name} ${meta.text(e)}` : meta.text(e), meta.sub?.(e)].filter(Boolean).join(" · ");
   const badge = eventBadge(e);
   const login = p?.twitchLogin ?? p?.live?.login ?? null;
+  const moment = momentLink(e);
+  // YouTube-Upload: das Video selbst; sonst YouTube-Livestream, wenn es kein Twitch-VOD gibt
+  const youtube = e.type === "youtube_upload" && typeof e.meta?.url === "string" ? e.meta.url : moment?.youtube ? moment.href : null;
   const vod =
-    typeof e.meta?.vodUrl === "string"
-      ? e.meta.vodUrl
+    moment
+      ? moment.href
       : login
         ? await findVodAt(login, at - 30_000)
             .then((v) => (v ? vodLink(v.vodId, v.offset) : null))
@@ -170,7 +173,7 @@ async function Detail(props: PageProps<"/ereignis/[id]">) {
               {dayLong.format(at)} Uhr
             </li>
             <li className="tag" data-tone={e.where === "twitch" ? "twitch" : "white"}>
-              {e.where === "twitch" ? "Auf Twitch" : "Auf dem Server"}
+              {e.where === "twitch" ? "Auf Twitch" : e.where === "youtube" ? "Auf YouTube" : "Auf dem Server"}
             </li>
             {/* Nur bei Ereignissen ohne Zählerstand: dort ist jedes Ereignis genau ein Vorkommen (Tode z. B. gibt es doppelt aus Feed und Stats) */}
             {d.same.total > 0 && e.value === undefined && (
@@ -186,12 +189,20 @@ async function Detail(props: PageProps<"/ereignis/[id]">) {
                 </Link>
               </li>
             )}
-            {vod && (
+            {youtube ? (
               <li>
-                <a className="tag" data-tone="twitch" href={vod} target="_blank" rel="noopener noreferrer">
-                  ▶ Im VOD ansehen
+                <a className="tag" data-tone="youtube" href={youtube} target="_blank" rel="noopener noreferrer">
+                  ▶ {e.type === "youtube_upload" ? "Auf YouTube ansehen" : "Im YouTube-Livestream ansehen"}
                 </a>
               </li>
+            ) : (
+              vod && (
+                <li>
+                  <a className="tag" data-tone="twitch" href={vod} target="_blank" rel="noopener noreferrer">
+                    ▶ Im VOD ansehen
+                  </a>
+                </li>
+              )
             )}
             <li>
               <Link className="tag" data-tone="white" href={eventHref(e)}>

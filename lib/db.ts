@@ -383,6 +383,38 @@ async function migrate(db: Db) {
   await db.query(`ALTER TABLE twitch_clips ADD COLUMN IF NOT EXISTS costream_guests text[]`);
   await db.query(`ALTER TABLE twitch_clips ADD COLUMN IF NOT EXISTS costream_checked_at timestamptz`);
   await db.query(`CREATE INDEX IF NOT EXISTS twitch_clips_costream_open_idx ON twitch_clips (created_at) WHERE costream_checked_at IS NULL`);
+  // YouTube (lib/youtube.ts, YouTube Data API v3): Kanäle der Teilnehmer (nur selbst verlinkte, data/youtube-channels.json)
+  // und ihre Uploads seit YOUTUBE_SINCE – alle Uploads (für den CraftAttack-Anteil), ohne Beschreibung (Platz sparen)
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS youtube_channels (
+      id         text PRIMARY KEY,
+      player     text NOT NULL,
+      title      text NOT NULL,
+      handle     text,
+      subs       integer,
+      views      bigint,
+      videos     integer,
+      fetched_at timestamptz NOT NULL
+    )`);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS youtube_videos (
+      id           text PRIMARY KEY,
+      channel_id   text NOT NULL,
+      player       text NOT NULL,
+      published_at timestamptz NOT NULL,
+      title        text NOT NULL,
+      format       text NOT NULL,
+      duration_s   integer,
+      views        bigint NOT NULL DEFAULT 0,
+      likes        integer,
+      comments     integer,
+      live_start   timestamptz,
+      live_end     timestamptz,
+      ca           boolean NOT NULL DEFAULT false,
+      ca14         boolean NOT NULL DEFAULT false,
+      fetched_at   timestamptz NOT NULL
+    )`);
+  await db.query(`CREATE INDEX IF NOT EXISTS youtube_videos_player_idx ON youtube_videos (player, published_at)`);
   // Live beobachtete „Gemeinsam streamen“-Sessions (Twitch Stream Together) der Spieler-Kanäle, siehe lib/costream.ts
   await db.query(`
     CREATE TABLE IF NOT EXISTS costream_sessions (

@@ -25,6 +25,9 @@ export async function register() {
     // Twitch-Verlauf (VODs, Clips) auch rückwirkend, z. B. Streams in Tracker-Lücken
     const { startTwitchHistorySync } = await import("./lib/twitchHistory");
     startTwitchHistorySync();
+    // YouTube-Uploads der Teilnehmer (offizielle Data API, nur mit YOUTUBE_API_KEY), auch rückwirkend
+    const { startYoutubeSync } = await import("./lib/youtube");
+    startYoutubeSync();
     // „Gemeinsam streamen“ (Stream Together): live jede Minute, rückwirkend aus allen Clips
     const { startCostreamSync } = await import("./lib/costream");
     startCostreamSync();

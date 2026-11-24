@@ -22,6 +22,8 @@ import { StatSpark } from "@/components/StatSpark";
 import { sparkRows, sparkSeries } from "@/lib/sparkSeries";
 import { ClipGrid } from "@/components/ClipGrid";
 import { getTopClips } from "@/lib/clips";
+import { getYoutubeStats, type YoutubeFormat } from "@/lib/youtubeStats";
+import { getYoutubeLives } from "@/lib/youtubeLive";
 import { EstimatePlayer, PlayerEstimateSummary } from "@/components/Estimates";
 import { getTrackerGaps, getAllSessions, getFullBoard, getPlayerHistory, getPlayerSharedChatSessions, getPlayerTopHistory, getPlayerTwitchChat, getTwitchCheerBoard, getTwitchCheerProfile, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
 import { SharedChatList } from "@/components/SharedChatList";
@@ -113,6 +115,9 @@ export default function Page(props: PageProps<"/spieler/[id]">) {
       <Suspense fallback={<ChatSkeleton />}>
         <ChatSection params={params} searchParams={searchParams} />
       </Suspense>
+      <Suspense fallback={null}>
+        <YoutubeSection params={params} />
+      </Suspense>
       {/* Clips zuletzt: schön anzusehen, aber keine Daten, die man sonst nicht sieht */}
       <Suspense fallback={null}>
         <ClipsSection params={params} />
@@ -127,9 +132,11 @@ interface Session {
   seconds: number;
 }
 
-/** Ein Eintrag der gemeinsamen Liste: Server-Session oder Twitch-Stream */
+/** Ein Eintrag der gemeinsamen Liste: Server-Session, Twitch-Stream oder Stream nur auf YouTube */
 interface Phase extends Session {
-  kind: "server" | "stream";
+  kind: "server" | "stream" | "youtube";
+  /** YouTube: Video des Livestreams */
+  videoId?: string;
   /** Stream: höchste Zuschauerzahl */
   peak?: number;
   /** Überschneidung mit der jeweils anderen Art (Sekunden) */
@@ -604,7 +611,7 @@ async function TimelineSection({ params, searchParams }: { params: Params; searc
   const { id: raw } = await params;
   const [{ id, state, now, p, events }, { scope, keep }] = await Promise.all([getCtx(raw), scopeFrom(searchParams)]);
   if (!p) return null;
-  const [history, allSessions, afkSpans, mine] = await Promise.all([getPlayerHistory(id), getAllSessions(), getPlayerAfkSpans(id), getMine(raw)]);
+  const [history, allSessions, afkSpans, mine, lives] = await Promise.all([getPlayerHistory(id), getAllSessions(), getPlayerAfkSpans(id), getMine(raw), getYoutubeLives()]);
   const sparkHistory = thinHistory(history);
   const graphHref = graphHrefFor(id);
   const overlaps = overlapsFor(id, allSessions, now);
@@ -619,9 +626,15 @@ async function TimelineSection({ params, searchParams }: { params: Params; searc
   const serverSessions = allSessions.filter((session) => session.player === id);
   const strm = streams(mine, Boolean(p.live), p.liveSince, now, p.live?.login);
   // Sessions und Streams gemeinsam, neueste zuerst; die Überschneidung mit der anderen Art steht dabei
+  // Livestreams nur auf YouTube (kein Twitch-Stream zur selben Zeit)
+  const ytOnly: Session[] = lives
+    .filter((l) => l.player === id && !strm.some((s) => l.start < (s.end ? Date.parse(s.end) : now) && l.end > Date.parse(s.start)))
+    .map((l) => ({ start: new Date(l.start).toISOString(), end: new Date(l.end).toISOString(), seconds: (l.end - l.start) / 1000, videoId: l.id }));
   const phases: Phase[] = [
-    ...sess.map((s) => ({ ...s, kind: "server" as const, overlap: overlapSeconds(s, strm, now) })),
+    ...sess.map((s) => ({ ...s, kind: "server" as const, overlap: overlapSeconds(s, [...strm, ...ytOnly], now) })),
     ...strm.map((s) => ({ ...s, kind: "stream" as const, overlap: overlapSeconds(s, sess, now) })),
+    // Überschneidung mit allen gespeicherten Sessions (die Join/Leave-Liste im Speicher reicht nicht weit zurück)
+    ...ytOnly.map((s) => ({ ...s, kind: "youtube" as const, overlap: overlapSeconds(s, serverSessions.map((x) => ({ start: x.start, end: x.end, seconds: 0 })), now) })),
   ].sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
   // Verlauf: alles, woran der Spieler beteiligt ist – auch als Täter, Raid-Ziel, Schenker oder Kanal
   const isShown = await getFeedFilter();
@@ -759,17 +772,23 @@ async function TimelineSection({ params, searchParams }: { params: Params; searc
                     const with_ = s.kind === "server" ? companionsOf(id, s.start, s.end, allSessions, now) : [];
                     const shown = with_.slice(0, 8);
                     const extra =
-                      s.kind === "stream"
+                      s.kind !== "server"
                         ? [s.peak ? `Peak ${num(s.peak)} Zuschauer` : null, s.overlap > 0 ? `davon ${duration(s.overlap)} auf dem Server` : "nicht auf dem Server"].filter(Boolean).join(" · ")
                         : s.overlap > 0
-                          ? `davon ${duration(s.overlap)} live auf Twitch`
+                          ? `davon ${duration(s.overlap)} live`
                           : null;
                     return (
                       <li key={`${s.kind}${s.start}`} className={`sessions__${s.kind}`}>
                         <span>
-                          <span className="sessions__kind tag" data-tone={s.kind === "stream" ? METRIC_TONE.liveCount : METRIC_TONE.onlineCount}>
-                            {s.kind === "stream" ? "Stream" : "Server"}
-                          </span>{" "}
+                          {s.kind === "youtube" ? (
+                            <a className="sessions__kind tag" data-tone="youtube" href={`https://www.youtube.com/watch?v=${encodeURIComponent(s.videoId ?? "")}`} target="_blank" rel="noopener" title="Livestream auf YouTube ansehen">
+                              YouTube-Live
+                            </a>
+                          ) : (
+                            <span className="sessions__kind tag" data-tone={s.kind === "stream" ? METRIC_TONE.liveCount : METRIC_TONE.onlineCount}>
+                              {s.kind === "stream" ? "Stream" : "Server"}
+                            </span>
+                          )}{" "}
                           {dateTime(s.start)}
                           {s.end ? ` – ${dateTime(s.end).split(", ").pop()}` : " – jetzt"}
                           {extra && <span className="muted session-with">{extra}</span>}
@@ -1009,6 +1028,96 @@ async function AdvancementsSection({ params }: { params: Params }) {
           }
         >
           <AdvancementBoard mine={board.mine} others={board.others} players={board.players} eventBase={EVENT_DETAIL_BASE ?? undefined} />
+        </Fold>
+      </div>
+    </section>
+  );
+}
+
+const YT_FORMAT: Record<YoutubeFormat, string> = { video: "Video", short: "Short", livestream: "Livestream" };
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "numeric", month: "numeric" });
+
+/** YouTube-Uploads zu CraftAttack 14 (lib/youtube.ts, offizielle YouTube Data API), nach Format getrennt */
+async function YoutubeSection({ params }: { params: Params }) {
+  const { id, p } = await ctxFor(params);
+  const yt = await getYoutubeStats(id);
+  if (!yt || !p) return null;
+  const share = yt.uploadsSeason > 0 ? Math.round((yt.ca14Season / yt.uploadsSeason) * 100) : null;
+  const tiles: { label: string; value: number; sub: string | null }[] = [
+    { label: "Videos", value: yt.formats.video.n, sub: `${num(yt.formats.video.views)} Aufrufe` },
+    { label: "Shorts", value: yt.formats.short.n, sub: `${num(yt.formats.short.views)} Aufrufe` },
+    {
+      label: "Livestreams",
+      value: yt.formats.livestream.n,
+      sub: yt.formats.livestream.n ? `${num(yt.formats.livestream.views)} Aufrufe${yt.youtubeOnlyStreams ? ` · ${num(yt.youtubeOnlyStreams)} nur auf YouTube` : ""}` : "Keine auf YouTube",
+    },
+    { label: "Aufrufe", value: yt.views, sub: `${num(yt.likes)} Likes · ${num(yt.comments)} Kommentare` },
+  ];
+  return (
+    <section className="block block--tight" data-tone="paper" aria-labelledby="youtube-h">
+      <div className="wrap">
+        <Fold
+          id="profil.youtube"
+          titleId="youtube-h"
+          title="YouTube"
+          aside={
+            <Link className="btn btn--small" data-tone="white" href={`/ereignisse?t=youtube_upload&spieler=${encodeURIComponent(id)}`}>
+              Alle Uploads
+            </Link>
+          }
+        >
+          <p className="muted" style={{ marginBottom: 16 }}>
+            {num(yt.uploads)} Uploads zu CraftAttack 14 auf{" "}
+            {yt.channels.map((c, i) => (
+              <span key={c.id}>
+                {i > 0 ? (i === yt.channels.length - 1 ? " und " : ", ") : ""}
+                <a href={`https://www.youtube.com/channel/${c.id}`} target="_blank" rel="noopener">
+                  {c.title}
+                </a>
+                {c.subs !== null ? ` (${num(c.subs)} Abos)` : ""}
+              </span>
+            ))}
+            {yt.first && yt.last ? ` · erster am ${shortDate(yt.first)}, letzter am ${shortDate(yt.last)}` : ""}
+            {share !== null ? ` · ${share} % aller Uploads seit Staffelbeginn drehen sich um CraftAttack` : ""}
+          </p>
+          <dl className="grid st-figs st-figs--auto">
+            {tiles.map((t) => (
+              <div key={t.label} className="box st-fig" data-tone={t.label === "Aufrufe" ? "youtube" : "white"}>
+                <dt>
+                  {t.label}
+                  {t.sub && (
+                    <span className="muted" style={{ display: "block", fontFamily: "var(--font-body)", textTransform: "none", letterSpacing: 0, fontWeight: 400, fontSize: ".8rem", marginTop: 4 }}>
+                      {t.sub}
+                    </span>
+                  )}
+                </dt>
+                <dd>
+                  <FigValue>{num(t.value)}</FigValue>
+                </dd>
+              </div>
+            ))}
+          </dl>
+          {yt.top.length > 0 && (
+            <>
+              <h3 className="t-3" style={{ marginTop: 24 }}>
+                Meistgesehen
+              </h3>
+              <ol className="yt-top">
+                {yt.top.map((v) => (
+                  <li key={v.id}>
+                    <a href={v.format === "short" ? `https://www.youtube.com/shorts/${v.id}` : `https://www.youtube.com/watch?v=${v.id}`} target="_blank" rel="noopener">
+                      {v.title}
+                    </a>
+                    <span className="muted">
+                      {" "}
+                      · {YT_FORMAT[v.format]} · {num(v.views)} Aufrufe · {shortDate(v.at)}
+                      {yt.channels.length > 1 ? ` · ${v.channel}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
         </Fold>
       </div>
     </section>
