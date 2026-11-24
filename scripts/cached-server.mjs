@@ -53,14 +53,22 @@ const REWARM_PARALLEL = 2;
 const MAX_BYTES = 120 * 1024 * 1024;
 const MAX_RENDERS = 3;
 const MAX_QUEUE = 400;
-/** Eigene, schmale Spur für Seiten mit vielen Adressen (Crawler laufen alle Ereignisse ab und füllten sonst die
- *  Warteschlange, dann bekamen alle anderen Seiten 503) */
-const LANES = [{ re: /^\/ereignis\//, max: 1, queue: 20, active: 0, /** @type {(() => void)[]} */ q: [] }];
+/** Eigene, schmale Spur für Crawler: höchstens ein Rendern gleichzeitig, sonst 429. Crawler laufen alle Ereignisse und
+ *  Filter-Kombinationen ab und füllten sonst die Warteschlange, dann bekamen alle anderen Seiten 503 (17.11. auf
+ *  /ereignis/, 24.11. PerplexityBot ~2,6 Abrufe/s auf /ereignisse?…&ev=…). */
+const LANES = [{ re: /^\//, max: 1, queue: 20, active: 0, /** @type {(() => void)[]} */ q: [] }];
+/** Erkennbare Crawler; PerplexityBot u. a. schicken auch `Sec-Fetch-Mode` und sehen sonst wie Browser aus */
+const BOT_UA = /bot\b|bot\/|crawl|spider|slurp|perplexity|semrush|ahrefs|bytespider|facebookexternalhit|yandex|dataforseo|headless|python-|curl\/|wget|go-http|scrapy/i;
+/** Eigene Prüf-Abrufe (Wächter, Tests) nie bremsen */
+const OWN_UA = /^actracker-/;
 /**
  * Browser schicken bei jedem Abruf `Sec-Fetch-Mode` (Seitenaufruf und Navigation innerhalb der Seite), Crawler fast
  * nie. Besucher laufen deshalb an der schmalen Spur vorbei durch die normale Warteschlange.
  */
-const isBrowser = (req) => typeof req.headers?.["sec-fetch-mode"] === "string";
+const isBrowser = (req) => {
+  const ua = String(req.headers?.["user-agent"] ?? "");
+  return OWN_UA.test(ua) || (typeof req.headers?.["sec-fetch-mode"] === "string" && !BOT_UA.test(ua));
+};
 const UPSTREAM_TIMEOUT_MS = 90_000;
 /** Nach dem Umschalten darf der alte Prozess so lange laufende Anfragen beenden */
 const RETIRE_MS = 15_000;
@@ -399,7 +407,7 @@ function enterLane(l) {
     l.active++;
     return Promise.resolve();
   }
-  if (l.q.length >= l.queue) return Promise.reject(Object.assign(new Error("Spur voll"), { busy: true }));
+  if (l.q.length >= l.queue) return Promise.reject(Object.assign(new Error("Spur voll"), { busy: true, lane: true }));
   return new Promise((resolve) => l.q.push(resolve)).then(() => void l.active++);
 }
 function leaveLane(l) {
@@ -571,6 +579,11 @@ const server = http.createServer(async (req, res) => {
   try {
     send(req, res, await render(key, req), "MISS");
   } catch (err) {
+    // Crawler: 429 mit langer Pause, damit sie langsamer werden statt sofort neu zu fragen
+    if (err?.lane) {
+      res.writeHead(429, { "content-type": "text/plain; charset=utf-8", "retry-after": "60" });
+      return res.end("Zu viele Abrufe, bitte langsamer.");
+    }
     res.writeHead(503, { "content-type": "text/plain; charset=utf-8", "retry-after": "5" });
     res.end(err?.busy ? "Gerade sehr viele Besucher, bitte in ein paar Sekunden neu laden." : "Website startet gerade, bitte gleich neu laden.");
   }
