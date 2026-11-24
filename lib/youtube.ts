@@ -1,7 +1,9 @@
 import "server-only";
 import { getDb } from "./db";
-import { insertPastEvents } from "./store";
-import type { TrackerEvent } from "./types";
+import { getEvents, getState, insertPastEvents, updateEventMeta } from "./store";
+import { findVodAt, TWITCH_ENABLED } from "./twitch";
+import type { EventType, TrackerEvent } from "./types";
+import { youtubeMomentUrl } from "./youtubeLive";
 import { YOUTUBE_CHANNELS } from "./youtubeChannels";
 
 /**
@@ -70,7 +72,7 @@ function classify(v: ApiVideo) {
   return { dur, live, format, ca, ca14 };
 }
 
-export async function syncYoutube(): Promise<{ channels: number; fetched: number; events: number; units: number }> {
+export async function syncYoutube(): Promise<{ channels: number; fetched: number; events: number; units: number; linked: number }> {
   units = 0;
   const db = await getDb();
   const owner = new Map(YOUTUBE_CHANNELS.map((c) => [c.id, c.player]));
@@ -167,7 +169,57 @@ export async function syncYoutube(): Promise<{ channels: number; fetched: number
       },
     })),
   );
-  return { channels: uploads.size, fetched, events, units };
+  const linked = await linkYoutubeMoments();
+  return { channels: uploads.size, fetched, events, units, linked };
+}
+
+/** Ereignisse, die einen Link auf den Moment in der Aufzeichnung bekommen (wie bei Twitch-VODs) */
+const MOMENT_TYPES = new Set<EventType>(["death", "achievement", "chat", "stream_start", "stream_end", "milestone", "rank", "first_join", "raid"]);
+
+/**
+ * YouTube-Livestreams als Ersatz-Aufzeichnung: Ereignisse während eines YouTube-Livestreams des Spielers (Chat: des
+ * Kanals, in dem geschrieben wurde) bekommen `meta.ytUrl` an genau dieser Stelle, wenn es kein Twitch-VOD gibt. Hat
+ * das Ereignis ein Twitch-VOD, das bei Twitch nicht mehr existiert (gelöscht), wird es mit `vodGone` markiert und
+ * ebenfalls auf YouTube verlinkt. Twitch bleibt sonst immer vorn (lib/events.ts momentLink).
+ */
+async function linkYoutubeMoments(): Promise<number> {
+  const db = await getDb();
+  const lives = (
+    await db.query<{ player: string; id: string; live_start: Date; live_end: Date | null; duration_s: number | null }>(
+      `SELECT player, id, live_start, live_end, duration_s FROM youtube_videos WHERE format = 'livestream' AND live_start IS NOT NULL`,
+    )
+  ).rows.map((r) => ({ player: r.player, id: r.id, start: r.live_start.getTime(), end: r.live_end?.getTime() ?? r.live_start.getTime() + (r.duration_s ?? 0) * 1000 }));
+  if (!lives.length) return 0;
+  const byPlayer = Map.groupBy(lives, (l) => l.player);
+  const state = await getState();
+  // Je YouTube-Livestream einmal: gibt es bei Twitch (noch) ein VOD zur selben Zeit?
+  const twitchAlive = new Map<string, boolean>();
+  const aliveFor = async (player: string, l: { id: string; start: number; end: number }) => {
+    if (twitchAlive.has(l.id)) return twitchAlive.get(l.id)!;
+    const login = state.players[player]?.twitchLogin ?? null;
+    // Im Zweifel (keine Twitch-Zugangsdaten, kein Login, Fehler) behält Twitch den Vorrang
+    let alive = true;
+    if (TWITCH_ENABLED && login) alive = Boolean(await findVodAt(login, (l.start + l.end) / 2).catch(() => true));
+    twitchAlive.set(l.id, alive);
+    return alive;
+  };
+  let n = 0;
+  for (const e of await getEvents()) {
+    if (!MOMENT_TYPES.has(e.type) || e.meta?.estimated === true) continue;
+    const who = e.type === "chat" && typeof e.meta?.channelId === "string" ? e.meta.channelId : e.player;
+    if (!who) continue;
+    const at = Date.parse(e.at);
+    const l = byPlayer.get(who)?.find((x) => at >= x.start - 60_000 && at <= x.end + 60_000);
+    if (!l) continue;
+    const hasTwitch = typeof e.meta?.vodUrl === "string";
+    const gone = hasTwitch && !(await aliveFor(who, l));
+    if (hasTwitch && !gone) continue;
+    const url = youtubeMomentUrl(l.id, (at - l.start) / 1000, e.type === "stream_start" ? 0 : undefined);
+    if (e.meta?.ytUrl === url && (!gone || e.meta?.vodGone === true)) continue;
+    await updateEventMeta(e, gone ? { ytUrl: url, vodGone: true } : { ytUrl: url });
+    n++;
+  }
+  return n;
 }
 
 export function startYoutubeSync() {
@@ -181,7 +233,7 @@ export function startYoutubeSync() {
     const t0 = Date.now();
     try {
       const r = await syncYoutube();
-      console.log(`[youtube] ${r.channels} Kanäle · ${r.fetched} Uploads abgeglichen · ${r.events} neue Ereignisse · ${r.units} API-Einheiten (${Math.round((Date.now() - t0) / 1000)} s)`);
+      console.log(`[youtube] ${r.channels} Kanäle · ${r.fetched} Uploads abgeglichen · ${r.events} neue Ereignisse · ${r.linked} Momente mit YouTube-Livestream verlinkt · ${r.units} API-Einheiten (${Math.round((Date.now() - t0) / 1000)} s)`);
     } catch (err) {
       console.warn("[youtube] Abgleich fehlgeschlagen:", err instanceof Error ? err.message : err, `(${units} API-Einheiten)`);
     } finally {

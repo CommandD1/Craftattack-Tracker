@@ -619,3 +619,14 @@ export function chatVodLinks(events: TrackerEvent[]): Map<string, string> {
   }
   return out;
 }
+
+/**
+ * Link zu genau diesem Moment in einer Aufzeichnung: Twitch-VOD zuerst; der YouTube-Livestream (`meta.ytUrl`,
+ * gesetzt von lib/youtube.ts) nur, wenn es kein Twitch-VOD gibt oder es gelöscht ist (`meta.vodGone`).
+ */
+export function momentLink(e: TrackerEvent): { href: string; youtube: boolean } | null {
+  const tw = typeof e.meta?.vodUrl === "string" ? e.meta.vodUrl : null;
+  const yt = typeof e.meta?.ytUrl === "string" ? e.meta.ytUrl : null;
+  if (tw && !(yt && e.meta?.vodGone === true)) return { href: tw, youtube: false };
+  return yt ? { href: yt, youtube: true } : null;
+}

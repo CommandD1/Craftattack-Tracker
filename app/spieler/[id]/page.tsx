@@ -23,6 +23,7 @@ import { sparkRows, sparkSeries } from "@/lib/sparkSeries";
 import { ClipGrid } from "@/components/ClipGrid";
 import { getTopClips } from "@/lib/clips";
 import { getYoutubeStats, type YoutubeFormat } from "@/lib/youtubeStats";
+import { getYoutubeLives } from "@/lib/youtubeLive";
 import { EstimatePlayer, PlayerEstimateSummary } from "@/components/Estimates";
 import { getTrackerGaps, getAllSessions, getFullBoard, getPlayerHistory, getPlayerSharedChatSessions, getPlayerTopHistory, getPlayerTwitchChat, getTwitchCheerBoard, getTwitchCheerProfile, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
 import { SharedChatList } from "@/components/SharedChatList";
@@ -131,9 +132,11 @@ interface Session {
   seconds: number;
 }
 
-/** Ein Eintrag der gemeinsamen Liste: Server-Session oder Twitch-Stream */
+/** Ein Eintrag der gemeinsamen Liste: Server-Session, Twitch-Stream oder Stream nur auf YouTube */
 interface Phase extends Session {
-  kind: "server" | "stream";
+  kind: "server" | "stream" | "youtube";
+  /** YouTube: Video des Livestreams */
+  videoId?: string;
   /** Stream: höchste Zuschauerzahl */
   peak?: number;
   /** Überschneidung mit der jeweils anderen Art (Sekunden) */
@@ -608,7 +611,7 @@ async function TimelineSection({ params, searchParams }: { params: Params; searc
   const { id: raw } = await params;
   const [{ id, state, now, p, events }, { scope, keep }] = await Promise.all([getCtx(raw), scopeFrom(searchParams)]);
   if (!p) return null;
-  const [history, allSessions, afkSpans, mine] = await Promise.all([getPlayerHistory(id), getAllSessions(), getPlayerAfkSpans(id), getMine(raw)]);
+  const [history, allSessions, afkSpans, mine, lives] = await Promise.all([getPlayerHistory(id), getAllSessions(), getPlayerAfkSpans(id), getMine(raw), getYoutubeLives()]);
   const sparkHistory = thinHistory(history);
   const graphHref = graphHrefFor(id);
   const overlaps = overlapsFor(id, allSessions, now);
@@ -623,9 +626,15 @@ async function TimelineSection({ params, searchParams }: { params: Params; searc
   const serverSessions = allSessions.filter((session) => session.player === id);
   const strm = streams(mine, Boolean(p.live), p.liveSince, now, p.live?.login);
   // Sessions und Streams gemeinsam, neueste zuerst; die Überschneidung mit der anderen Art steht dabei
+  // Livestreams nur auf YouTube (kein Twitch-Stream zur selben Zeit)
+  const ytOnly: Session[] = lives
+    .filter((l) => l.player === id && !strm.some((s) => l.start < (s.end ? Date.parse(s.end) : now) && l.end > Date.parse(s.start)))
+    .map((l) => ({ start: new Date(l.start).toISOString(), end: new Date(l.end).toISOString(), seconds: (l.end - l.start) / 1000, videoId: l.id }));
   const phases: Phase[] = [
-    ...sess.map((s) => ({ ...s, kind: "server" as const, overlap: overlapSeconds(s, strm, now) })),
+    ...sess.map((s) => ({ ...s, kind: "server" as const, overlap: overlapSeconds(s, [...strm, ...ytOnly], now) })),
     ...strm.map((s) => ({ ...s, kind: "stream" as const, overlap: overlapSeconds(s, sess, now) })),
+    // Überschneidung mit allen gespeicherten Sessions (die Join/Leave-Liste im Speicher reicht nicht weit zurück)
+    ...ytOnly.map((s) => ({ ...s, kind: "youtube" as const, overlap: overlapSeconds(s, serverSessions.map((x) => ({ start: x.start, end: x.end, seconds: 0 })), now) })),
   ].sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
   // Verlauf: alles, woran der Spieler beteiligt ist – auch als Täter, Raid-Ziel, Schenker oder Kanal
   const isShown = await getFeedFilter();
@@ -763,17 +772,23 @@ async function TimelineSection({ params, searchParams }: { params: Params; searc
                     const with_ = s.kind === "server" ? companionsOf(id, s.start, s.end, allSessions, now) : [];
                     const shown = with_.slice(0, 8);
                     const extra =
-                      s.kind === "stream"
+                      s.kind !== "server"
                         ? [s.peak ? `Peak ${num(s.peak)} Zuschauer` : null, s.overlap > 0 ? `davon ${duration(s.overlap)} auf dem Server` : "nicht auf dem Server"].filter(Boolean).join(" · ")
                         : s.overlap > 0
-                          ? `davon ${duration(s.overlap)} live auf Twitch`
+                          ? `davon ${duration(s.overlap)} live`
                           : null;
                     return (
                       <li key={`${s.kind}${s.start}`} className={`sessions__${s.kind}`}>
                         <span>
-                          <span className="sessions__kind tag" data-tone={s.kind === "stream" ? METRIC_TONE.liveCount : METRIC_TONE.onlineCount}>
-                            {s.kind === "stream" ? "Stream" : "Server"}
-                          </span>{" "}
+                          {s.kind === "youtube" ? (
+                            <a className="sessions__kind tag" data-tone="youtube" href={`https://www.youtube.com/watch?v=${encodeURIComponent(s.videoId ?? "")}`} target="_blank" rel="noopener" title="Livestream auf YouTube ansehen">
+                              YouTube-Live
+                            </a>
+                          ) : (
+                            <span className="sessions__kind tag" data-tone={s.kind === "stream" ? METRIC_TONE.liveCount : METRIC_TONE.onlineCount}>
+                              {s.kind === "stream" ? "Stream" : "Server"}
+                            </span>
+                          )}{" "}
                           {dateTime(s.start)}
                           {s.end ? ` – ${dateTime(s.end).split(", ").pop()}` : " – jetzt"}
                           {extra && <span className="muted session-with">{extra}</span>}

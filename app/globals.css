@@ -1215,6 +1215,10 @@ a.st-chip-in[data-live="true"] {
   border-left: 4px solid var(--twitch);
   padding-left: 10px;
 }
+.sessions__youtube {
+  border-left: 4px solid var(--youtube);
+  padding-left: 10px;
+}
 .sessions__server {
   border-left: 4px solid var(--presence);
   padding-left: 10px;
@@ -2289,6 +2293,9 @@ a.spark-card--link:hover .eyebrow {
   bottom: 3px;
   height: 5px;
   background: var(--twitch);
+}
+.gantt__live--youtube {
+  background: var(--youtube);
 }
 .gantt__live-cursor {
   position: absolute;

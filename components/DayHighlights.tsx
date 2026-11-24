@@ -3,7 +3,7 @@ import { Fold } from "./Fold";
 import { DayPicker } from "./DayPicker";
 import { Explain } from "./Explain";
 import type { PlayerState } from "@/lib/types";
-import { EVENT_META } from "@/lib/events";
+import { EVENT_META, momentLink } from "@/lib/events";
 import { distance, duration, num, time } from "@/lib/format";
 import { BOARD_TONE, METRIC_TONE } from "@/lib/statTone";
 import { berlinDay, type DaySummary, type Highlight } from "@/lib/highlights";
@@ -102,7 +102,7 @@ export function DayHighlights({
               const { text, sub, other } = describe(h, players);
               const tone = h.kind === "kill" ? BOARD_TONE.deaths : EVENT_META[e.type].tone;
               const IconCmp = h.kind === "kill" ? Icon.sword : Icon[EVENT_ICON[e.type]];
-              const vod = typeof e.meta?.vodUrl === "string" ? e.meta.vodUrl : null;
+              const vod = momentLink(e)?.href ?? null;
               return (
                 <li key={`${h.kind}-${e.id}`} className="box hl__item" data-tone={tone}>
                   <time className="hl__time num" dateTime={e.at}>

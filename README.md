@@ -61,6 +61,7 @@ sich höchstens einmal pro Minute, solange der Tab sichtbar ist.
 | Follower-Zuwachs während der Serverzeit, Follower-Schübe | öffentliche Twitch-Followerstände je Messung |
 | Stream-Zeiten in Tracker-Lücken, beliebte Clips | Twitch-VODs und Clips (alle 3 Stunden) |
 | YouTube-Uploads zu CraftAttack 14 (Video, Short, Livestream) mit Aufrufen; nur Kanäle, die der Teilnehmer selbst verlinkt (`lib/youtubeChannels.ts`) | YouTube Data API v3 (alle 6 Stunden, rückwirkend ab `YOUTUBE_SINCE`) |
+| YouTube-Livestreams als Ersatz-Aufzeichnung: Twitch-VOD zuerst; ohne Twitch-VOD (gelöscht oder nur auf YouTube gestreamt) springen Zeitstrahl-Balken und Ereignisse (`meta.ytUrl`, `meta.vodGone`) an die Stelle im YouTube-Livestream | `youtube_videos` (lib/youtube.ts, lib/youtubeLive.ts) |
 
 Koordinaten liefert die API nicht; „wo“ heißt immer: auf dem Server, auf Twitch oder (Uploads) auf YouTube.
 

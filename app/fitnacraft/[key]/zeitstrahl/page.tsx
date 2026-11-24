@@ -199,7 +199,7 @@ async function Timeline(props: PageProps<"/fitnacraft/[key]/zeitstrahl">) {
                         return (
                           <GanttLiveSegment
                             key={`l${k}`}
-                            vodId={s && offset !== null && offset >= 0 ? s.vodId : null}
+                            vod={s?.vodId && offset !== null && offset >= 0 ? { kind: "twitch", id: s.vodId } : null}
                             startOffset={offset !== null && offset >= 0 ? offset : null}
                             start={x.a}
                             end={x.b}

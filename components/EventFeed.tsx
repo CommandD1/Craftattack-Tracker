@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BOARD_KEYS, type BoardKey, type EventType, type TrackerEvent } from "@/lib/types";
-import { EVENT_META, eventBadge, eventDetailHref, eventHref, isShownEvent, sharedChatPlayers } from "@/lib/events";
+import { EVENT_META, eventBadge, eventDetailHref, eventHref, isShownEvent, momentLink, sharedChatPlayers } from "@/lib/events";
 import { time } from "@/lib/format";
 import { Head } from "./Head";
 import { BOARD_ICON, EVENT_ICON, Icon } from "./Icons";
@@ -180,10 +180,16 @@ function EventTile({ e, focus, highlight, hrefFor }: { e: TrackerEvent; focus?: 
   const sentence = [e.player ? `${e.playerName ?? e.player} ${text}` : text, sub, estimated ? "Geschätzt (Datenlücke)" : null].filter(Boolean).join(" · ");
   const badge = e.type === "stream_title" ? null : eventBadge(e);
   const info = detail(e);
-  const vod = typeof e.meta?.vodUrl === "string" ? e.meta.vodUrl : null;
+  const moment = momentLink(e);
+  const vod = moment && !moment.youtube ? moment.href : null;
+  const ytMoment = moment?.youtube ? moment.href : null;
   const liveUrl = typeof e.meta?.liveUrl === "string" ? e.meta.liveUrl : null;
   const ytUrl = e.type === "youtube_upload" && typeof e.meta?.url === "string" ? e.meta.url : null;
-  const link = ytUrl ? { href: ytUrl, title: "Auf YouTube ansehen", live: false, youtube: true } : liveUrl ? { href: liveUrl, title: "Läuft gerade – Stream auf Twitch ansehen", live: true } : vod ? { href: vod, title: e.type === "clip" ? "Clip auf Twitch ansehen" : e.type === "death" || e.type === "chat" ? "Diesen Moment im VOD ansehen" : "Aufzeichnung auf Twitch ansehen", live: false } : null;
+  const link = ytUrl
+    ? { href: ytUrl, title: "Auf YouTube ansehen", live: false, youtube: true }
+    : ytMoment && !liveUrl
+      ? { href: ytMoment, title: "Diesen Moment im YouTube-Livestream ansehen", live: false, youtube: true }
+      : liveUrl ? { href: liveUrl, title: "Läuft gerade – Stream auf Twitch ansehen", live: true } : vod ? { href: vod, title: e.type === "clip" ? "Clip auf Twitch ansehen" : e.type === "death" || e.type === "chat" ? "Diesen Moment im VOD ansehen" : "Aufzeichnung auf Twitch ansehen", live: false } : null;
   const isShared = e.type === "shared_chat_start" || e.type === "shared_chat_end";
   const withHead = Boolean(e.player) && !SERVER_TYPES.has(e.type) && !isShared;
   // Geteilter Chat: Köpfe aller beteiligten Spieler (höchstens vier), auf jeder Seite

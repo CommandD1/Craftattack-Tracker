@@ -10,6 +10,8 @@ import { dayRange } from "@/lib/dayRange";
 import { Timelapse } from "@/components/Timelapse";
 import { GanttLiveSegment } from "@/components/GanttLiveSegment";
 import { findVodAt } from "@/lib/twitch";
+import { getYoutubeLives } from "@/lib/youtubeLive";
+import type { LiveVod } from "@/components/GanttLiveSegment";
 import { Head } from "@/components/Head";
 import { HowLink } from "@/components/HowLink";
 
@@ -40,12 +42,35 @@ async function Timeline(props: PageProps<"/zeitstrahl">) {
   const [{ nav, rows: unsorted, now }, lapse] = await Promise.all([getDayTimeline(tag), getTimelapse(tag)]);
   // Nach gewähltem Wert sortieren, Gleichstand nach Spielzeit, dann Name
   const rows = [...unsorted].sort((a, b) => sortValue(b, sort) - sortValue(a, sort) || b.seconds - a.seconds || a.name.localeCompare(b.name, "de"));
+  const lives = await getYoutubeLives();
+  /** YouTube-Livestream des Spielers, der sich mit [a, b] überschneidet, mit Position am Zeitpunkt a */
+  const ytOver = (player: string, a: number, b: number): { vod: LiveVod; offset: number } | null => {
+    const l = lives.find((x) => x.player === player && x.start < b && x.end > a);
+    return l ? { vod: { kind: "youtube", id: l.id }, offset: Math.max(0, (a - l.start) / 1000) } : null;
+  };
+  // Twitch-VOD zuerst; fehlt es (gelöscht oder nie gespeichert), der gleichzeitige YouTube-Livestream
   const vodOffsets = await Promise.all(
     rows.map(async (r) => {
       const login = state.players[r.id]?.twitchLogin ?? state.players[r.id]?.live?.login;
-      if (!login) return r.live.map(() => null);
-      return Promise.all(r.live.map(([a]) => findVodAt(login, a).catch(() => null)));
+      return Promise.all(
+        r.live.map(async ([a, b]) => {
+          const tw = login ? await findVodAt(login, a).catch(() => null) : null;
+          if (tw) return { vod: { kind: "twitch", id: tw.vodId } as LiveVod, offset: tw.offset };
+          return ytOver(r.id, a, b);
+        }),
+      );
     }),
+  );
+  // Streams nur auf YouTube (kein Twitch-Stream zur selben Zeit), auf den Tag zugeschnitten
+  const ytOnly = rows.map((r) =>
+    lives
+      .filter((x) => x.player === r.id && x.start < nav.to && x.end > nav.from && !r.live.some(([a, b]) => x.start < b && x.end > a))
+      .map((x) => {
+        const a = Math.max(x.start, nav.from);
+        const b = Math.min(x.end, nav.to, now);
+        return { a, b, vod: { kind: "youtube", id: x.id } as LiveVod, offset: (a - x.start) / 1000, title: x.title };
+      })
+      .filter((x) => x.b > x.a),
   );
   const sortHref = (key: SortKey) => {
     const q = new URLSearchParams();
@@ -140,6 +165,9 @@ async function Timeline(props: PageProps<"/zeitstrahl">) {
               <li>
                 <i style={{ background: "var(--twitch)" }} /> live auf Twitch
               </li>
+              <li>
+                <i style={{ background: "var(--youtube)" }} /> live nur auf YouTube
+              </li>
               {nowPct !== null && (
                 <li>
                   <i style={{ background: "var(--ink)" }} /> jetzt
@@ -174,10 +202,23 @@ async function Timeline(props: PageProps<"/zeitstrahl">) {
                       {r.afk.map(([a, b, kind], k) => (
                         <span key={`a${k}`} className="gantt__afk tip" data-kind={kind} style={{ left: `${pct(a)}%`, width: `${Math.max(0.3, pct(b) - pct(a))}%` }} data-edge={edge(a, b)} data-tip={`${r.name} · ${kind ? AFK_TIP[kind] : "AFK"} ${fmtSpan(a, b)} · ${duration((b - a) / 1000)}`} tabIndex={0} />
                       ))}
+                      {ytOnly[rowIndex].map((y, k) => (
+                        <GanttLiveSegment
+                          key={`y${k}`}
+                          youtube
+                          vod={y.vod}
+                          startOffset={y.offset}
+                          start={y.a}
+                          end={y.b}
+                          style={{ left: `${pct(y.a)}%`, width: `${Math.max(0.3, pct(y.b) - pct(y.a))}%` }}
+                          edge={edge(y.a, y.b)}
+                          tip={`${r.name} · live auf YouTube ${fmtSpan(y.a, y.b)} · ${duration((y.b - y.a) / 1000)} · „${y.title}“`}
+                        />
+                      ))}
                       {r.live.map(([a, b], k) => (
                         <GanttLiveSegment
                           key={`l${k}`}
-                          vodId={vodOffsets[rowIndex]?.[k]?.vodId ?? null}
+                          vod={vodOffsets[rowIndex]?.[k]?.vod ?? null}
                           startOffset={vodOffsets[rowIndex]?.[k]?.offset ?? null}
                           start={a}
                           end={b}
