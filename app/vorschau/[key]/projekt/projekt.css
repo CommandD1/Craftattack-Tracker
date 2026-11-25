@@ -1,0 +1,58 @@
+/* Versteckte Seite /vorschau/<key>/projekt (Projektkarte, Zahlen, Verlauf) */
+.pj-head { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between; margin-bottom: 16px }
+.pj-filters { display: flex; flex-wrap: wrap; gap: 8px }
+.pj-filters button { cursor: pointer; font: inherit }
+.pj-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); gap: 24px; align-items: start }
+@media (width <= 900px) { .pj-layout { grid-template-columns: minmax(0, 1fr) } }
+.pj-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch }
+.pj-map { display: block; width: 100%; min-width: 760px; height: auto; background: var(--white); border: 3px solid var(--ink) }
+.pj-col { font-family: var(--font-display); font-size: 15px; text-transform: uppercase; fill: var(--ink); opacity: 0.6 }
+
+.pj-edge__line { fill: none; stroke: color-mix(in srgb, var(--ink) 12%, transparent); stroke-width: 2; transition: stroke 0.2s }
+.pj-edge__flow { fill: none; stroke: var(--ink); stroke-dasharray: 3 15; opacity: 0.12; animation: pj-flow linear infinite; transition: opacity 0.2s }
+.pj-edge[data-lit] .pj-edge__flow { opacity: 0.85 }
+.pj-edge[data-lit] .pj-edge__line { stroke: color-mix(in srgb, var(--ink) 30%, transparent) }
+@keyframes pj-flow { to { stroke-dashoffset: -36 } }
+
+.pj-node { cursor: pointer; transition: opacity 0.2s; outline: none }
+.pj-node[data-dim] { opacity: 0.25 }
+.pj-node__shadow { fill: var(--ink) }
+.pj-node__box { fill: var(--white); stroke: var(--ink); stroke-width: 3; transition: transform 0.15s }
+.pj-node:hover .pj-node__box, .pj-node:focus-visible .pj-node__box { transform: translate(-2px, -2px) }
+.pj-node[data-sel] .pj-node__box { fill: color-mix(in srgb, var(--gold) 35%, var(--white)) }
+.pj-node__label { font-family: var(--font-display); font-size: 16px; fill: var(--ink) }
+.pj-node__kicker { font-size: 12.5px; fill: var(--ink); opacity: 0.65; font-family: var(--font-body) }
+
+.pj-panel { display: grid; gap: 10px; position: sticky; top: 90px }
+.pj-panel .eyebrow i { display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: 0 }
+.pj-panel p { margin: 0 }
+.pj-facts { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; font-weight: 600 }
+.pj-links { display: flex; flex-wrap: wrap; gap: 8px }
+.pj-hint { font-size: 0.8rem; opacity: 0.6 }
+
+.pj-counts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 16px; margin-top: 16px }
+.pj-count { border-left: 6px solid var(--tone); padding: 6px 0 6px 14px; display: grid; gap: 2px }
+.pj-count strong { font-family: var(--font-display); font-size: clamp(1.8rem, 5vw, 2.6rem); line-height: 1.05; font-variant-numeric: tabular-nums }
+.pj-count small { opacity: 0.65 }
+
+.pj-lead { max-width: 75ch; margin: 8px 0 16px }
+.pj-time { display: block; width: 100%; min-width: 760px; height: auto; background: var(--white); border: 3px solid var(--ink) }
+.pj-day { cursor: pointer }
+.pj-day__hit { fill: transparent }
+.pj-day:hover .pj-day__hit { fill: color-mix(in srgb, var(--ink) 5%, transparent) }
+.pj-day[data-sel] .pj-day__hit { fill: color-mix(in srgb, var(--gold) 30%, transparent) }
+.pj-pr { fill: var(--amethyst); transition: fill 0.15s }
+.pj-pr:hover { fill: var(--ink) }
+.pj-flagpole { stroke: var(--ink); stroke-width: 1.5 }
+.pj-axis { font-size: 13px; fill: var(--ink); font-family: var(--font-body) }
+.pj-tip { background: var(--ink); color: var(--paper); font-size: 12.5px; line-height: 1.3; padding: 6px 8px; max-height: 58px; overflow: hidden }
+.pj-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0 16px; font-size: 0.85rem }
+.pj-legend i { display: inline-block; width: 12px; height: 10px; margin-right: 6px }
+.pj-dayinfo { display: grid; gap: 8px }
+.pj-dayinfo ul { margin: 0; padding-left: 1.1em; display: grid; gap: 4px }
+.pj-dayinfo p { margin: 0 }
+
+@media (prefers-reduced-motion: reduce) {
+  .pj-edge__flow { animation: none }
+  .pj-node, .pj-node__box, .pj-edge__flow { transition: none }
+}
