@@ -40,7 +40,7 @@ async function Inner(props: PageProps<"/vorschau/[key]/voicechat">) {
       <section className="block page-head" data-tone="ender">
         <div className="wrap">
           <p className="eyebrow">
-            Vorschau · Rückblick-Video · <Link href={`${root}/gesichter`}>Gesichter zuordnen</Link>
+            Vorschau · Rückblick-Video · <Link href={`${root}/gesichter`}>Gesichter zuordnen</Link> · <Link href={`${root}/voicechat/zeitstrahl`}>Zeitstrahl je Tag</Link>
           </p>
           <h1 className="t-1">Voicechat</h1>
           <p>

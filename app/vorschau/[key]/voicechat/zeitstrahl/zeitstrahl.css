@@ -1,0 +1,41 @@
+/* Versteckte Seite /vorschau/<key>/voicechat/zeitstrahl */
+.vt { display: grid; gap: 16px; min-width: 0 }
+.vt-days { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px }
+.vt-days a { padding: 4px 8px; border: 2px solid var(--ink); text-decoration: none; color: inherit; font-size: 0.85rem; background: var(--paper) }
+.vt-days a[aria-current] { background: var(--ink); color: var(--paper) }
+.vt-bar { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center }
+.vt-seg { display: inline-flex }
+.vt-seg button { border: 2px solid var(--ink); background: var(--paper); color: inherit; padding: 3px 10px; font: inherit; font-size: 0.85rem; cursor: pointer }
+.vt-seg button + button { border-left: 0 }
+.vt-seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper) }
+.vt-scroll { overflow: auto; max-height: 75vh; border: 2px solid color-mix(in srgb, var(--ink) 15%, transparent); background: var(--paper) }
+.vt-svg { display: block }
+.vt-hour { stroke: color-mix(in srgb, var(--ink) 12%, transparent); stroke-width: 1 }
+.vt-tick { font-size: 10px; fill: currentColor; opacity: 0.7 }
+.vt-name { font-size: 11px; fill: currentColor }
+.vt-name[data-sel] { font-weight: 700 }
+.vt-cell { cursor: pointer }
+.vt-conf { stroke: #d62728; stroke-width: 1.5 }
+.vt-cov { fill: color-mix(in srgb, var(--ink) 30%, transparent) }
+.vt-mark { fill: none; stroke: var(--ink); stroke-width: 2 }
+.vt-legend { font-size: 0.85rem; margin: 0 }
+.vt-k { display: inline-block; width: 12px; height: 10px; vertical-align: middle }
+.vt-k--conf { border: 2px solid #d62728 }
+.vt-conflicts ol { columns: 3 220px; font-size: 0.9rem; margin: 8px 0 0 }
+.vt-panel { display: grid; gap: 10px }
+.vt-panel__head { display: flex; justify-content: space-between; align-items: center; gap: 12px }
+.vt-lists { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)) }
+.vt-list { border: 2px solid color-mix(in srgb, var(--ink) 15%, transparent); padding: 8px 10px; min-width: 0 }
+.vt-list__who { margin: 0 0 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline }
+.vt-list ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px }
+.vt-list li { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 0.9rem }
+.vt-list li[data-hit] { background: color-mix(in srgb, var(--gold, #f5c542) 25%, transparent) }
+.vt-list li[data-kind="o"] .vt-head__name, .vt-list li[data-kind="j"], .vt-list li[data-kind="x"] { opacity: 0.6 }
+.vt-face { width: 20px; height: 20px; image-rendering: pixelated; flex: none }
+.vt-face--none { display: inline-grid; place-items: center; background: color-mix(in srgb, var(--ink) 12%, transparent); font-size: 0.75rem }
+.vt-badge { font-size: 0.75rem; opacity: 0.7 }
+.vt-list li[data-hand] .vt-badge { opacity: 1; font-weight: 700 }
+.vt-edit { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 0 4px }
+.vt-scope { border: 0; padding: 0; margin: 0; display: grid; gap: 2px; font-size: 0.85rem; flex-basis: 100% }
+.vt-fixes ul { margin: 8px 0; padding-left: 18px; display: grid; gap: 4px; font-size: 0.9rem }
+.linkish { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-decoration: underline; cursor: pointer }

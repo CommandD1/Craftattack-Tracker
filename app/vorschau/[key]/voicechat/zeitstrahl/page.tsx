@@ -1,0 +1,71 @@
+import Link from "next/link";
+import { Suspense } from "react";
+import type { Metadata } from "next";
+import { PageSkeleton } from "@/components/Skeletons";
+import { VoiceTimeline } from "@/components/VoiceTimeline";
+import { previewGate } from "@/lib/preview";
+import { isDay, loadVoiceIndex } from "@/lib/voiceDays";
+import "../voicechat.css";
+import "./zeitstrahl.css";
+
+export const metadata: Metadata = { title: "Voicechat-Zeitstrahl" };
+
+const dayLabel = (d: string) => new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "numeric", month: "numeric", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`));
+
+async function Inner(props: PageProps<"/vorschau/[key]/voicechat/zeitstrahl">) {
+  const root = await previewGate(props.params);
+  const sp = await props.searchParams;
+  const index = await loadVoiceIndex();
+  const base = `${root}/voicechat/zeitstrahl`;
+  const days = index?.days ?? [];
+  const wanted = typeof sp.tag === "string" && isDay(sp.tag) ? sp.tag : null;
+  const day = days.find((d) => d.day === wanted)?.day ?? [...days].sort((a, b) => b.withGroup - a.withGroup)[0]?.day ?? null;
+  return (
+    <>
+      <section className="block page-head" data-tone="ender">
+        <div className="wrap">
+          <p className="eyebrow">
+            Vorschau · Rückblick-Video · <Link href={`${root}/voicechat`}>Voicechat</Link> · <Link href={`${root}/gesichter`}>Gesichter zuordnen</Link>
+          </p>
+          <h1 className="t-1">Voicechat-Zeitstrahl</h1>
+          <p className="lead">
+            Wer wann mit wem im Voicechat war, je Spieltag (06:00 bis 06:00). Konflikte (rot umrandet) zeigen, wo die Listen verschiedener Streamer derselben Gruppe nicht
+            zusammenpassen – meist ein falsch erkannter Kopf. Dort anklicken, in den Listen den falschen Kopf ändern; das gilt sofort hier und zur
+            nächsten vollen Stunde im Scan.
+          </p>
+        </div>
+      </section>
+      <section className="block block--tight">
+        <div className="wrap">
+          {!index || !day ? (
+            <p>Noch keine Tagesdaten (scripts/chat/export-voice-days.mjs im Videoprojekt).</p>
+          ) : (
+            <>
+              <nav className="vt-days" aria-label="Tag">
+                {days.map((d) => (
+                  <Link
+                    key={d.day}
+                    href={`${base}?tag=${d.day}`}
+                    aria-current={d.day === day ? "page" : undefined}
+                    title={`${d.withGroup.toLocaleString("de-DE")} Bilder mit Gruppe${d.open != null ? ` · ${d.open.toLocaleString("de-DE")} offene Köpfe` : ""}`}
+                  >
+                    {dayLabel(d.day)}
+                  </Link>
+                ))}
+              </nav>
+              <VoiceTimeline key={day} day={day} players={index.players} endpoint={`${base}/daten`} fileBase={`${base}/tag`} />
+            </>
+          )}
+        </div>
+      </section>
+    </>
+  );
+}
+
+export default function Page(props: PageProps<"/vorschau/[key]/voicechat/zeitstrahl">) {
+  return (
+    <Suspense fallback={<PageSkeleton eyebrow="Vorschau" title="Voicechat-Zeitstrahl" figs={0} />}>
+      <Inner {...props} />
+    </Suspense>
+  );
+}
