@@ -187,4 +187,5 @@ export const PROJECT_MILESTONES: ProjectMilestone[] = [
   { at: "2026-11-16T12:00", title: "Voicechat-Auswertung", text: "Wer war mit wem in einer Gruppe? Köpfe über die Reihenfolge der Liste bei anderen Streamern gefolgert.", area: "video" },
   { at: "2026-11-21T12:00", title: "Chat-Bereinigung", text: "Gleiche Zeilen aus mehreren Streams zusammengeführt und Spielern zugeordnet, Rest per Hand.", area: "video" },
   { at: "2026-11-24T20:12", title: "YouTube", text: "Uploads und Livestreams der Teilnehmer über die offizielle YouTube-Schnittstelle; YouTube-Streams als Ersatz für gelöschte Twitch-VODs.", area: "youtube" },
+  { at: "2026-11-25T23:00", title: "Voicechat-Zeitstrahl", text: "Je Spieltag, wer mit wem in der Gruppe war; Konflikte zwischen den Listen zeigen falsch erkannte Köpfe, die sich per Klick korrigieren lassen.", area: "video" },
 ];
