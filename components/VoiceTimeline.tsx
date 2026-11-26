@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PlayerSearch } from "./PlayerSearch";
 import { faceUrl } from "@/lib/faceBmp";
@@ -10,6 +12,8 @@ import type { VoiceDay, VoiceFaces, VoiceFix, VoiceHead, VoiceRun } from "@/lib/
  * Streamer die Liste genommen, die er am längsten zeigte; Listen mit gemeinsamen Spielern bilden eine Gruppe. Zeigen
  * zwei Streamer derselben Gruppe verschiedene vollständig erkannte Listen, ist das ein Konflikt (meist ein falsch
  * erkannter Kopf oder ein Wechsel innerhalb der Minute). Klick öffnet die Listen dieser Minute zum Korrigieren.
+ * Ohne `player` erscheint erst die Spielerauswahl; mit `player` nur dieser Spieler und alle, mit denen er an dem Tag
+ * in einer Gruppe war (Zeiten ohne ihn blass), `player = "alle"` zeigt alles auf einmal.
  */
 
 type Players = Record<string, { name: string; face: string | null }>;
@@ -20,6 +24,7 @@ type Group = { id: number; ids: Set<string>; src: Source[]; conflict: Set<string
 const PALETTE = ["#4e79a7", "#f28e2b", "#59a14f", "#b07aa1", "#edc948", "#76b7b2", "#ff9da7", "#9c755f", "#86bcb6", "#d37295", "#a0cbe8", "#8cd17d"];
 const PX = 2; // px je Minute
 const ROW = 16;
+const MIN_SHARED = 15; // Spielerseite: Mitspieler mit weniger gemeinsamen Minuten erst auf Wunsch
 const LEFT = 130;
 const KIND: Record<VoiceHead[1], string> = { p: "erkannt", i: "gefolgert", o: "offen", j: "kein Kopf", x: "fremd" };
 // Minuten ab Tagesbeginn (06:00) → Uhrzeit; der Tag beginnt laut Export immer um 06:00 Berliner Zeit
@@ -27,15 +32,32 @@ const hm = (m: number) => {
   const c = m + 360;
   return `${String(Math.floor(c / 60) % 24).padStart(2, "0")}:${String(c % 60).padStart(2, "0")}`;
 };
+const dur = (m: number) => (m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")} min` : `${m} min`);
 const hms = (s: number) => `${Math.floor(s / 3600)}h${Math.floor((s % 3600) / 60)}m${s % 60}s`;
 
-export function VoiceTimeline({ day, players, endpoint, fileBase }: { day: string; players: Players; endpoint: string; fileBase: string }) {
+export function VoiceTimeline({
+  day,
+  players,
+  endpoint,
+  fileBase,
+  base,
+  player,
+}: {
+  day: string;
+  players: Players;
+  endpoint: string;
+  fileBase: string;
+  /** Seite ohne Suchparameter, für Links zu Spielerseiten */
+  base: string;
+  player: string | null;
+}) {
+  const router = useRouter();
   const [data, setData] = useState<VoiceDay | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [fixes, setFixes] = useState<VoiceFix[]>([]);
   const [faces, setFaces] = useState<VoiceFaces | null>(null);
   const [sel, setSel] = useState<{ p: string; m: number } | null>(null);
-  const [only, setOnly] = useState<"alle" | "konflikte">("alle");
+  const [only, setOnly] = useState<"wichtig" | "alle" | "konflikte">("wichtig");
   const facesLoading = useRef(false);
 
   useEffect(() => {
@@ -93,24 +115,93 @@ export function VoiceTimeline({ day, players, endpoint, fileBase }: { day: strin
   }, [data, pending]);
 
   const model = useMemo(() => (data ? build(data, headAt) : null), [data, headAt]);
+  const view = useMemo(() => (model ? viewOf(model, player && player !== "alle" ? player : null) : null), [model, player]);
+  const href = (p: string) => `${base}?tag=${day}&spieler=${encodeURIComponent(p)}`;
 
   if (err) return <p className="box" data-tone="redstone">Tag konnte nicht geladen werden: {err}</p>;
-  if (!data || !model) return <p className="muted">Lade {day} …</p>;
+  if (!data || !model || !view) return <p className="muted">Lade {day} …</p>;
 
   const name = (id: string | null) => (id ? (players[id]?.name ?? id) : "?");
-  const rows = only === "konflikte" ? model.rows.filter((r) => model.conflictMin.get(r)) : model.rows;
-  const width = (model.to - model.from + 1) * PX;
+
+  // Startansicht: Spieler wählen statt alles auf einmal
+  if (!player) {
+    const list = [...model.rows].sort((x, y) => (model.minutes.get(y) ?? 0) - (model.minutes.get(x) ?? 0));
+    return (
+      <div className="vt">
+        <div className="vt-bar">
+          <span>
+            {model.rows.length} Spieler in Gruppen · {model.groupCount} Gruppen · <b>{model.conflicts.length}</b> Konflikte (ab 2 Min)
+          </span>
+          <Link href={href("alle")} className="btn btn--small" data-tone="white">
+            Alle auf einmal
+          </Link>
+        </div>
+        <p className="muted vt-legend">Spieler wählen: zeigt nur ihn und alle, mit denen er an diesem Tag im Voicechat war. Sortiert nach Zeit in Gruppen.</p>
+        <ul className="vt-pick">
+          {list.map((p) => {
+            const c = model.conflictMin.get(p) ?? 0;
+            const face = players[p]?.face;
+            return (
+              <li key={p}>
+                <Link href={href(p)}>
+                  {face ? <img src={faceUrl(face)} alt="" width={20} height={20} className="vt-face" /> : <span className="vt-face vt-face--none">?</span>}
+                  <span className="vt-pick__text">
+                    <span className="vt-pick__name">{name(p)}</span>
+                    <span className="vt-badge">
+                      {dur(model.minutes.get(p) ?? 0)}
+                      {c > 0 && <b className="vt-pick__conf"> · {c} Min Konflikt</b>}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    );
+  }
+
+  const one = view.player;
+  if (one && !model.rows.includes(one))
+    return (
+      <div className="vt">
+        <p>
+          {name(one)} war am {day} in keiner erkannten Gruppe. <Link href={`${base}?tag=${day}`}>Andere Spieler</Link>
+        </p>
+      </div>
+    );
+  const rows =
+    only === "konflikte"
+      ? view.rows.filter((r) => model.conflictMin.get(r))
+      : only === "wichtig" && one
+        ? view.rows.filter((r) => r === one || (view.shared.get(r) ?? 0) >= MIN_SHARED)
+        : view.rows;
+  const width = (view.to - view.from + 1) * PX;
   const hours: number[] = [];
-  for (let h = Math.ceil(model.from / 60) * 60; h <= model.to; h += 60) hours.push(h);
+  for (let h = Math.ceil(view.from / 60) * 60; h <= view.to; h += 60) hours.push(h);
 
   return (
     <div className="vt">
       <div className="vt-bar">
         <span>
-          {model.rows.length} Spieler in Gruppen · {model.groupCount} Gruppen · <b>{model.conflicts.length}</b> Konflikte (ab 2 Min) · {model.openMinutes} Minuten mit offenen Köpfen
+          <Link href={`${base}?tag=${day}`}>← Spielerauswahl</Link> ·{" "}
+          {one ? (
+            <>
+              <b>{name(one)}</b>: {dur(model.minutes.get(one) ?? 0)} in Gruppen · mit {view.rows.length - 1} Spielern · <b>{view.conflicts.length}</b> eigene Konflikte (ab 2 Min)
+            </>
+          ) : (
+            <>
+              {model.rows.length} Spieler in Gruppen · {model.groupCount} Gruppen · <b>{model.conflicts.length}</b> Konflikte (ab 2 Min) · {model.openMinutes} Minuten mit offenen Köpfen
+            </>
+          )}
         </span>
         <span className="vt-seg" role="group" aria-label="Zeilen">
-          <button type="button" aria-pressed={only === "alle"} onClick={() => setOnly("alle")}>
+          {one && (
+            <button type="button" aria-pressed={only === "wichtig"} onClick={() => setOnly("wichtig")} title={`nur wer mindestens ${MIN_SHARED} Minuten mit ${name(one)} in einer Gruppe war`}>
+              Ab {MIN_SHARED} Min zusammen
+            </button>
+          )}
+          <button type="button" aria-pressed={only === "alle" || (!one && only === "wichtig")} onClick={() => setOnly("alle")}>
             Alle
           </button>
           <button type="button" aria-pressed={only === "konflikte"} onClick={() => setOnly("konflikte")}>
@@ -123,60 +214,70 @@ export function VoiceTimeline({ day, players, endpoint, fileBase }: { day: strin
         <svg width={LEFT + width + 10} height={rows.length * ROW + 24} className="vt-svg" role="img" aria-label={`Voicechat-Gruppen am ${day}`}>
           {hours.map((h) => (
             <g key={h}>
-              <line x1={LEFT + (h - model.from) * PX} x2={LEFT + (h - model.from) * PX} y1={14} y2={rows.length * ROW + 18} className="vt-hour" />
-              <text x={LEFT + (h - model.from) * PX + 2} y={10} className="vt-tick">
+              <line x1={LEFT + (h - view.from) * PX} x2={LEFT + (h - view.from) * PX} y1={14} y2={rows.length * ROW + 18} className="vt-hour" />
+              <text x={LEFT + (h - view.from) * PX + 2} y={10} className="vt-tick">
                 {hm(h)}
               </text>
             </g>
           ))}
           {rows.map((p, i) => {
             const y = 18 + i * ROW;
-            const cov = model.coverage.get(p) ?? [];
-            const segs = model.segs.get(p) ?? [];
+            const cov = (model.coverage.get(p) ?? []).filter(([a, b]) => b >= view.from && a <= view.to);
+            const segs = view.segs(p);
             return (
               <g key={p}>
-                <text x={LEFT - 6} y={y + 11} textAnchor="end" className="vt-name" data-sel={sel?.p === p || undefined}>
+                {p === one && <rect x={0} y={y - 1} width={LEFT + width + 10} height={ROW} className="vt-me" />}
+                <text
+                  x={LEFT - 6}
+                  y={y + 11}
+                  textAnchor="end"
+                  className="vt-name vt-name--link"
+                  data-sel={sel?.p === p || p === one || undefined}
+                  onClick={() => p !== one && router.push(href(p))}
+                >
+                  <title>{p === one ? name(p) : `Seite von ${name(p)} öffnen`}</title>
                   {name(p)}
                 </text>
                 {cov.map(([a, b]) => (
-                  <rect key={`c${a}`} x={LEFT + (a - model.from) * PX} y={y + ROW - 4} width={(b - a + 1) * PX} height={2} className="vt-cov" />
+                  <rect key={`c${a}`} x={LEFT + (Math.max(a, view.from) - view.from) * PX} y={y + ROW - 4} width={(Math.min(b, view.to) - Math.max(a, view.from) + 1) * PX} height={2} className="vt-cov" />
                 ))}
-                {segs.map(([a, b, c]) => (
+                {segs.map(([a, b, c, apart]) => (
                   <rect
                     key={a}
-                    x={LEFT + (a - model.from) * PX}
+                    x={LEFT + (a - view.from) * PX}
                     y={y + 1}
                     width={(b - a + 1) * PX}
                     height={ROW - 6}
                     fill={PALETTE[c.g % PALETTE.length]}
-                    opacity={c.inf ? 0.45 : 1}
-                    className={c.c ? "vt-cell vt-conf" : "vt-cell"}
+                    opacity={apart ? 0.15 : c.inf ? 0.45 : 1}
+                    className={c.c && !apart ? "vt-cell vt-conf" : "vt-cell"}
                     onClick={(e) => {
                       const box = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect();
-                      const m = model.from + Math.floor((e.clientX - box.left - LEFT) / PX);
+                      const m = view.from + Math.floor((e.clientX - box.left - LEFT) / PX);
                       setSel({ p, m: Math.max(a, Math.min(b, m)) });
                     }}
                   >
-                    <title>{`${name(p)} ${hm(a)}–${hm(b + 1)}: ${[...(model.groupAt(a, p)?.ids ?? [])].map(name).join(", ")}${c.c ? " · Konflikt" : ""}${c.inf ? " · nur gefolgert" : ""}`}</title>
+                    <title>{`${name(p)} ${hm(a)}–${hm(b + 1)}: ${[...(model.groupAt(a, p)?.ids ?? [])].map(name).join(", ")}${c.c ? " · Konflikt" : ""}${c.inf ? " · nur gefolgert" : ""}${apart ? ` · ohne ${name(one)}` : ""}`}</title>
                   </rect>
                 ))}
-                {sel?.p === p && <rect x={LEFT + (sel.m - model.from) * PX - 1} y={y - 1} width={PX + 2} height={ROW - 2} className="vt-mark" />}
+                {sel?.p === p && <rect x={LEFT + (sel.m - view.from) * PX - 1} y={y - 1} width={PX + 2} height={ROW - 2} className="vt-mark" />}
               </g>
             );
           })}
         </svg>
       </div>
       <p className="muted vt-legend">
+        {one && <>Oben {name(one)}, darunter alle, mit denen er an dem Tag in einer Gruppe war (sortiert nach gemeinsamer Zeit, erst ab {MIN_SHARED} Min, „Alle“ zeigt auch kürzere; ganz blass = gerade ohne {name(one)}, Name anklicken = dessen Seite) · </>}
         Farbe = Gruppe (bleibt gleich, solange die Gruppe ungefähr dieselbe ist) · blass = nur gefolgert · <span className="vt-k vt-k--conf" /> Konflikt: Streamer
         derselben Gruppe zeigen verschiedene vollständige Listen · grauer Strich = dieser Spieler wurde selbst gescannt (kein Balken darüber = allein).
         Klick auf einen Balken öffnet die Listen dieser Minute.
       </p>
 
-      {model.conflicts.length > 0 && (
-        <details className="vt-conflicts">
-          <summary>Konflikte nach Dauer ({model.conflicts.length})</summary>
+      {view.conflicts.length > 0 && (
+        <details className="vt-conflicts" open={!!one}>
+          <summary>Konflikte nach Dauer ({view.conflicts.length})</summary>
           <ol>
-            {model.conflicts.slice(0, 80).map((c) => (
+            {view.conflicts.slice(0, 80).map((c) => (
               <li key={`${c.p}-${c.a}`}>
                 <button type="button" className="linkish" onClick={() => setSel({ p: c.p, m: c.a })}>
                   {name(c.p)} {hm(c.a)}–{hm(c.b + 1)}
@@ -204,6 +305,7 @@ export function VoiceTimeline({ day, players, endpoint, fileBase }: { day: strin
 
       <section className="vt-fixes">
         <h2 className="t-3">Korrekturen an diesem Tag ({fixes.length})</h2>
+        {one && <p className="muted">Alle Korrekturen des Tages, nicht nur die von {name(one)}.</p>}
         {fixes.length === 0 ? (
           <p className="muted">Noch keine.</p>
         ) : (
@@ -388,7 +490,59 @@ function build(d: VoiceDay, headAt: (s: string, run: VoiceRun, k: number, h: Voi
   const ids = new Set<number>();
   for (const gs of groupsByMin) for (const g of gs) ids.add(g.id);
   const groupAt = (m: number, p: string) => groupsByMin[m - from]?.find((g) => g.ids.has(p)) ?? null;
-  return { from, to, rows, segs, coverage, conflicts: longConflicts, conflictMin, groupCount: ids.size, openMinutes, groupAt, groupsByMin };
+  const minutes = new Map<string, number>();
+  for (const [p, row] of cells) minutes.set(p, row.reduce((n, c) => n + (c ? 1 : 0), 0));
+  return { from, to, rows, segs, cells, coverage, conflicts: longConflicts, conflictMin, minutes, groupCount: ids.size, openMinutes, groupAt, groupsByMin };
+}
+
+type Seg = [number, number, Cell, boolean];
+
+/**
+ * Ansicht für einen Spieler: er oben, darunter alle, mit denen er in einer Gruppe war (nach gemeinsamer Zeit), Zeitachse
+ * auf seinen Tag zugeschnitten; bei den anderen markiert `apart` die Minuten ohne ihn. Ohne Spieler: alles.
+ */
+function viewOf(model: Model, player: string | null) {
+  const { from, cells } = model;
+  if (!player || !cells.has(player)) {
+    const segs = (p: string): Seg[] => (model.segs.get(p) ?? []).map(([a, b, c]) => [a, b, c, false]);
+    return { player, rows: model.rows, from: model.from, to: model.to, segs, conflicts: model.conflicts, shared: new Map<string, number>() };
+  }
+  const me = cells.get(player)!;
+  const shared = new Map<string, number>();
+  let lo = Infinity, hi = -Infinity;
+  for (const [p, row] of cells) {
+    let n = 0;
+    for (let i = 0; i < row.length; i++) if (row[i] && me[i] && row[i]!.g === me[i]!.g) n++;
+    if (p !== player && n > 0) shared.set(p, n);
+  }
+  me.forEach((c, i) => {
+    if (!c) return;
+    lo = Math.min(lo, i);
+    hi = Math.max(hi, i);
+  });
+  for (const [a, b] of model.coverage.get(player) ?? []) {
+    lo = Math.min(lo, a - from);
+    hi = Math.max(hi, b - from);
+  }
+  const rows = [player, ...[...shared.keys()].sort((x, y) => shared.get(y)! - shared.get(x)!)];
+  const vFrom = Math.max(model.from, from + lo - 15), vTo = Math.min(model.to, from + hi + 15);
+  const together = (p: string, i: number) => p === player || (!!me[i] && cells.get(p)?.[i]?.g === me[i]!.g);
+  const segs = (p: string): Seg[] => {
+    const row = cells.get(p) ?? [];
+    const out: Seg[] = [];
+    for (let i = vFrom - from; i <= vTo - from; i++) {
+      const c = row[i];
+      if (!c) continue;
+      const apart = !together(p, i);
+      const last = out.at(-1);
+      if (last && last[1] === from + i - 1 && last[2].g === c.g && last[2].c === c.c && last[2].inf === c.inf && last[3] === apart) last[1] = from + i;
+      else out.push([from + i, from + i, c, apart]);
+    }
+    return out;
+  };
+  // Liste nur mit seinen eigenen Konflikten; die der anderen sieht man in deren Zeilen bzw. auf deren Seite
+  const conflicts = model.conflicts.filter((c) => c.p === player);
+  return { player, rows, from: vFrom, to: vTo, segs, conflicts, shared };
 }
 
 /* ------------------------------------------------------------------ Korrektur-Fenster */

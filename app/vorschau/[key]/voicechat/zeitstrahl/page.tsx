@@ -19,6 +19,8 @@ async function Inner(props: PageProps<"/vorschau/[key]/voicechat/zeitstrahl">) {
   const base = `${root}/voicechat/zeitstrahl`;
   const days = index?.days ?? [];
   const wanted = typeof sp.tag === "string" && isDay(sp.tag) ? sp.tag : null;
+  // Spieler-ID wie in face-review.json, "alle" = alles auf einmal
+  const player = typeof sp.spieler === "string" && /^[\w-]{1,64}$/.test(sp.spieler) ? sp.spieler : null;
   const day = days.find((d) => d.day === wanted)?.day ?? [...days].sort((a, b) => b.withGroup - a.withGroup)[0]?.day ?? null;
   return (
     <>
@@ -29,7 +31,7 @@ async function Inner(props: PageProps<"/vorschau/[key]/voicechat/zeitstrahl">) {
           </p>
           <h1 className="t-1">Voicechat-Zeitstrahl</h1>
           <p className="lead">
-            Wer wann mit wem im Voicechat war, je Spieltag (06:00 bis 06:00). Konflikte (rot umrandet) zeigen, wo die Listen verschiedener Streamer derselben Gruppe nicht
+            Wer wann mit wem im Voicechat war, je Spieltag (06:00 bis 06:00) und Spieler. Konflikte (rot umrandet) zeigen, wo die Listen verschiedener Streamer derselben Gruppe nicht
             zusammenpassen – meist ein falsch erkannter Kopf. Dort anklicken, in den Listen den falschen Kopf ändern; das gilt sofort hier und zur
             nächsten vollen Stunde im Scan.
           </p>
@@ -45,7 +47,7 @@ async function Inner(props: PageProps<"/vorschau/[key]/voicechat/zeitstrahl">) {
                 {days.map((d) => (
                   <Link
                     key={d.day}
-                    href={`${base}?tag=${d.day}`}
+                    href={`${base}?tag=${d.day}${player ? `&spieler=${encodeURIComponent(player)}` : ""}`}
                     aria-current={d.day === day ? "page" : undefined}
                     title={`${d.withGroup.toLocaleString("de-DE")} Bilder mit Gruppe${d.open != null ? ` · ${d.open.toLocaleString("de-DE")} offene Köpfe` : ""}`}
                   >
@@ -53,7 +55,7 @@ async function Inner(props: PageProps<"/vorschau/[key]/voicechat/zeitstrahl">) {
                   </Link>
                 ))}
               </nav>
-              <VoiceTimeline key={day} day={day} players={index.players} endpoint={`${base}/daten`} fileBase={`${base}/tag`} />
+              <VoiceTimeline key={day} day={day} players={index.players} endpoint={`${base}/daten`} fileBase={`${base}/tag`} base={base} player={player} />
             </>
           )}
         </div>
