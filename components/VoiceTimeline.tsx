@@ -395,17 +395,27 @@ function build(d: VoiceDay, headAt: (s: string, run: VoiceRun, k: number, h: Voi
       }
       if (ids.length + open >= 2) srcs.push({ s, run: best, list: runs[best][2], ids, inf, open });
     }
-    // Listen mit gemeinsamen Spielern zusammenfassen
+    // Listen derselben Gruppe zusammenfassen: nur wenn sie mehr Spieler gemeinsam haben als jeweils verschiedene.
+    // Ein einzelner gemeinsamer Spieler (falsch erkannter Kopf, Wechsel innerhalb der Minute) verbindet sonst zwei
+    // verschiedene Gruppen, und alle Unterschiede zwischen ihnen erscheinen als Konflikt.
     const parent = srcs.map((_, k) => k);
     const find = (x: number): number => (parent[x] === x ? x : (parent[x] = find(parent[x])));
-    const owner = new Map<string, number>();
+    const sets = srcs.map((x) => new Set(x.ids));
+    const byId = new Map<string, number[]>();
     srcs.forEach((x, k) => {
-      for (const id of x.ids) {
-        const o = owner.get(id);
-        if (o === undefined) owner.set(id, k);
-        else parent[find(k)] = find(o);
-      }
+      for (const id of sets[k]) (byId.get(id) ?? byId.set(id, []).get(id)!).push(k);
     });
+    const checked = new Set<number>();
+    for (const ks of byId.values())
+      for (let u = 0; u < ks.length; u++)
+        for (let v = u + 1; v < ks.length; v++) {
+          const a = ks[u], b = ks[v], key = a * 1000 + b;
+          if (checked.has(key)) continue;
+          checked.add(key);
+          let common = 0;
+          for (const id of sets[a]) if (sets[b].has(id)) common++;
+          if (common >= sets[a].size - common && common >= sets[b].size - common) parent[find(a)] = find(b);
+        }
     const byRoot = new Map<number, typeof srcs>();
     srcs.forEach((x, k) => {
       const r = find(k);
@@ -451,6 +461,9 @@ function build(d: VoiceDay, headAt: (s: string, run: VoiceRun, k: number, h: Voi
       }
       for (const id of g.ids) {
         const row = cells.get(id) ?? cells.set(id, new Array(N)).get(id)!;
+        // in zwei Gruppen zugleich (selten, Wechsel oder Fehlerkennung): die größere zählt
+        const had = row[i] && groups.find((x) => x.id === row[i]!.g);
+        if (had && had.ids.size >= g.ids.size) continue;
         row[i] = { g: g.id, c: g.conflict.has(id), inf: infAll.has(id) };
       }
     }
@@ -642,11 +655,11 @@ function Panel({
                       const d = run[5][k] ?? 0;
                       const editing = edit?.s === s && edit.run === ri && edit.k === k;
                       return (
-                        <li key={k} data-kind={h[1]} data-hand={h[2] || undefined} data-hit={h[0] === sel.p || undefined}>
+                        <li key={k} data-kind={h[1]} data-hand={h[2] === 1 || undefined} data-auto={h[2] === 2 || undefined} data-hit={h[0] === sel.p || undefined}>
                           {img ? <img src={faceUrl(img)} alt="" width={20} height={20} className="vt-face" /> : <span className="vt-face vt-face--none">?</span>}
                           <span className="vt-head__name">{h[1] === "o" ? (f?.[3] ? `offen (Gruppe ${f[1]}: ${name(f[3])}?)` : "offen") : h[1] === "j" ? "kein Kopf" : h[1] === "x" ? "fremd" : name(h[0])}</span>
                           <span className="vt-badge">
-                            {h[2] ? "von Hand" : KIND[h[1]]}
+                            {h[2] === 1 ? "von Hand" : h[2] === 2 ? "per Mehrheit korrigiert" : KIND[h[1]]}
                             {h[1] === "p" && d >= 8 ? ` · unsicher (${d})` : ""}
                           </span>
                           {h[1] !== "j" && h[1] !== "x" && !editing && (

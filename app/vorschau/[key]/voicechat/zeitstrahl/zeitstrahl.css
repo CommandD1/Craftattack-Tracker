@@ -35,6 +35,7 @@
 .vt-face--none { display: inline-grid; place-items: center; background: color-mix(in srgb, var(--ink) 12%, transparent); font-size: 0.75rem }
 .vt-badge { font-size: 0.75rem; opacity: 0.7 }
 .vt-list li[data-hand] .vt-badge { opacity: 1; font-weight: 700 }
+.vt-list li[data-auto] .vt-badge { opacity: 1; font-style: italic }
 .vt-edit { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 0 4px }
 .vt-scope { border: 0; padding: 0; margin: 0; display: grid; gap: 2px; font-size: 0.85rem; flex-basis: 100% }
 .vt-fixes ul { margin: 8px 0; padding-left: 18px; display: grid; gap: 4px; font-size: 0.9rem }
