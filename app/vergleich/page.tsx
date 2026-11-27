@@ -647,6 +647,11 @@ const CIRCLE: Record<CircleKey, { title: string; unit: string; hint: string }> =
     unit: "",
     hint: "Zeit in „Gemeinsam streamen“ mit dem einen und mit dem anderen",
   },
+  voice: {
+    title: "Im Voicechat mit beiden",
+    unit: "",
+    hint: "Zeit in derselben Voicechat-Gruppe mit dem einen und mit dem anderen, erkannt aus den Twitch-VODs (nur, was in Streams zu sehen war, 10.10.–14.11.)",
+  },
   title: {
     title: "Beide nennen im Stream-Titel",
     unit: "",

@@ -42,6 +42,17 @@ export async function loadVoiceSummary(): Promise<VoiceSummary | null> {
   }
 }
 
+/** Alle Spielerpaare: Sekunden gemeinsam in einer Voicechat-Gruppe (export-voice.mjs → voice-pairs.json, ab 1 Minute) */
+export type VoicePairs = { made: string; pairs: [string, string, number][] };
+
+export async function loadVoicePairs(): Promise<VoicePairs | null> {
+  try {
+    return JSON.parse(await readFile(join(DIR, "voice-pairs.json"), "utf8")) as VoicePairs;
+  } catch {
+    return null;
+  }
+}
+
 /** Overlay-Karte je Streamer (scripts/chat/overlay-map.mjs → overlays.json + overlays/<streamer>.png) */
 export type OverlayInfo = {
   frames: number;
