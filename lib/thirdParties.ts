@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { getDb } from "./db";
 import { getAllSessions, type StoredSession } from "./store";
 import { getNetworkSummary } from "./networkSummary";
+import { loadVoicePairs } from "./voiceSummary";
 import { snapshot } from "./snapshots";
 import { createSwrCache } from "./swrCache";
 import type { LinkCounts } from "./connectionWeights";
@@ -12,7 +13,8 @@ import type { PlayerState } from "./types";
  * „Gemeinsame Dritte“ im Spielervergleich: Wer oder was verbindet zwei Spieler über andere?
  *
  * - Kreis: Spieler, die beide raiden, die beide raiden, die bei beiden schreiben usw. Aus dem Netz (CraftAttack-
- *   Umfang wie auf der Seite Verbindungen) und aus „Gemeinsam streamen“ (costream_presence).
+ *   Umfang wie auf der Seite Verbindungen), aus „Gemeinsam streamen“ (costream_presence) und aus dem Voicechat laut
+ *   VOD-Scan des Videoprojekts (voice-pairs.json, siehe lib/voiceSummary.ts).
  * - Publikum: gemeinsame Abonnenten, Sub-Verschenker, Cheerer und Clipper. Nur Zahlen, Namen nur bei den größten
  *   Verschenkern (stehen bei Twitch ohnehin öffentlich im Chat). Die Überschneidung aller Kanalpaare rechnet der
  *   Tracker stündlich vor (ca. 10 s Datenbank), die Website liest nur das Ergebnis.
@@ -25,7 +27,7 @@ export interface ThirdRow {
   b: number;
 }
 
-export type CircleKey = "raidsIn" | "raidsOut" | "msgsIn" | "msgsOut" | "shared" | "costream" | "title";
+export type CircleKey = "raidsIn" | "raidsOut" | "msgsIn" | "msgsOut" | "shared" | "costream" | "voice" | "title";
 export interface CircleList {
   key: CircleKey;
   /** Werte in Sekunden statt Anzahl */
@@ -85,7 +87,7 @@ function directed(e: LinkCounts, from: string, kind: "raids" | "msgs" | "title")
   return ab ? e.titleAB : e.titleBA;
 }
 
-function circleLists(edges: LinkCounts[], costream: Map<string, number>, idA: string, idB: string): CircleList[] {
+function circleLists(edges: LinkCounts[], costream: Map<string, number>, voice: Map<string, number>, idA: string, idB: string): CircleList[] {
   // Je Dritter: Werte gegenüber a und b
   const val = new Map<string, Record<CircleKey, [number, number]>>();
   const get = (x: string) => {
@@ -99,6 +101,7 @@ function circleLists(edges: LinkCounts[], costream: Map<string, number>, idA: st
         msgsOut: z(),
         shared: z(),
         costream: z(),
+        voice: z(),
         title: z(),
       };
       val.set(x, v);
@@ -122,6 +125,12 @@ function circleLists(edges: LinkCounts[], costream: Map<string, number>, idA: st
       v.shared[side] += e.chatSeconds;
     }
   }
+  for (const [k, s] of voice) {
+    const [p, q] = k.split("|");
+    if (p === idA || p === idB) {
+      if (q !== idA && q !== idB) get(q).voice[p === idA ? 0 : 1] += s;
+    } else if (q === idA || q === idB) get(p).voice[q === idA ? 0 : 1] += s;
+  }
   for (const [k, s] of costream) {
     const [p, q] = k.split("|");
     for (const [me, side] of [
@@ -133,7 +142,7 @@ function circleLists(edges: LinkCounts[], costream: Map<string, number>, idA: st
       get(x).costream[side] += s;
     }
   }
-  const keys: CircleKey[] = ["raidsIn", "raidsOut", "msgsIn", "msgsOut", "shared", "costream", "title"];
+  const keys: CircleKey[] = ["raidsIn", "raidsOut", "msgsIn", "msgsOut", "shared", "costream", "voice", "title"];
   return keys.map((key) => {
     const rows = [...val]
       .map(([id, v]) => ({ id, a: v[key][0], b: v[key][1] }))
@@ -141,7 +150,7 @@ function circleLists(edges: LinkCounts[], costream: Map<string, number>, idA: st
       .sort((x, y) => Math.min(y.a, y.b) - Math.min(x.a, x.b) || y.a + y.b - (x.a + x.b));
     return {
       key,
-      seconds: key === "shared" || key === "costream" || key === "title",
+      seconds: key === "shared" || key === "costream" || key === "voice" || key === "title",
       rows: rows.slice(0, TOP),
       count: rows.length,
     };
@@ -330,12 +339,21 @@ function serverThird(sessions: StoredSession[], idA: string, idB: string, now: n
   return { both: bothMs / 1000, rows: rows.slice(0, TOP) };
 }
 
+/** Voicechat: Sekunden je Spielerpaar (`a|b`) aus dem VOD-Scan; ohne Datei (z. B. lokal) leer */
+async function voicePairs(): Promise<Map<string, number>> {
+  return swr("voice", 10 * 60_000, async () => {
+    const f = await loadVoicePairs();
+    return new Map((f?.pairs ?? []).map(([a, b, s]) => [`${a}|${b}`, s]));
+  });
+}
+
 /* ------------------------------------------------------------------ Zusammen */
 
 export async function getThirdParties(idA: string, idB: string, players: Record<string, PlayerState>, now: number): Promise<ThirdData> {
-  const [net, costream, sessions, aud] = await Promise.all([
+  const [net, costream, voice, sessions, aud] = await Promise.all([
     getNetworkSummary(),
     costreamPairs().catch(() => new Map<string, number>()),
+    voicePairs(),
     getAllSessions(),
     audience(idA, idB, players).catch((e) => {
       console.error("[vergleich] Publikum:", e instanceof Error ? e.message : e);
@@ -343,7 +361,7 @@ export async function getThirdParties(idA: string, idB: string, players: Record<
     }),
   ]);
   return {
-    circle: circleLists(net.edges, costream, idA, idB),
+    circle: circleLists(net.edges, costream, voice, idA, idB),
     audience: aud,
     server: serverThird(sessions, idA, idB, now),
   };
