@@ -16,8 +16,8 @@ const FIXES = join(DIR, "voice-fixes.json");
 
 export type VoiceDayInfo = { day: string; frames: number; withGroup: number; streamers?: number; heads?: number; open?: number };
 export type VoiceIndex = { made: string; days: VoiceDayInfo[]; players: Record<string, { name: string; face: string | null }> };
-/** Kopf in einer Liste: [Spieler-ID | null, Art p/i/o/j/x, von Hand 0/1] */
-export type VoiceHead = [string | null, "p" | "i" | "o" | "j" | "x", 0 | 1];
+/** Kopf in einer Liste: [Spieler-ID | null, Art p/i/o/j/x, 0 | 1 = von Hand | 2 = per Mehrheit der anderen Streamer korrigiert] */
+export type VoiceHead = [string | null, "p" | "i" | "o" | "j" | "x", 0 | 1 | 2];
 /** Abschnitt: [von s, bis s, Liste (-1 = keine), VOD, erstes Segment, größte Abweichung je Platz, Gesichts-ID je Platz] */
 export type VoiceRun = [number, number, number, string, number, number[], (number | null)[]];
 export type VoiceDay = { day: string; start: number; made: string; lists: VoiceHead[][]; streamers: Record<string, VoiceRun[]>; fixes: string[] };
