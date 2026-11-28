@@ -37,7 +37,7 @@ Offene Ideen: Discord-Benachrichtigungen bei Highlights.
 | Spieler | `/spieler`, `/spieler/<id>` Profil mit Verlauf, Sessions, Graphen, Stream und Chat · `/spielertypen` · `/vergleich?a=<id>&b=<id>` zwei Spieler Kopf an Kopf |
 | Bestenlisten | `/bestenlisten?liste=<wert>`, z. B. `twitchSubs` oder `followers` |
 | Verlauf | `/ereignisse` Chronik mit Filtern · `/zeitstrahl` · `/graph` eigene Graphen · `/statistik` |
-| Community | `/verbindungen` Netz, Distanz und Gruppen der Spieler · `/zuschauer` |
+| Community | `/verbindungen` Netz, Distanz und Gruppen der Spieler · `/zuschauer` · `/raids` · `/voicechat` wer mit wem im Voicechat war |
 
 Dazu `/so-funktionierts` (Erklärungen) und die JSON-API `/api/tracker?limit=200&player=<id>&type=<typ>`.
 
@@ -61,6 +61,7 @@ sich höchstens einmal pro Minute, solange der Tab sichtbar ist.
 | Follower-Zuwachs während der Serverzeit, Follower-Schübe | öffentliche Twitch-Followerstände je Messung |
 | Stream-Zeiten in Tracker-Lücken, beliebte Clips | Twitch-VODs und Clips (alle 3 Stunden) |
 | YouTube zu CraftAttack 14: Video, Short, Livestream an/aus (eigene Ereignistypen `youtube_video`, `youtube_short`, `youtube_stream_start`, `youtube_stream_end`) mit Aufrufen; nur Kanäle, die der Teilnehmer selbst verlinkt (`lib/youtubeChannels.ts`) | YouTube Data API v3 (alle 6 Stunden, rückwirkend ab `YOUTUBE_SINCE`) |
+| Voicechat (Simple Voice Chat): Sitzungen ab 10 Minuten mit Mitspielern und Sprung ins VOD (`voice_session`), erstes Mal zusammen ab 1 h (`voice_first`); Zeiten, Paare und Gruppen auf `/voicechat` und im Profil | Gruppenliste in den Twitch-VODs, gelesen vom VOD-Scan des Videoprojekts: `FACE_REVIEW_DIR/voice-events.json`, `voice-summary.json`, `voice-pairs.json` (Tracker liest stündlich, `lib/voiceChat.ts`) |
 | YouTube-Livestreams als Ersatz-Aufzeichnung: Twitch-VOD zuerst; ohne Twitch-VOD (gelöscht oder nur auf YouTube gestreamt) springen Zeitstrahl-Balken und Ereignisse (`meta.ytUrl`, `meta.vodGone`) an die Stelle im YouTube-Livestream | `youtube_videos` (lib/youtube.ts, lib/youtubeLive.ts) |
 
 Koordinaten liefert die API nicht; „wo“ heißt immer: auf dem Server, auf Twitch oder (Uploads) auf YouTube.

@@ -13,6 +13,7 @@ const SECTIONS = [
   { id: "bestenlisten", title: "Bestenlisten" },
   { id: "profil", title: "Spielerprofil" },
   { id: "twitch", title: "Twitch" },
+  { id: "voicechat", title: "Voicechat" },
   { id: "zeitstrahl", title: "Zeitstrahl und Statistik" },
   { id: "grenzen", title: "Grenzen" },
 ] as const;
@@ -79,6 +80,8 @@ export default function HowItWorks() {
               </dd>
               <dt>Twitch</dt>
               <dd>Live-Status, Zuschauer, Follower und VODs über die Twitch-API, Chat und Abos über den Twitch-Chat (siehe <a href="#twitch">Twitch</a>).</dd>
+              <dt>Voicechat</dt>
+              <dd>Gelesen aus den Stream-Aufnahmen: die Gruppenliste von Simple Voice Chat am Bildschirmrand (siehe <a href="#voicechat">Voicechat</a>).</dd>
             </dl>
             <p className="how__note">
               Sperrt Cloudflare den Zugriff (Challenge, HTTP 403/429), pausiert der Tracker mindestens fünf Minuten und verlängert die Pause bei wiederholten Sperren
@@ -184,6 +187,39 @@ export default function HowItWorks() {
               <dt>VODs</dt>
               <dd>Tode, Streams und Chat-Nachrichten während eines Streams verlinken die Stelle im VOD – sobald Twitch das VOD kennt.</dd>
             </dl>
+          </section>
+
+          <section className="box how__section" data-tone="white" id="voicechat" aria-labelledby="voicechat-h">
+            <h2 className="t-3" id="voicechat-h">
+              Voicechat
+            </h2>
+            <p>
+              Die API verrät nicht, wer mit wem spricht. Viele Streamer zeigen aber die Gruppenliste von Simple Voice Chat im Bild: Köpfe der Spieler in ihrer
+              Gruppe. Diese Liste wird aus den Twitch-VODs gelesen, ein Bild alle 10 Sekunden, nur solange der Streamer auf dem Server und nicht AFK war.
+            </p>
+            <dl className="how__facts">
+              <dt>Köpfe</dt>
+              <dd>
+                Jeder Kopf wird mit den Skins der Spieler verglichen. Wer nicht sicher passt, wird über die Reihenfolge gefolgert: Alle in einer Gruppe sehen dieselben
+                Spieler, also hilft die Liste eines anderen Streamers zur selben Zeit. Widersprechen sich Streamer, entscheidet die Mehrheit; bleibt es unklar, zählt
+                die Stelle nicht.
+              </dd>
+              <dt>Zeiten</dt>
+              <dd>
+                Eine Gruppe, die mehrere Streamer gleichzeitig zeigen, zählt nur einmal. Zu sehen ist nur, was ein gescannter Streamer im Bild hatte: Gruppen ohne
+                Streamer, Zeiten mit ausgeblendeter Liste und Streams ohne VOD fehlen. Die echten Zeiten sind also eher länger.
+              </dd>
+              <dt>Sitzungen</dt>
+              <dd>
+                Ein Spieler, der ohne Pause von mehr als drei Minuten in einer Gruppe ist, mindestens zehn Minuten lang. Mitspieler sind alle, die mindestens drei
+                Minuten und 15 % der Sitzung dabei waren. „Zum ersten Mal zusammen“ gibt es für Paare ab einer Stunde gemeinsamer Zeit.
+              </dd>
+              <dt>Spricht</dt>
+              <dd>Anteil der Bilder mit weißem Rahmen um den Kopf (Mikro aktiv), „hört nicht zu“: durchgestrichener Lautsprecher am Kopf.</dd>
+            </dl>
+            <p className="how__note">
+              Neue VODs werden täglich gelesen, die Auswertung stündlich aktualisiert. Einzelne Köpfe können falsch erkannt sein, vor allem bei ähnlichen Skins.
+            </p>
           </section>
 
           <section className="box how__section" data-tone="white" id="zeitstrahl" aria-labelledby="zeitstrahl-h">

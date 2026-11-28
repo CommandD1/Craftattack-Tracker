@@ -51,6 +51,7 @@ export const HUBS: Hub[] = [
       { href: "/verbindungen", label: "Verbindungen", also: ["/gruppen"] },
       { href: "/zuschauer", label: "Zuschauer" },
       { href: "/raids", label: "Raids" },
+      { href: "/voicechat", label: "Voicechat" },
     ],
   },
 ];

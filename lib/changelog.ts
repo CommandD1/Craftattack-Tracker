@@ -12,6 +12,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: "28.11.",
+    title: "Voicechat",
+    text: "Wer war mit wem im Voicechat? Aus den Gruppenlisten von Simple Voice Chat in den Stream-Aufnahmen: eigene Seite mit Paaren, Gruppen und Zeiten, Voicechat-Sitzungen und „zum ersten Mal zusammen“ als Ereignisse (mit Sprung ins VOD) und ein neuer Abschnitt auf jeder Spielerseite.",
+    href: "/voicechat",
+  },
+  {
     date: "24.11.",
     title: "YouTube",
     text: "Eigene Ereignisse für YouTube-Videos, -Shorts und YouTube-Livestreams (Live an/aus) zu CraftAttack 14 und auf jeder Spielerseite die YouTube-Zahlen samt Live-Zeit. YouTube-Livestreams springen ein, wo es kein Twitch-VOD (mehr) gibt: roter Balken im Zeitstrahl und Ereignisse mit Sprung an die Stelle im YouTube-Livestream.",

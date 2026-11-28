@@ -28,6 +28,9 @@ export async function register() {
     // YouTube-Uploads der Teilnehmer (offizielle Data API, nur mit YOUTUBE_API_KEY), auch rückwirkend
     const { startYoutubeSync } = await import("./lib/youtube");
     startYoutubeSync();
+    // Voicechat-Sitzungen aus dem VOD-Scan des Videoprojekts (voice-events.json), sobald die Datei neu ist
+    const { startVoiceSync } = await import("./lib/voiceChat");
+    startVoiceSync();
     // „Gemeinsam streamen“ (Stream Together): live jede Minute, rückwirkend aus allen Clips
     const { startCostreamSync } = await import("./lib/costream");
     startCostreamSync();

@@ -79,6 +79,15 @@ function ytSub(e: TrackerEvent): string | null {
   );
 }
 
+/** Mitspieler einer Voicechat-Sitzung als Text: „A, B und C“ bzw. „A, B, C und 4 weiteren“ */
+function voiceWith(e: TrackerEvent): string {
+  const names = typeof e.meta?.withNames === "string" && e.meta.withNames ? e.meta.withNames.split("\n") : [];
+  const more = Number(e.meta?.withMore ?? 0);
+  if (!names.length) return "anderen";
+  if (more > 0) return `${names.join(", ")} und ${num(more)} weiteren`;
+  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} und ${names.at(-1)}`;
+}
+
 /** YouTube-Ereignis mit eigenem Link (Video bzw. Livestream) */
 export const isYoutubeEvent = (e: TrackerEvent) => e.type.startsWith("youtube_");
 
@@ -296,6 +305,25 @@ export const EVENT_META: Record<EventType, EventMeta> = {
     text: (e) => `hat den YouTube-Livestream beendet: „${e.meta?.title ?? "Livestream"}“`,
     sub: (e) => [typeof e.meta?.streamSeconds === "number" ? `${duration(e.meta.streamSeconds)} live` : null, e.value !== undefined ? `${num(e.value)} Aufrufe` : null].filter(Boolean).join(" · ") || null,
   },
+  voice_session: {
+    label: "Voicechat",
+    tone: "amethyst",
+    text: (e) => `war im Voicechat mit ${voiceWith(e)}`,
+    sub: (e) =>
+      [
+        typeof e.meta?.seconds === "number" ? `${duration(e.meta.seconds)} in der Gruppe` : null,
+        typeof e.meta?.endAt === "string" ? `bis ${berlinTime(e.meta.endAt)} Uhr` : null,
+        "aus der Gruppenliste in Stream-Aufnahmen",
+      ]
+        .filter(Boolean)
+        .join(" · ") || null,
+  },
+  voice_first: {
+    label: "Erstes Mal im Voicechat",
+    tone: "amethyst",
+    text: (e) => `ist zum ersten Mal mit ${e.meta?.withName ?? "einem anderen Spieler"} im Voicechat`,
+    sub: (e) => (typeof e.meta?.totalSeconds === "number" ? `Insgesamt ${duration(e.meta.totalSeconds)} zusammen in einer Gruppe` : null),
+  },
   follower_burst: {
     label: "Follower-Schub",
     tone: "twitch",
@@ -405,6 +433,7 @@ export const EVENT_GROUPS: { key: string; label: string; tone: string; types: Ev
   { key: "natur", label: "Tiere & Natur", tone: GROUP_TONE.tiere, types: ["animalsKilled", "animalsBred", "fishCaught", "bellsRung"] },
   { key: "twitch", label: "Twitch", tone: "twitch", types: ["stream_start", "stream_end", "stream_title", "subscription", "subscription_gift", "cheer", "clip", "follower_burst", "raid", "chat", "shared_chat_start", "shared_chat_end"] },
   { key: "youtube", label: "YouTube", tone: "youtube", types: ["youtube_video", "youtube_short", "youtube_stream_start", "youtube_stream_end"] },
+  { key: "voice", label: "Voicechat", tone: "amethyst", types: ["voice_session", "voice_first"] },
   { key: "highlights", label: "Highlights", tone: "white", types: ["achievement", "first_join", "rank", "milestone", "record"] },
 ];
 
@@ -451,6 +480,10 @@ export function eventBadge(e: TrackerEvent): string | null {
       const s = Number(e.meta?.streamSeconds ?? 0);
       return s > 0 ? duration(s) : null;
     }
+    case "voice_session":
+      return typeof e.meta?.seconds === "number" ? duration(e.meta.seconds) : null;
+    case "voice_first":
+      return typeof e.meta?.totalSeconds === "number" ? `${duration(e.meta.totalSeconds)} gesamt` : null;
     case "follower_burst":
       return `+${num(e.delta ?? 0)} Follower`;
     case "raid":
@@ -530,6 +563,8 @@ export const EVENT_TYPES: EventType[] = [
   "youtube_short",
   "youtube_stream_start",
   "youtube_stream_end",
+  "voice_session",
+  "voice_first",
   "follower_burst",
   "raid",
   "chat",
@@ -618,6 +653,7 @@ export function eventPlayers(e: Pick<TrackerEvent, "player" | "type" | "meta">):
     e.meta?.raidTargetPlayerId,
     e.meta?.giftGiverPlayerId,
     e.type === "chat" ? e.meta?.channelId : null,
+    e.type === "voice_first" ? e.meta?.withId : null,
     ...sharedChatPlayers(e),
   ];
   return [...new Set(ids.filter((x): x is string => typeof x === "string" && x !== ""))];

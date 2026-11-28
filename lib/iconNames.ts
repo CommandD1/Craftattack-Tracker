@@ -54,6 +54,9 @@ export const ICON_NAMES = [
   "ytShort",
   "ytLive",
   "ytLiveOff",
+  // Voicechat
+  "headphones",
+  "voicePair",
   "video",
   "videoOff",
   "title",
@@ -147,6 +150,8 @@ export const EVENT_ICON: Record<EventType, IconName> = {
   youtube_short: "ytShort",
   youtube_stream_start: "ytLive",
   youtube_stream_end: "ytLiveOff",
+  voice_session: "headphones",
+  voice_first: "voicePair",
   follower_burst: SPECIAL_ICON.followers,
   raid: "raid",
   chat: "chat",

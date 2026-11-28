@@ -161,6 +161,18 @@ async function Detail(props: PageProps<"/ereignis/[id]">) {
               ) : (
                 <p className="vs-hero__text">{sentence}</p>
               )}
+              {e.type === "voice_session" && typeof e.meta?.with === "string" && e.meta.with && (
+                <p style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }} aria-label="Mitspieler in der Gruppe">
+                  {e.meta.with
+                    .split(",")
+                    .filter((x) => state.players[x])
+                    .map((x) => (
+                      <Link key={x} href={`/spieler/${encodeURIComponent(x)}`} title={pname(x)}>
+                        <Head id={x} uuid={state.players[x]?.uuid ?? null} name={pname(x)} size={28} />
+                      </Link>
+                    ))}
+                </p>
+              )}
               {pair && (
                 <p className="muted" style={{ marginTop: 8 }}>
                   {num(pair.together)} {pair.noun} von {pname(pair.giver)} an {pname(pair.receiver)} in der Staffel, {num(pair.reverse)} in die andere Richtung.
@@ -173,8 +185,22 @@ async function Detail(props: PageProps<"/ereignis/[id]">) {
               {dayLong.format(at)} Uhr
             </li>
             <li className="tag" data-tone={e.where === "twitch" ? "twitch" : "white"}>
-              {e.where === "twitch" ? "Auf Twitch" : e.where === "youtube" ? "Auf YouTube" : "Auf dem Server"}
+              {e.where === "twitch" ? "Auf Twitch" : e.where === "youtube" ? "Auf YouTube" : e.type.startsWith("voice_") ? "Im Voicechat (aus Stream-Aufnahmen)" : "Auf dem Server"}
             </li>
+            {e.type === "voice_first" && typeof e.meta?.withId === "string" && e.player && state.players[e.meta.withId] && (
+              <li>
+                <Link className="tag" data-tone="white" href={compareHref(e.player, e.meta.withId)} title="Beide im Spielervergleich öffnen">
+                  ⇄ {name} und {pname(e.meta.withId)} vergleichen
+                </Link>
+              </li>
+            )}
+            {e.type.startsWith("voice_") && (
+              <li>
+                <Link className="tag" data-tone="amethyst" href="/voicechat">
+                  Voicechat-Übersicht
+                </Link>
+              </li>
+            )}
             {/* Nur bei Ereignissen ohne Zählerstand: dort ist jedes Ereignis genau ein Vorkommen (Tode z. B. gibt es doppelt aus Feed und Stats) */}
             {d.same.total > 0 && e.value === undefined && (
               <li className="tag" data-tone="white" title={e.player ? `„${label}“ von ${name} insgesamt` : `„${label}“ insgesamt`}>

@@ -165,6 +165,10 @@ export type EventType =
   | "youtube_short"
   | "youtube_stream_start"
   | "youtube_stream_end"
+  // Voicechat (Simple Voice Chat) aus dem VOD-Scan des Videoprojekts (lib/voiceChat.ts): Sitzung in einer Gruppe,
+  // erstes Mal zusammen (Paar ab 1 h insgesamt)
+  | "voice_session"
+  | "voice_first"
   | "chat"
   | "shared_chat_start"
   | "shared_chat_end"
