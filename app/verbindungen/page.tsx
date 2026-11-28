@@ -40,7 +40,7 @@ async function Community({ searchParams }: { searchParams: PageProps<"/verbindun
           <p className="eyebrow">Community</p>
           <h1 className="t-1">Verbindungen</h1>
           <p>
-            Wer wen raidet, gemeinsam im geteilten Chat ist, im Titel nennt oder im Chat des anderen schreibt: als Netz oder nach Distanz, für alle oder für
+            Wer wen raidet, gemeinsam im geteilten Chat oder im Voicechat ist, im Titel nennt oder im Chat des anderen schreibt: als Netz oder nach Distanz, für alle oder für
             einen ausgewählten Spieler, auf Wunsch mit Gruppen.{" "}
             <Explain>
               Alle Einstellungen gelten für beide Ansichten, ein ausgewählter Spieler bleibt beim Wechsel ausgewählt. <b>Verbindungen</b>: je enger die

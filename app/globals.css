@@ -584,6 +584,9 @@ a.box {
   .st-figs--6 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+  .st-figs--7 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 @media (width >= 1000px) {
   .st-figs--6 {
@@ -591,6 +594,10 @@ a.box {
   }
   .st-figs--5 {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .st-figs--7 {
+    --gap: 16px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
   }
 }
 .st-fig {
@@ -622,7 +629,8 @@ a.box.st-fig {
   line-height: 1;
 }
 .st-figs--5 .st-fig dd,
-.st-figs--6 .st-fig dd {
+.st-figs--6 .st-fig dd,
+.st-figs--7 .st-fig dd {
   font-size: clamp(1.5rem, 5vw, 2.75rem);
 }
 /* Zahl an die Kachelbreite anpassen: 7 Zeichen Monocraft ≈ 4,2em, also ≤ 21cqi */

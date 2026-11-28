@@ -175,6 +175,7 @@ export function CommunityExplorer({
   const chats = counts.reduce((a, e) => a + e.chats, 0);
   const msgs = counts.reduce((a, e) => a + e.msgsAB + e.msgsBA, 0);
   const titleHours = Math.round(counts.reduce((a, e) => a + e.titleAB + e.titleBA, 0) / 3600);
+  const voiceHours = Math.round(counts.reduce((a, e) => a + (e.voiceSeconds ?? 0), 0) / 3600);
   const linked = new Set(counts.flatMap((e) => [e.a, e.b])).size;
   const activeCount = raw.filter((e) => weigh(e, s.weights).weight > 0).length;
   const sizes = analysis.groups.map((g) => g.members.length);
@@ -238,7 +239,7 @@ export function CommunityExplorer({
 
   return (
     <div className="stack" style={{ "--stack": "16px" } as React.CSSProperties}>
-      <dl className="grid st-figs st-figs--6">
+      <dl className="grid st-figs st-figs--7">
         <div className="box st-fig" data-tone="twitch">
           <dt>Raids</dt>
           <FigValue>{num(raids)}</FigValue>
@@ -246,6 +247,10 @@ export function CommunityExplorer({
         <div className="box st-fig" data-tone="diamond">
           <dt title="Je Paar von Spielern, die gemeinsam im geteilten Chat waren">Geteilte Chats</dt>
           <FigValue>{num(chats)}</FigValue>
+        </div>
+        <div className="box st-fig" data-tone="amethyst">
+          <dt title="Gemeinsame Zeit von Paaren in derselben Voicechat-Gruppe, gelesen aus den Stream-Aufnahmen (je Paar gezählt)">Voicechat</dt>
+          <FigValue unit="Std">{num(voiceHours)}</FigValue>
         </div>
         <div className="box st-fig" data-tone="grass">
           <dt title="Stream-Zeit, in der Spieler einen anderen im Titel nannten („WG mit @…“), höchstens 8 Std je Tag und Paar">Im Titel genannt</dt>
