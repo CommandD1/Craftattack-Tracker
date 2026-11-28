@@ -218,7 +218,7 @@ export default function HowItWorks() {
               <dd>Anteil der Bilder mit weißem Rahmen um den Kopf (Mikro aktiv), „hört nicht zu“: durchgestrichener Lautsprecher am Kopf.</dd>
               <dt>Verbindungen</dt>
               <dd>
-                Die gemeinsame Zeit ist eine eigene Art im <Link href="/verbindungen">Netz</Link>: 1 Stunde zusammen in einer Gruppe = 0,25 Punkte, für beide gleich,
+                Die gemeinsame Zeit ist eine eigene Art im <Link href="/verbindungen">Netz</Link>: 20 Stunden zusammen in einer Gruppe = 1 Punkt, für beide gleich,
                 per Regler anders gewichtbar.
               </dd>
             </dl>
