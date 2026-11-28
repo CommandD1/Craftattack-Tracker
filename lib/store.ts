@@ -38,6 +38,8 @@ const KEEP_IN_MEMORY = new Set<TrackerEvent["type"]>([
   "youtube_short",
   "youtube_stream_start",
   "youtube_stream_end",
+  "voice_session",
+  "voice_first",
   "blocksPlaced",
   "damageTaken",
   "raidsWon",

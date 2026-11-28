@@ -1,0 +1,32 @@
+/* Öffentliche Seite /voicechat (Voicechat-Gruppen aus dem VOD-Scan) */
+.vc-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 24px; align-items: start }
+.vc-cols > .box { min-width: 0; display: grid; gap: 12px }
+.vc-note { font-size: 0.9rem; opacity: 0.8; margin: 0 }
+.vc-who { display: inline-flex; align-items: center; gap: 6px; color: inherit; text-decoration: none; min-width: 0 }
+.vc-who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.vc-who:hover span { text-decoration: underline }
+.vc-num { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right }
+.vc-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px }
+.vc-bars li { display: grid; grid-template-columns: minmax(0, 2fr) minmax(40px, 1fr) 4.5em; gap: 10px; align-items: center }
+.vc-pair { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap }
+.vc-bar { height: 12px; background: color-mix(in srgb, var(--ink) 8%, transparent); position: relative }
+.vc-bar::before { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--w); background: var(--amethyst) }
+.vc-groups { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px }
+.vc-groups li { display: grid; grid-template-columns: minmax(0, 1fr) 4.5em; gap: 4px 10px; align-items: center }
+.vc-when { grid-column: 1 / -1; font-size: 0.8rem; opacity: 0.7 }
+.vc-heads { display: inline-flex; flex-wrap: wrap; gap: 3px; align-items: center }
+.vc-open { font-size: 0.8rem; opacity: 0.7; margin-left: 4px }
+.vc-scroll { overflow-x: auto }
+.vc-table { border-collapse: collapse; width: 100%; font-size: 0.92rem }
+.vc-table th, .vc-table td { padding: 6px 10px; border-bottom: 2px solid color-mix(in srgb, var(--ink) 10%, transparent); text-align: left }
+.vc-table thead th { font-family: var(--font-display); font-size: 0.75rem; text-transform: uppercase; white-space: nowrap }
+.vc-table td.vc-num, .vc-table th.vc-num { text-align: right }
+.vc-hours { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; height: 120px; align-items: end }
+.vc-hours span { height: var(--h); min-height: 1px; background: var(--amethyst) }
+.vc-hours-axis { display: flex; justify-content: space-between; font-size: 0.75rem; opacity: 0.7 }
+.vc-cmp { color: inherit; text-decoration: none; font-weight: 700; padding: 0 4px }
+.vc-cmp:hover { text-decoration: underline }
+@media (max-width: 560px) {
+  .vc-bars li { grid-template-columns: minmax(0, 1fr) 4.5em }
+  .vc-bars .vc-bar { grid-column: 1 / -1; grid-row: 2 }
+}

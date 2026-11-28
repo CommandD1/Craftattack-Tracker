@@ -650,7 +650,7 @@ const CIRCLE: Record<CircleKey, { title: string; unit: string; hint: string }> =
   voice: {
     title: "Im Voicechat mit beiden",
     unit: "",
-    hint: "Zeit in derselben Voicechat-Gruppe mit dem einen und mit dem anderen, erkannt aus den Twitch-VODs (nur, was in Streams zu sehen war, 10.10.–14.11.)",
+    hint: "Zeit in derselben Voicechat-Gruppe mit dem einen und mit dem anderen, erkannt aus den Gruppenlisten in den Twitch-VODs (nur, was in Streams zu sehen war; mehr auf /voicechat)",
   },
   title: {
     title: "Beide nennen im Stream-Titel",

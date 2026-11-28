@@ -24,6 +24,7 @@ import { ClipGrid } from "@/components/ClipGrid";
 import { getTopClips } from "@/lib/clips";
 import { getYoutubeStats, type YoutubeFormat } from "@/lib/youtubeStats";
 import { getYoutubeLives } from "@/lib/youtubeLive";
+import { getVoiceProfile } from "@/lib/voiceChat";
 import { EstimatePlayer, PlayerEstimateSummary } from "@/components/Estimates";
 import { getTrackerGaps, getAllSessions, getFullBoard, getPlayerHistory, getPlayerSharedChatSessions, getPlayerTopHistory, getPlayerTwitchChat, getTwitchCheerBoard, getTwitchCheerProfile, getTwitchSubscriptionBoard, getTwitchSubscriptionProfile } from "@/lib/store";
 import { SharedChatList } from "@/components/SharedChatList";
@@ -114,6 +115,9 @@ export default function Page(props: PageProps<"/spieler/[id]">) {
       </Suspense>
       <Suspense fallback={<ChatSkeleton />}>
         <ChatSection params={params} searchParams={searchParams} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <VoiceSection params={params} />
       </Suspense>
       <Suspense fallback={null}>
         <YoutubeSection params={params} />
@@ -214,7 +218,7 @@ async function ctxFor(params: Params) {
 /** Alle Ereignisse, an denen der Spieler beteiligt ist (selbst, Raid-Ziel oder geteilter Chat) */
 const getMine = cache(async (raw: string) => {
   const { id, events } = await getCtx(raw);
-  return events.filter((e) => e.player === id || e.meta?.raidTargetPlayerId === id || sharedChatPlayers(e).includes(id));
+  return events.filter((e) => e.player === id || e.meta?.raidTargetPlayerId === id || e.meta?.withId === id || sharedChatPlayers(e).includes(id));
 });
 
 /** Link auf den Graphen der Statistik-Seite für diese Kennzahl und diesen Spieler */
@@ -1028,6 +1032,90 @@ async function AdvancementsSection({ params }: { params: Params }) {
           }
         >
           <AdvancementBoard mine={board.mine} others={board.others} players={board.players} eventBase={EVENT_DETAIL_BASE ?? undefined} />
+        </Fold>
+      </div>
+    </section>
+  );
+}
+
+/** Voicechat (Simple Voice Chat) aus dem VOD-Scan: Zeit in Gruppen, Sitzungen, mit wem (lib/voiceChat.ts) */
+async function VoiceSection({ params }: { params: Params }) {
+  const { id, p, state } = await ctxFor(params);
+  if (!p) return null;
+  const v = await getVoiceProfile(id);
+  if (!v) return null;
+  const nameOf = (x: string) => state.players[x]?.name ?? x;
+  const tiles: { label: string; value: string; sub: string | null }[] = [
+    { label: "Zeit im Voicechat", value: duration(Math.round(v.hours * 3600)), sub: `in einer Gruppe mit mindestens einem weiteren Spieler${v.days ? ` · an ${num(v.days)} Tagen` : ""}` },
+    { label: "Sitzungen", value: num(v.sessions), sub: v.longest ? `längste ${duration(v.longest.seconds)} am ${shortDate(v.longest.at)}` : "ab 10 Minuten" },
+    { label: "Mitspieler", value: num(v.partners.filter(([, s]) => s >= 600).length), sub: "ab 10 Minuten zusammen" },
+    { label: "Spricht", value: v.talk == null ? "–" : `${v.talk} %`, sub: v.deaf ? `der Zeit in Gruppen · hört ${v.deaf} % nicht zu` : "der Zeit in Gruppen" },
+  ];
+  return (
+    <section className="block block--tight" data-tone="paper" aria-labelledby="voice-h">
+      <div className="wrap">
+        <Fold
+          id="profil.voicechat"
+          titleId="voice-h"
+          title="Voicechat"
+          aside={
+            <>
+              <Link className="btn btn--small" data-tone="white" href={`/ereignisse?g=voice&spieler=${encodeURIComponent(id)}`}>
+                Alle Sitzungen
+              </Link>{" "}
+              <Link className="btn btn--small" data-tone="white" href="/voicechat">
+                Voicechat-Übersicht
+              </Link>
+            </>
+          }
+        >
+          <p className="muted" style={{ marginBottom: 16 }}>
+            Wer mit {p.name} in einer Gruppe von Simple Voice Chat war, gelesen aus der Gruppenliste in Stream-Aufnahmen. Zu sehen ist nur, was ein gescannter
+            Streamer im Bild hatte – die echte Zeit ist eher länger.
+          </p>
+          <dl className="grid st-figs st-figs--auto">
+            {tiles.map((t) => (
+              <div key={t.label} className="box st-fig" data-tone={t.label === "Zeit im Voicechat" ? "amethyst" : "white"}>
+                <dt>
+                  {t.label}
+                  {t.sub && (
+                    <span className="muted" style={{ display: "block", fontFamily: "var(--font-body)", textTransform: "none", letterSpacing: 0, fontWeight: 400, fontSize: ".8rem", marginTop: 4 }}>
+                      {t.sub}
+                    </span>
+                  )}
+                </dt>
+                <dd>
+                  <FigValue>{t.value}</FigValue>
+                </dd>
+              </div>
+            ))}
+          </dl>
+          {v.partners.length > 0 && (
+            <section className="box st-board st-board--plain" data-tone="white" aria-labelledby="voice-with" style={{ marginTop: 24 }}>
+              <header className="pbox__head">
+                <h3 className="eyebrow" id="voice-with">
+                  Meist im Voicechat mit
+                </h3>
+                <p className="muted">⇄ vergleicht beide</p>
+              </header>
+              <ol className="st-board__list">
+                {v.partners.slice(0, 10).map(([o, s], i) => (
+                  <li key={o} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <Link className="st-board__row" style={{ flex: 1 }} href={`/spieler/${encodeURIComponent(o)}`} title={`${nameOf(o)}: ${duration(s)} in derselben Gruppe`}>
+                      <span className="st-board__rank num">{i + 1}</span>
+                      <Head id={o} uuid={state.players[o]?.uuid} name={nameOf(o)} decorative />
+                      <span className="st-board__name">{nameOf(o)}</span>
+                      <span className="st-board__val num">{duration(s)}</span>
+                    </Link>
+                    <Link href={compareHref(id, o)} title={`${p.name} und ${nameOf(o)} vergleichen`} aria-label={`${p.name} und ${nameOf(o)} vergleichen`}>
+                      ⇄
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
+          <HowLink section="voicechat" />
         </Fold>
       </div>
     </section>
