@@ -3,7 +3,7 @@ import { emptyLink, type LinkCounts } from "./connectionWeights";
 
 /**
  * Netz je Tag (Berlin) für Zeitreisen im Browser: kompakt als Zahlen-Tupel, der Browser summiert beliebige
- * Zeitfenster daraus. Zeile: [Tag, a, b, raidsAB, raidsBA, chats, chatSeconds, titleAB, titleBA, msgsAB, msgsBA]
+ * Zeitfenster daraus. Zeile: [Tag, a, b, raidsAB, raidsBA, chats, chatSeconds, titleAB, titleBA, msgsAB, msgsBA, voiceSeconds]
  * mit Indizes in `days` und `ids` (a < b alphabetisch). `now`: Paare, die gerade im geteilten Chat sind.
  */
 export interface DailyNetwork {
@@ -30,6 +30,7 @@ export function sumDays(daily: DailyNetwork, from: number, to: number): LinkCoun
     e.titleBA += r[8];
     e.msgsAB += r[9];
     e.msgsBA += r[10];
+    e.voiceSeconds = (e.voiceSeconds ?? 0) + (r[11] ?? 0);
   }
   if (to === daily.days.length - 1)
     for (const [x, y] of daily.now) {

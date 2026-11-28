@@ -358,7 +358,7 @@ async function Wrapped({ params }: { params: PageProps<"/spieler/[id]/rueckblick
           )}
 
           {near.length > 0 && (
-            <Card tone="amethyst" span={4} kicker="Engste Verbindungen" help="Nähe über den kürzesten Weg im Netz aus Raids, geteiltem Chat, Namen im Stream-Titel und Chat-Nachrichten, in Richtung der anderen. 50 % = direkt mit 1 Punkt verbunden.">
+            <Card tone="amethyst" span={4} kicker="Engste Verbindungen" help="Nähe über den kürzesten Weg im Netz aus Raids, geteiltem Chat, Voicechat, Namen im Stream-Titel und Chat-Nachrichten, in Richtung der anderen. 50 % = direkt mit 1 Punkt verbunden.">
               <ol className="wr-friends">
                 {near.map((x) => (
                   <li key={x.id}>

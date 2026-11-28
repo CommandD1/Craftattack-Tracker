@@ -4,7 +4,7 @@
  *
  * Richtung: Raids und Chat-Nachrichten sind einseitig. Wer bei jemandem schreibt oder ihn raidet, hat eine Verbindung
  * zu ihm, aber nicht umgekehrt. Titel-Erwähnungen auch (wer den anderen im
- * Stream-Titel nennt). Ein geteilter Chat (Stream Together) verbindet beide gleich.
+ * Stream-Titel nennt). Ein geteilter Chat (Stream Together) und der Voicechat verbinden beide gleich.
  */
 import { directedPoints, type LinkCounts, type Weights } from "./connectionWeights";
 
@@ -18,7 +18,7 @@ export type Direction = "von" | "zu" | "gegenseitig";
 /** Stärke a → b und b → a nach den Faktoren `w` */
 export function directed(e: LinkCounts, w: Weights): { ab: number; ba: number } {
   const p = directedPoints(e, w);
-  const sum = (x: Weights) => x.raid + x.shared + x.title + x.msgs;
+  const sum = (x: Weights) => x.raid + x.shared + x.voice + x.title + x.msgs;
   return { ab: sum(p.ab), ba: sum(p.ba) };
 }
 

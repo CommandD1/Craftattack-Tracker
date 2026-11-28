@@ -14,7 +14,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     date: "28.11.",
     title: "Voicechat",
-    text: "Wer war mit wem im Voicechat? Aus den Gruppenlisten von Simple Voice Chat in den Stream-Aufnahmen: eigene Seite mit Paaren, Gruppen und Zeiten, Voicechat-Sitzungen und „zum ersten Mal zusammen“ als Ereignisse (mit Sprung ins VOD) und ein neuer Abschnitt auf jeder Spielerseite.",
+    text: "Wer war mit wem im Voicechat? Aus den Gruppenlisten von Simple Voice Chat in den Stream-Aufnahmen: eigene Seite mit Paaren, Gruppen und Zeiten, Voicechat-Sitzungen und „zum ersten Mal zusammen“ als Ereignisse (mit Sprung ins VOD), ein neuer Abschnitt auf jeder Spielerseite und die gemeinsame Zeit als eigene Art in Verbindungen, Gruppen und im Spielervergleich.",
     href: "/voicechat",
   },
   {

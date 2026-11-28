@@ -923,7 +923,7 @@ async function NetworkSection({ params, searchParams }: { params: Params; search
     return (
       <EmptySection
         title="Verbindungen"
-        text={scope === "ca" ? "Noch keine Raids, geteilten Chats oder Chat-Nachrichten mit anderen Spielern, während einer der beiden auf CraftAttack war." : "Noch keine Raids, geteilten Chats oder Chat-Nachrichten mit anderen Spielern."}
+        text={scope === "ca" ? "Noch keine Raids, geteilten Chats, Voicechat oder Chat-Nachrichten mit anderen Spielern, während einer der beiden auf CraftAttack war." : "Noch keine Raids, geteilten Chats, Voicechat oder Chat-Nachrichten mit anderen Spielern."}
       />
     );
   const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -952,7 +952,7 @@ async function NetworkSection({ params, searchParams }: { params: Params; search
             <div className="box" data-tone="white">
               <h3 className="eyebrow">
                 Am nächsten{" "}
-                <Explain>Über den kürzesten Weg im Netz aus Raids, geteiltem Chat, Namen im Titel und Chat-Nachrichten, in Richtung der anderen.</Explain>
+                <Explain>Über den kürzesten Weg im Netz aus Raids, geteiltem Chat, Voicechat, Namen im Titel und Chat-Nachrichten, in Richtung der anderen.</Explain>
               </h3>
               <ol className="pnet__near">
                 {near.map((r) => (

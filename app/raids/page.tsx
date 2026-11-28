@@ -90,7 +90,7 @@ async function Raids(props: PageProps<"/raids">) {
           <h1 className="t-1">Wer raidet wen?</h1>
           <p>
             Gebende und Bekommende nach Anzahl und Zuschauern – gemessen an den Gelegenheiten: Wer gerade live war, hätte das Ziel sein können. Gruppen und Abstand kommen aus dem
-            Netz ohne Raids (geteilte Chats, Titel, Nachrichten), damit Raids sich nicht selbst zur Gruppe machen. Erfasst werden nur Raids zwischen
+            Netz ohne Raids (geteilte Chats, Voicechat, Titel, Nachrichten), damit Raids sich nicht selbst zur Gruppe machen. Erfasst werden nur Raids zwischen
             CraftAttack-Spielern; Raids an andere Kanäle sieht der Tracker nicht.
           </p>
           <CaFilter path="/raids" sp={sp} mode={ca} />

@@ -3,7 +3,7 @@
  * Punkte und Farbe rechnet der Browser mit den Faktoren, die der Besucher einstellt.
  */
 
-export type LinkKind = "raid" | "shared" | "title" | "msgs";
+export type LinkKind = "raid" | "shared" | "voice" | "title" | "msgs";
 export type Weights = Record<LinkKind, number>;
 
 /** Zählwerte einer Verbindung zweier Spieler, ohne Gewicht */
@@ -27,29 +27,34 @@ export interface LinkCounts {
   titleAB: number;
   /** Stream-Zeit in Sekunden, in der b im Titel a nannte */
   titleBA: number;
+  /** Zeit in derselben Voicechat-Gruppe in Sekunden (VOD-Scan, lib/voiceChat.ts); fehlt in älteren Vorberechnungen */
+  voiceSeconds?: number;
   /** Gerade im geteilten Chat verbunden */
   now: boolean;
 }
 
 /**
- * Punkte bei Faktor 1: je Raid, je Stunde im geteilten Chat, je Stunde Stream mit Namen im Titel und je
- * Chat-Nachricht (10 Nachrichten = 1 Punkt). Geteilter Chat und Titel zählen nach Zeit, nicht nach Anzahl.
+ * Punkte bei Faktor 1: je Raid, je Stunde im geteilten Chat, je Stunde zusammen im Voicechat, je Stunde Stream mit
+ * Namen im Titel und je Chat-Nachricht (10 Nachrichten = 1 Punkt). Geteilter Chat, Voicechat und Titel zählen nach
+ * Zeit, nicht nach Anzahl. Voicechat nur 0,25 je Stunde: enge Paare kommen auf über 100 Stunden.
  */
-export const BASE_POINTS: Weights = { raid: 1, shared: 0.5, title: 0.25, msgs: 0.1 };
-export const DEFAULT_WEIGHTS: Weights = { raid: 1, shared: 1, title: 1, msgs: 1 };
-export const LINK_KINDS: LinkKind[] = ["raid", "shared", "title", "msgs"];
+export const BASE_POINTS: Weights = { raid: 1, shared: 0.5, voice: 0.25, title: 0.25, msgs: 0.1 };
+export const DEFAULT_WEIGHTS: Weights = { raid: 1, shared: 1, voice: 1, title: 1, msgs: 1 };
+export const LINK_KINDS: LinkKind[] = ["raid", "shared", "voice", "title", "msgs"];
 
 /** Leere Zählwerte für ein Paar */
 export function emptyLink(a: string, b: string): LinkCounts {
-  return { a, b, raidsAB: 0, raidsBA: 0, chats: 0, chatSeconds: 0, titleAB: 0, titleBA: 0, msgsAB: 0, msgsBA: 0, now: false };
+  return { a, b, raidsAB: 0, raidsBA: 0, chats: 0, chatSeconds: 0, voiceSeconds: 0, titleAB: 0, titleBA: 0, msgsAB: 0, msgsBA: 0, now: false };
 }
 
-/** Punkte je Richtung (a → b, b → a); geteilter Chat zählt für beide Seiten gleich */
+/** Punkte je Richtung (a → b, b → a); geteilter Chat und Voicechat zählen für beide Seiten gleich */
 export function directedPoints(e: LinkCounts, w: Weights): { ab: Weights; ba: Weights } {
   const shared = (e.chatSeconds / 3600) * BASE_POINTS.shared * w.shared;
+  const voice = ((e.voiceSeconds ?? 0) / 3600) * BASE_POINTS.voice * (w.voice ?? 1);
   const side = (raids: number, title: number, msgs: number): Weights => ({
     raid: raids * BASE_POINTS.raid * w.raid,
     shared,
+    voice,
     title: (title / 3600) * BASE_POINTS.title * w.title,
     msgs: msgs * BASE_POINTS.msgs * w.msgs,
   });
@@ -59,14 +64,14 @@ export function directedPoints(e: LinkCounts, w: Weights): { ab: Weights; ba: We
 /** Punkte einer Verbindung je Art, mit den Faktoren `w` */
 export function linkPoints(e: LinkCounts, w: Weights): Weights {
   const { ab, ba } = directedPoints(e, w);
-  return { raid: ab.raid + ba.raid, shared: ab.shared, title: ab.title + ba.title, msgs: ab.msgs + ba.msgs };
+  return { raid: ab.raid + ba.raid, shared: ab.shared, voice: ab.voice, title: ab.title + ba.title, msgs: ab.msgs + ba.msgs };
 }
 
 /** Gesamtgewicht und die Art, die am meisten beiträgt (bestimmt die Linienfarbe) */
 export function weigh(e: LinkCounts, w: Weights): { weight: number; kind: LinkKind } {
   const p = linkPoints(e, w);
   const kind = LINK_KINDS.reduce((best, k) => (p[k] > p[best] ? k : best), "raid" as LinkKind);
-  return { weight: p.raid + p.shared + p.title + p.msgs, kind };
+  return { weight: p.raid + p.shared + p.voice + p.title + p.msgs, kind };
 }
 
 const dec = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 });
@@ -81,6 +86,12 @@ export const KIND_INFO: Record<LinkKind, { label: string; color: string; hint: s
     color: "var(--diamond)",
     hint: "Gemeinsame Zeit im geteilten Chat (Stream Together), zählt für beide",
     unit: (w) => `1 Std geteilter Chat = ${dec.format(BASE_POINTS.shared * w)} P.`,
+  },
+  voice: {
+    label: "Voicechat",
+    color: "var(--amethyst)",
+    hint: "Zeit in derselben Voicechat-Gruppe, gelesen aus den Stream-Aufnahmen (nur, was ein Streamer im Bild hatte), zählt für beide",
+    unit: (w) => `1 Std im Voicechat = ${dec.format(BASE_POINTS.voice * w)} P.`,
   },
   title: {
     label: "Im Stream-Titel",
@@ -98,8 +109,9 @@ export const KIND_INFO: Record<LinkKind, { label: string; color: string; hint: s
 
 export const WEIGHT_PRESETS: { label: string; w: Weights }[] = [
   { label: "Ausgewogen", w: DEFAULT_WEIGHTS },
-  { label: "Nur Raids", w: { raid: 1, shared: 0, title: 0, msgs: 0 } },
-  { label: "Nur geteilter Chat", w: { raid: 0, shared: 1, title: 0, msgs: 0 } },
-  { label: "Nur Titel", w: { raid: 0, shared: 0, title: 1, msgs: 0 } },
-  { label: "Nur Chat", w: { raid: 0, shared: 0, title: 0, msgs: 1 } },
+  { label: "Nur Raids", w: { raid: 1, shared: 0, voice: 0, title: 0, msgs: 0 } },
+  { label: "Nur geteilter Chat", w: { raid: 0, shared: 1, voice: 0, title: 0, msgs: 0 } },
+  { label: "Nur Voicechat", w: { raid: 0, shared: 0, voice: 1, title: 0, msgs: 0 } },
+  { label: "Nur Titel", w: { raid: 0, shared: 0, voice: 0, title: 1, msgs: 0 } },
+  { label: "Nur Chat", w: { raid: 0, shared: 0, voice: 0, title: 0, msgs: 1 } },
 ];

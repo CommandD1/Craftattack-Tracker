@@ -24,6 +24,8 @@ export interface Reason {
   msgsIn: number;
   chats: number;
   chatSeconds: number;
+  /** Zeit (s) in derselben Voicechat-Gruppe */
+  voiceSeconds: number;
   /** Stream-Zeit (s), in der er den anderen im Titel nannte bzw. genannt wurde */
   titleOut: number;
   titleIn: number;
@@ -67,7 +69,7 @@ export interface Group {
   /** Verbindungen zu anderen Gruppen, stärkste zuerst, mit den stärksten Brücken */
   neighbours: { group: number; weight: number; bridges: { a: string; b: string; weight: number }[] }[];
   /** Summen der Arten innerhalb der Gruppe */
-  inside: { raids: number; msgs: number; chats: number; chatSeconds: number; titleSeconds: number };
+  inside: { raids: number; msgs: number; chats: number; chatSeconds: number; voiceSeconds: number; titleSeconds: number };
 }
 
 export interface GroupAnalysis {
@@ -88,6 +90,7 @@ function reasonFor(e: LinkCounts, self: string, weight: number): Reason {
     msgsIn: mine ? e.msgsBA : e.msgsAB,
     chats: e.chats,
     chatSeconds: e.chatSeconds,
+    voiceSeconds: e.voiceSeconds ?? 0,
     titleOut: mine ? e.titleAB : e.titleBA,
     titleIn: mine ? e.titleBA : e.titleAB,
   };
@@ -147,11 +150,12 @@ export function analyzeGroups(edges: LinkCounts[], w: Weights = DEFAULT_WEIGHTS,
       put(e.b, e.a, ba);
       pairs.set(`${e.a}|${e.b}`, reasonFor(e, e.a, ab));
       pairs.set(`${e.b}|${e.a}`, reasonFor(e, e.b, ba));
-      const t = inside.get(ga) ?? inside.set(ga, { raids: 0, msgs: 0, chats: 0, chatSeconds: 0, titleSeconds: 0 }).get(ga)!;
+      const t = inside.get(ga) ?? inside.set(ga, { raids: 0, msgs: 0, chats: 0, chatSeconds: 0, voiceSeconds: 0, titleSeconds: 0 }).get(ga)!;
       t.raids += e.raidsAB + e.raidsBA;
       t.msgs += e.msgsAB + e.msgsBA;
       t.chats += e.chats;
       t.chatSeconds += e.chatSeconds;
+      t.voiceSeconds += e.voiceSeconds ?? 0;
       t.titleSeconds += e.titleAB + e.titleBA;
     } else {
       for (const [x, y, a, b] of [
@@ -235,7 +239,7 @@ export function analyzeGroups(edges: LinkCounts[], w: Weights = DEFAULT_WEIGHTS,
       cohesion: sumTotal ? sumInner / sumTotal : 0,
       density: possible ? members.reduce((s, m) => s + m.links, 0) / 2 / possible : 0,
       neighbours,
-      inside: inside.get(index) ?? { raids: 0, msgs: 0, chats: 0, chatSeconds: 0, titleSeconds: 0 },
+      inside: inside.get(index) ?? { raids: 0, msgs: 0, chats: 0, chatSeconds: 0, voiceSeconds: 0, titleSeconds: 0 },
     });
   }
   return { groups, groupOf, pairs };
@@ -253,6 +257,7 @@ export function reasonText(r: Reason): string {
   if (r.msgsOut) parts.push(`${n(r.msgsOut)} Nachr. bei ihm`);
   if (r.msgsIn) parts.push(`${n(r.msgsIn)} Nachr. von ihm`);
   if (r.chats) parts.push(`${n(r.chats)}× geteilter Chat (${hours(r.chatSeconds)})`);
+  if (r.voiceSeconds >= 600) parts.push(`${hours(r.voiceSeconds)} im Voicechat`);
   if (r.titleOut) parts.push(`nennt ihn ${hours(r.titleOut)} im Titel`);
   if (r.titleIn) parts.push(`von ihm ${hours(r.titleIn)} im Titel genannt`);
   return parts.join(" · ");
@@ -284,7 +289,7 @@ export interface GroupExplanation {
   points: { text: string; ids?: string[] }[];
 }
 
-const KIND_LABEL: Record<LinkKind, string> = { raid: "Raids", shared: "geteilten Chat", title: "Erwähnungen im Stream-Titel", msgs: "Chat-Nachrichten" };
+const KIND_LABEL: Record<LinkKind, string> = { raid: "Raids", shared: "geteilten Chat", voice: "gemeinsame Zeit im Voicechat", title: "Erwähnungen im Stream-Titel", msgs: "Chat-Nachrichten" };
 const hours = (s: number) => `${Math.round(s / 3600).toLocaleString("de-DE")} Std`;
 
 /**
@@ -295,9 +300,9 @@ const hours = (s: number) => `${Math.round(s / 3600).toLocaleString("de-DE")} St
 export function explainGroup(g: Group, analysis: GroupAnalysis, edges: LinkCounts[], w: Weights, name: (id: string) => string): GroupExplanation {
   const members = new Set(g.members.map((m) => m.id));
   const pts = (e: LinkCounts) => linkPoints(e, w);
-  const inner: Weights = { raid: 0, shared: 0, title: 0, msgs: 0 };
-  const all: Weights = { raid: 0, shared: 0, title: 0, msgs: 0 };
-  const sum = (p: Weights) => p.raid + p.shared + p.title + p.msgs;
+  const inner: Weights = { raid: 0, shared: 0, voice: 0, title: 0, msgs: 0 };
+  const all: Weights = { raid: 0, shared: 0, voice: 0, title: 0, msgs: 0 };
+  const sum = (p: Weights) => p.raid + p.shared + p.voice + p.title + p.msgs;
   let memberTotal = 0;
   const innerPairs: { a: string; b: string; s: number; e: LinkCounts }[] = [];
   for (const e of edges) {
@@ -334,7 +339,9 @@ export function explainGroup(g: Group, analysis: GroupAnalysis, edges: LinkCount
         ? `${g.inside.raids.toLocaleString("de-DE")} Raids`
         : top === "shared"
           ? `${hours(g.inside.chatSeconds)} in ${g.inside.chats.toLocaleString("de-DE")} geteilten Chats`
-          : top === "title"
+          : top === "voice"
+            ? `${hours(g.inside.voiceSeconds)} zusammen im Voicechat`
+            : top === "title"
             ? `${hours(g.inside.titleSeconds)} Stream mit dem anderen im Titel`
             : `${g.inside.msgs.toLocaleString("de-DE")} Nachrichten`;
     points.push({

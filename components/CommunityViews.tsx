@@ -139,6 +139,9 @@ export function NetzView({ c }: { c: CommunityCtx }) {
                     <th className="num">← Raids</th>
                     <th className="num">Geteilte Chats</th>
                     <th className="num">Zeit im Chat</th>
+                    <th className="num" title="Zeit in derselben Voicechat-Gruppe (aus den Stream-Aufnahmen)">
+                      Voicechat
+                    </th>
                     <th className="num" title="Stream-Zeit, in der der erste Spieler den zweiten im Titel nannte (höchstens 8 Std je Tag)">
                       Titel →
                     </th>
@@ -182,6 +185,7 @@ export function NetzView({ c }: { c: CommunityCtx }) {
                           {e.chats ? num(e.chats) : "–"}
                         </td>
                         <td className="num">{e.chatSeconds ? duration(e.chatSeconds) : "–"}</td>
+                        <td className="num">{(e.voiceSeconds ?? 0) >= 60 ? duration(e.voiceSeconds ?? 0) : "–"}</td>
                         <td className="num">{tAB ? duration(tAB) : "–"}</td>
                         <td className="num">{tBA ? duration(tBA) : "–"}</td>
                         <td className="num">{mAB ? num(mAB) : "–"}</td>
@@ -245,6 +249,7 @@ export function NaeheView({ c }: { c: CommunityCtx }) {
       msgs ? `${num(msgs)} Nachrichten im Chat von ${c.name(to)}` : null,
       title ? `${duration(title)} Stream mit ${c.name(to)} im Titel` : null,
       e.chats ? `${num(e.chats)}× geteilter Chat (${duration(e.chatSeconds)})` : null,
+      (e.voiceSeconds ?? 0) >= 60 ? `${duration(e.voiceSeconds ?? 0)} zusammen im Voicechat` : null,
     ].filter(Boolean);
     const pts = s.dir === "gegenseitig" ? Math.min(ab, ba) : fwd ? ab : ba;
     return parts.length ? `${parts.join(" · ")} = ${pts.toLocaleString("de-DE", { maximumFractionDigits: 1 })} Punkte` : "";

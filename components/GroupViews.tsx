@@ -98,6 +98,7 @@ function groupMap(analysis: GroupAnalysis, byId: Map<string, GraphNode>, weights
     t.msgsBA += flip ? e.msgsAB : e.msgsBA;
     t.chats += e.chats;
     t.chatSeconds += e.chatSeconds;
+    t.voiceSeconds = (t.voiceSeconds ?? 0) + (e.voiceSeconds ?? 0);
     t.titleAB += flip ? e.titleBA : e.titleAB;
     t.titleBA += flip ? e.titleAB : e.titleBA;
     t.now ||= e.now;
@@ -189,6 +190,10 @@ export function GroupDetail({ c }: { c: CommunityCtx }) {
             <div>
               <dt title="Gemeinsame Zeit im geteilten Chat">Geteilter Chat</dt>
               <dd className="num">{num(Math.round(g.inside.chatSeconds / 3600))} Std</dd>
+            </div>
+            <div>
+              <dt title="Gemeinsame Zeit in derselben Voicechat-Gruppe (aus den Stream-Aufnahmen)">Voicechat</dt>
+              <dd className="num">{num(Math.round(g.inside.voiceSeconds / 3600))} Std</dd>
             </div>
             <div>
               <dt title="Stream-Zeit, in der ein Mitglied ein anderes im Titel nannte (höchstens 8 Std je Tag)">Im Titel genannt</dt>

@@ -10,7 +10,7 @@ import { caModeOf } from "@/lib/onlineSpans";
 
 export const metadata: Metadata = {
   title: "Verbindungen",
-  description: "Wer auf CraftAttack 14 mit wem verbunden ist: Raids, geteilte Chats, Namen im Titel und Chat-Nachrichten als Netz, nach Nähe und in Gruppen.",
+  description: "Wer auf CraftAttack 14 mit wem verbunden ist: Raids, geteilte Chats, Voicechat, Namen im Titel und Chat-Nachrichten als Netz, nach Nähe und in Gruppen.",
 };
 
 
@@ -45,7 +45,7 @@ async function Community({ searchParams }: { searchParams: PageProps<"/verbindun
             <Explain>
               Alle Einstellungen gelten für beide Ansichten, ein ausgewählter Spieler bleibt beim Wechsel ausgewählt. <b>Verbindungen</b>: je enger die
               Verbindung, desto dicker die Linie und desto näher die Köpfe; mit Spieler seine Verbindungen. <b>Distanz</b>: wer allen am nächsten steht; mit Spieler
-              alle nach dem kürzesten Weg zu ihm (Raids, Titel und Nachrichten zählen nur in ihre Richtung). <b>Gruppen</b>: wer untereinander deutlich enger
+              alle nach dem kürzesten Weg zu ihm (Raids, Titel und Nachrichten zählen nur in ihre Richtung, geteilter Chat und Voicechat für beide). <b>Voicechat</b>: Zeit in derselben Gruppe, gelesen aus den Stream-Aufnahmen; die gibt es nur auf dem Server, sie zählt deshalb in jeder Auswahl unten. <b>Gruppen</b>: wer untereinander deutlich enger
               verbunden ist als mit dem Rest (Louvain), benannt nach dem Mitglied mit der meisten Aufmerksamkeit; das sagt nichts über echte Freundschaften.
               <b> Daten</b>: „CraftAttack“ (Standard) zählt nur, was geschah, während mindestens einer der beiden auf CraftAttack online war, „Beide auf CraftAttack“
               nur, während beide gleichzeitig dort waren, „Alles“ alle Twitch-Daten; in Lücken des Trackers gilt niemand als online. Die Auswahl gilt auch für Zuschauer und Raids. Kopf anklicken wählt den Spieler aus, Rechtsklick öffnet sein Profil.
