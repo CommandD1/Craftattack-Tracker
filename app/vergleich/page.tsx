@@ -157,8 +157,8 @@ async function Start({ bad, focus, names }: { bad: boolean; focus?: string; name
             </h2>
             <p className="muted cmp-note">
               {focus
-                ? "Mit wem er im Netz am meisten zu tun hat (Raids, geteilte Chats, Titel, Chat-Nachrichten) – oder oben Spieler 2 wählen."
-                : "Die stärksten Verbindungen im Netz (Raids, geteilte Chats, Titel, Chat-Nachrichten) – oder oben zwei beliebige Spieler wählen."}
+                ? "Mit wem er im Netz am meisten zu tun hat (Raids, geteilte Chats, Voicechat, Titel, Chat-Nachrichten) – oder oben Spieler 2 wählen."
+                : "Die stärksten Verbindungen im Netz (Raids, geteilte Chats, Voicechat, Titel, Chat-Nachrichten) – oder oben zwei beliebige Spieler wählen."}
             </p>
             {focus && !pairs.length && <p className="muted">Keine Verbindungen im Netz.</p>}
             <ul className="cmp-pairs">
@@ -461,7 +461,7 @@ const VERDICT: Record<CompareData["net"]["verdict"], { label: string; tone: stri
   eng: { label: "Eng verbunden", tone: "grass", text: "Für mindestens einen von beiden unter den drei stärksten Verbindungen." },
   befreundet: { label: "Befreundet", tone: "diamond", text: "Direkt verbunden, für mindestens einen unter den zehn stärksten." },
   bekannt: { label: "Kennen sich", tone: "white", text: "Direkt verbunden, aber für beide keine der wichtigen Verbindungen." },
-  fremd: { label: "Keine direkte Verbindung", tone: "paper", text: "Keine Raids, kein geteilter Chat, keine Nennung im Titel und keine Chat-Nachricht beim anderen." },
+  fremd: { label: "Keine direkte Verbindung", tone: "paper", text: "Keine Raids, kein geteilter Chat, keine gemeinsame Zeit im Voicechat, keine Nennung im Titel und keine Chat-Nachricht beim anderen." },
 };
 
 function FriendList({ list, max, names, mark, other, title, empty = "Keine." }: { list: Friend[]; max: number; names: Names; mark?: Set<string>; other: string; title: React.ReactNode; empty?: string }) {
@@ -507,6 +507,7 @@ function NetworkSection({ d, names }: { d: CompareData; names: Names }) {
   const commonSet = new Set(n.common.map((c) => c.id));
   const group = (g: CompareData["net"]["a"]["group"]) => (g ? `${names.nameOf(g.leader)}s Gruppe · ${ROLE_LABEL[g.role]} (${g.size})` : "keine");
   const chat = link.chats ? `${num(link.chats)}× · ${duration(link.chatSeconds)}` : "–";
+  const voice = (link.voiceSeconds ?? 0) >= 60 ? duration(link.voiceSeconds ?? 0) : "–";
   return (
     <section className="block" data-tone="paper">
       <div className="wrap stack">
@@ -519,7 +520,7 @@ function NetworkSection({ d, names }: { d: CompareData; names: Names }) {
           </p>
         </div>
         <p className="muted">
-          Verbindungen über Twitch wie auf der Seite Verbindungen: Raids, geteilte Chats, Namen im Stream-Titel und Chat-Nachrichten beim anderen, als Punkte. Ein Klick auf einen Namen vergleicht ihn mit dem
+          Verbindungen wie auf der Seite Verbindungen: Raids, geteilte Chats, Zeit im Voicechat, Namen im Stream-Titel und Chat-Nachrichten beim anderen, als Punkte. Ein Klick auf einen Namen vergleicht ihn mit dem
           jeweiligen Spieler.
         </p>
         <dl className="grid st-figs">
@@ -574,6 +575,7 @@ function NetworkSection({ d, names }: { d: CompareData; names: Names }) {
               { label: "Chat-Nachrichten beim anderen", a: num(link.msgsAB), b: num(link.msgsBA) },
               { label: "Anderen im Stream-Titel genannt", a: link.titleAB ? duration(link.titleAB) : "–", b: link.titleBA ? duration(link.titleBA) : "–" },
               { label: "Geteilter Chat (zusammen)", a: chat, b: chat },
+              { label: "Voicechat (zusammen)", a: voice, b: voice, hint: "Zeit in derselben Voicechat-Gruppe, aus den Stream-Aufnahmen" },
             ]}
           />
         </div>

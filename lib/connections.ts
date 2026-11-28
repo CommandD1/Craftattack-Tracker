@@ -26,6 +26,33 @@ export interface NetworkNode {
   live: boolean;
 }
 
+/**
+ * Voicechat-Zeit je Paar und Tag aus den Sitzungen (voice_session, lib/voiceChat.ts: `meta.with` + `meta.withMin`).
+ * Jedes Paar steht in den Sitzungen beider Spieler; je Tag zählt der größere Wert, damit nichts doppelt zählt.
+ * → Map "a|b|Tag" (a < b) → Sekunden
+ */
+async function voicePairDays(since: Date): Promise<Map<string, number>> {
+  const db = await getDb();
+  const { rows } = await db.query<{ player: string; at: Date; w: string | null; m: string | null }>(
+    `SELECT player, at, meta->>'with' AS w, meta->>'withMin' AS m FROM events WHERE type = 'voice_session' AND at >= $1 AND player IS NOT NULL`,
+    [since],
+  );
+  const side = new Map<string, [number, number]>(); // "a|b|Tag" → [Sekunden aus Sicht a, aus Sicht b]
+  for (const r of rows) {
+    if (!r.w || !r.m) continue;
+    const ws = r.w.split(","), ms = r.m.split(",").map(Number);
+    const day = berlinDay(r.at.getTime());
+    ws.forEach((o, i) => {
+      if (!o || o === r.player || !(ms[i] > 0)) return;
+      const [a, b] = r.player < o ? [r.player, o] : [o, r.player];
+      const k = `${a}|${b}|${day}`;
+      const v = side.get(k) ?? side.set(k, [0, 0]).get(k)!;
+      v[r.player === a ? 0 : 1] += ms[i] * 60;
+    });
+  }
+  return new Map([...side].map(([k, [x, y]]) => [k, Math.max(x, y)]));
+}
+
 /** Verbindung zweier Spieler über Twitch: Raids, geteilte Chats, Namen im Stream-Titel und Nachrichten im Chat des anderen. */
 export interface ConnectionEdge extends LinkCounts {
   last: string;
@@ -35,7 +62,7 @@ export interface ConnectionEdge extends LinkCounts {
 export async function getConnections(hours: number | null): Promise<ConnectionEdge[]> {
   const db = await getDb();
   const since = hours === null ? new Date(0) : new Date(Date.now() - hours * 3600_000);
-  const [raids, chats, messages, streams, players] = await Promise.all([
+  const [raids, chats, messages, streams, players, voice] = await Promise.all([
     db.query<{ src: string; dst: string; n: number; last: Date }>(
       `SELECT player AS src, meta->>'raidTargetPlayerId' AS dst, count(*)::int AS n, max(at) AS last
          FROM events
@@ -65,6 +92,7 @@ export async function getConnections(hours: number | null): Promise<ConnectionEd
       [new Date(since.getTime() - 72 * 3600_000)],
     ),
     db.query<{ id: string; name: string; twitch_login: string | null; live: boolean }>(`SELECT id, name, twitch_login, live IS NOT NULL AS live FROM players`),
+    voicePairDays(since),
   ]);
 
   const pairs = new Map<string, ConnectionEdge>();
@@ -126,6 +154,11 @@ export async function getConnections(hours: number | null): Promise<ConnectionEd
     else e.msgsBA += m.n;
     touch(e, m.last);
   }
+  for (const [k, s] of voice) {
+    const [a, b] = k.split("|");
+    const e = pair(a, b);
+    e.voiceSeconds = (e.voiceSeconds ?? 0) + s;
+  }
   return [...pairs.values()];
 }
 
@@ -174,7 +207,7 @@ async function computeDailyNetwork(mode: CaMode): Promise<{ nodes: NetworkNode[]
   const now = Date.now();
   const online = mode === "alle" ? null : onlineIndex(await loadAllSessions(), now);
   const pairOk = caPairTest(online, mode);
-  const [state, raidRows, chats, messageRows, streams, players] = await Promise.all([
+  const [state, raidRows, chats, messageRows, streams, players, voice] = await Promise.all([
     getState(),
     db.query<{ src: string; dst: string; at: Date }>(
       `SELECT player AS src, meta->>'raidTargetPlayerId' AS dst, at
@@ -191,6 +224,7 @@ async function computeDailyNetwork(mode: CaMode): Promise<{ nodes: NetworkNode[]
         WHERE type IN ('stream_start', 'stream_title', 'stream_end') AND player IS NOT NULL`,
     ),
     db.query<{ id: string; name: string; twitch_login: string | null; live: boolean }>(`SELECT id, name, twitch_login, live IS NOT NULL AS live FROM players`),
+    voicePairDays(new Date(0)),
   ]);
   const known = (id: string) => Boolean(state.players[id]);
   // Je Tag zählen; mit Filter nur, wenn einer bzw. beide zu dem Zeitpunkt online waren
@@ -261,6 +295,13 @@ async function computeDailyNetwork(mode: CaMode): Promise<{ nodes: NetworkNode[]
     },
     online ? (src, dst, from, to) => caSpans(online, mode, src, dst, from, to) : undefined,
   );
+  // Voicechat: immer auf dem Server (die Gruppe gibt es nur dort), zählt also in jedem Modus
+  for (const [k, s] of voice) {
+    const [a, b, day] = k.split("|");
+    if (!known(a) || !known(b)) continue;
+    const e = row(day, a, b);
+    e.voiceSeconds = (e.voiceSeconds ?? 0) + s;
+  }
   const days = [...new Set([...rows.values()].map((r) => r.day))].sort();
   const ids = Object.keys(state.players).sort();
   const dayIx = new Map(days.map((d, i) => [d, i]));
@@ -280,6 +321,7 @@ async function computeDailyNetwork(mode: CaMode): Promise<{ nodes: NetworkNode[]
       Math.round(r.titleBA),
       r.msgsAB,
       r.msgsBA,
+      r.voiceSeconds ?? 0,
     ]),
     now: nowPairs.map(([a, b]) => [idIx.get(a)!, idIx.get(b)!]),
   };

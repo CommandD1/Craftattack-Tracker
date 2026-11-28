@@ -3,7 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getDb } from "./db";
-import { deleteEvents, getEvents, getState, insertPastEvents } from "./store";
+import { deleteEvents, getEvents, getState, insertPastEvents, updateEventMeta } from "./store";
 import type { TrackerEvent } from "./types";
 import { loadVoicePairs, loadVoiceSummary } from "./voiceSummary";
 
@@ -15,7 +15,9 @@ import { loadVoicePairs, loadVoiceSummary } from "./voiceSummary";
  *
  * - Tracker: liest stündlich voice-events.json (scripts/chat/export-voice-events.mjs) und trägt Ereignisse ein:
  *   `voice_session` (Sitzung ab 10 min, mit Mitspielern und Sprung ins VOD), `voice_first` (erstes Mal zusammen,
- *   Paare ab 1 h insgesamt). Fehlt ein Ereignis in einer neuen Datei (Scan nachgebessert), wird es gelöscht.
+ *   Paare ab 1 h insgesamt). IDs: Spieler + Beginn bzw. Paar, bleiben also stabil; ändert sich der Inhalt (Scan
+ *   nachgebessert), wird `meta` aktualisiert, fehlt ein Ereignis in einer neuen Datei, wird es gelöscht.
+ * - Verbindungen (lib/connections.ts): Minuten je Mitspieler (`meta.with` + `meta.withMin`) ergeben die Voicechat-Zeit.
  * - Website: Zahlen je Spieler und für /voicechat aus voice-summary.json und voice-pairs.json (lib/voiceSummary.ts).
  */
 const DIR = process.env.FACE_REVIEW_DIR ?? join(homedir(), "craftattack-stats", "review");
@@ -39,12 +41,6 @@ const vodUrl = (v: VodAt) => {
   const s = Math.max(0, Math.round(v[1]));
   return `https://www.twitch.tv/videos/${encodeURIComponent(v[0])}?t=${Math.floor(s / 3600)}h${Math.floor((s % 3600) / 60)}m${s % 60}s`;
 };
-/** Kurzer, stabiler Hash (FNV-1a) – ändert sich der Inhalt einer Sitzung, bekommt sie eine neue ID */
-function hash(s: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
-  return (h >>> 0).toString(36);
-}
 
 async function buildEvents(f: VoiceEventsFile): Promise<TrackerEvent[]> {
   const { players } = await getState();
@@ -52,24 +48,25 @@ async function buildEvents(f: VoiceEventsFile): Promise<TrackerEvent[]> {
   for (const s of f.sessions) {
     const [id, from, to, minutes, partners, , vod] = s;
     const p = players[id];
-    const known = partners.filter(([o]) => players[o]);
+    // gleich lange Mitspieler nach ID, damit sich die Reihenfolge nicht stündlich ändert
+    const known = partners.filter(([o]) => players[o]).sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1));
     if (!p || !known.length) continue;
     const named = known.slice(0, NAMED).map(([o]) => players[o].name);
     const url = vodUrl(vod);
     out.push({
-      id: `voice-${id}-${from}-${hash(JSON.stringify(s))}`,
+      id: `voice-${id}-${from}`,
       at: new Date(from).toISOString(),
       type: "voice_session",
       player: id,
       playerName: p.name,
       uuid: p.uuid,
       where: "server",
-      value: known.length,
       meta: {
         endAt: new Date(to).toISOString(),
         seconds: Math.round((to - from) / 1000),
         minutes,
         with: known.map(([o]) => o).join(","),
+        withMin: known.map(([, n]) => n).join(","),
         withNames: named.join("\n"),
         withMore: known.length - named.length,
         ...(url ? { vodUrl: url } : {}),
@@ -83,7 +80,7 @@ async function buildEvents(f: VoiceEventsFile): Promise<TrackerEvent[]> {
     if (!pa || !pb) continue;
     const url = vodUrl(vod);
     out.push({
-      id: `voicefirst-${a}-${b}-${hash(JSON.stringify(r))}`,
+      id: `voicefirst-${a}-${b}`,
       at: new Date(at).toISOString(),
       type: "voice_first",
       player: a,
@@ -96,15 +93,26 @@ async function buildEvents(f: VoiceEventsFile): Promise<TrackerEvent[]> {
   return out;
 }
 
-async function syncVoice(): Promise<{ added: number; removed: number; total: number } | null> {
+async function syncVoice(): Promise<{ added: number; changed: number; removed: number; total: number } | null> {
   const f = JSON.parse(await readFile(FILE, "utf8")) as VoiceEventsFile;
   // Schutz: eine halbe oder leere Datei löscht nicht alle Ereignisse
   if (!Array.isArray(f.sessions) || f.sessions.length < 100) return null;
   const events = await buildEvents(f);
-  const have = new Set((await getEvents()).filter((e) => e.type === "voice_session" || e.type === "voice_first").map((e) => e.id));
+  const have = new Map((await getEvents()).filter((e) => e.type === "voice_session" || e.type === "voice_first").map((e) => [e.id, e]));
+  // Gleiche ID, anderer Inhalt (Scan nachgebessert): nur meta neu; Felder, die wegfallen, werden null
+  let changed = 0;
+  for (const e of events) {
+    const old = have.get(e.id);
+    if (!old) continue;
+    const meta = e.meta ?? {};
+    const gone = Object.fromEntries(Object.keys(old.meta ?? {}).filter((k) => !(k in meta)).map((k) => [k, null]));
+    if (JSON.stringify({ ...old.meta, ...gone, ...meta }) === JSON.stringify(old.meta)) continue;
+    await updateEventMeta(old, { ...gone, ...meta });
+    changed++;
+  }
   const added = await insertPastEvents(events.filter((e) => !have.has(e.id)));
   const removed = await deleteEvents([...TYPES], events.map((e) => e.id));
-  return { added, removed, total: events.length };
+  return { added, changed, removed, total: events.length };
 }
 
 /** Tracker: Voicechat-Ereignisse aus dem VOD-Scan übernehmen (beim Start nach 5 min, dann alle 30 min bei neuer Datei) */
@@ -122,7 +130,7 @@ export function startVoiceSync() {
       if (!m || m === lastMtime) return;
       const r = await syncVoice();
       lastMtime = m;
-      if (r) console.log(`[voice] ${r.total} Voicechat-Ereignisse · ${r.added} neu · ${r.removed} entfernt`);
+      if (r) console.log(`[voice] ${r.total} Voicechat-Ereignisse · ${r.added} neu · ${r.changed} geändert · ${r.removed} entfernt`);
     } catch (err) {
       console.warn("[voice] Abgleich fehlgeschlagen:", err instanceof Error ? err.message : err);
     } finally {

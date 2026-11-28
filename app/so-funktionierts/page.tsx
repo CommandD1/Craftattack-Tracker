@@ -216,6 +216,11 @@ export default function HowItWorks() {
               </dd>
               <dt>Spricht</dt>
               <dd>Anteil der Bilder mit weißem Rahmen um den Kopf (Mikro aktiv), „hört nicht zu“: durchgestrichener Lautsprecher am Kopf.</dd>
+              <dt>Verbindungen</dt>
+              <dd>
+                Die gemeinsame Zeit ist eine eigene Art im <Link href="/verbindungen">Netz</Link>: 1 Stunde zusammen in einer Gruppe = 0,25 Punkte, für beide gleich,
+                per Regler anders gewichtbar.
+              </dd>
             </dl>
             <p className="how__note">
               Neue VODs werden täglich gelesen, die Auswertung stündlich aktualisiert. Einzelne Köpfe können falsch erkannt sein, vor allem bei ähnlichen Skins.
