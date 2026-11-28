@@ -14,7 +14,9 @@ const DIR = process.env.FACE_REVIEW_DIR ?? join(homedir(), "craftattack-stats", 
 const DAYS = join(DIR, "voice-days");
 const FIXES = join(DIR, "voice-fixes.json");
 
-export type VoiceDayInfo = { day: string; frames: number; withGroup: number; streamers?: number; heads?: number; open?: number };
+/** Langer Konflikt (ab 15 min, Export stündlich): strittige Spieler, Minuten ab 06:00, weitere Beteiligte */
+export type VoiceLongConflict = { p: string[]; a: number; b: number; with: string[] };
+export type VoiceDayInfo = { day: string; frames: number; withGroup: number; streamers?: number; heads?: number; open?: number; long?: VoiceLongConflict[] };
 export type VoiceIndex = { made: string; days: VoiceDayInfo[]; players: Record<string, { name: string; face: string | null }> };
 /** Kopf in einer Liste: [Spieler-ID | null, Art p/i/o/j/x, 0 | 1 = von Hand | 2 = per Mehrheit der anderen Streamer korrigiert] */
 export type VoiceHead = [string | null, "p" | "i" | "o" | "j" | "x", 0 | 1 | 2];
