@@ -36,9 +36,10 @@ export interface LinkCounts {
 /**
  * Punkte bei Faktor 1: je Raid, je Stunde im geteilten Chat, je Stunde zusammen im Voicechat, je Stunde Stream mit
  * Namen im Titel und je Chat-Nachricht (10 Nachrichten = 1 Punkt). Geteilter Chat, Voicechat und Titel zählen nach
- * Zeit, nicht nach Anzahl. Voicechat nur 0,25 je Stunde: enge Paare kommen auf über 100 Stunden.
+ * Zeit, nicht nach Anzahl. Voicechat nur 0,05 je Stunde (20 Std = 1 Punkt): zusammen gut 14.000 Paar-Stunden, enge Paare
+ * über 100 Stunden – so trägt er im Ganzen etwa so viel bei wie Raids oder Chat-Nachrichten statt alles zu überdecken.
  */
-export const BASE_POINTS: Weights = { raid: 1, shared: 0.5, voice: 0.25, title: 0.25, msgs: 0.1 };
+export const BASE_POINTS: Weights = { raid: 1, shared: 0.5, voice: 0.05, title: 0.25, msgs: 0.1 };
 export const DEFAULT_WEIGHTS: Weights = { raid: 1, shared: 1, voice: 1, title: 1, msgs: 1 };
 export const LINK_KINDS: LinkKind[] = ["raid", "shared", "voice", "title", "msgs"];
 
